@@ -1,0 +1,469 @@
+package ldap
+
+import (
+	"crypto/tls"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/dpicillo/LDAPilot/internal/models"
+	goldap "github.com/go-ldap/ldap/v3"
+)
+
+// Client wraps an LDAP connection with convenience methods.
+type Client struct {
+	mu      sync.Mutex
+	profile models.ConnectionProfile
+	conn    *goldap.Conn
+	logger  *Logger
+}
+
+// NewClient creates a new Client for the given connection profile.
+func NewClient(profile models.ConnectionProfile) *Client {
+	return &Client{
+		profile: profile,
+		logger:  NewLogger(),
+	}
+}
+
+// Logger returns the client's operation logger.
+func (c *Client) Logger() *Logger {
+	return c.logger
+}
+
+// Profile returns the connection profile associated with this client.
+func (c *Client) Profile() models.ConnectionProfile {
+	return c.profile
+}
+
+// Connect establishes a connection to the LDAP server, handles TLS, and performs bind.
+func (c *Client) Connect() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	start := time.Now()
+	timeout := time.Duration(c.profile.Timeout) * time.Second
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: c.profile.TLSSkipVerify,
+		ServerName:         c.profile.Host,
+	}
+
+	address := fmt.Sprintf("%s:%d", c.profile.Host, c.profile.Port)
+
+	var conn *goldap.Conn
+	var err error
+
+	switch c.profile.TLSMode {
+	case models.TLSSSL:
+		conn, err = goldap.DialTLS("tcp", address, tlsConfig)
+	case models.TLSStartTLS:
+		conn, err = goldap.DialURL(fmt.Sprintf("ldap://%s", address))
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+		}
+		if err = conn.StartTLS(tlsConfig); err != nil {
+			conn.Close()
+			return fmt.Errorf("%w: StartTLS failed: %v", ErrConnectionFailed, err)
+		}
+	default:
+		conn, err = goldap.DialURL(fmt.Sprintf("ldap://%s", address))
+	}
+
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+	}
+
+	conn.SetTimeout(timeout)
+	c.conn = conn
+
+	// Perform bind
+	switch c.profile.AuthMethod {
+	case models.AuthSimple:
+		if err := c.conn.Bind(c.profile.BindDN, c.profile.Password); err != nil {
+			c.conn.Close()
+			c.conn = nil
+			bindErr := fmt.Errorf("%w: %v", ErrBindFailed, err)
+			c.logger.Log("BIND", fmt.Sprintf("Simple bind as %s to %s", c.profile.BindDN, address), time.Since(start), bindErr)
+			return bindErr
+		}
+	case models.AuthNone:
+		if err := c.conn.UnauthenticatedBind(""); err != nil {
+			c.conn.Close()
+			c.conn = nil
+			bindErr := fmt.Errorf("%w: %v", ErrBindFailed, err)
+			c.logger.Log("BIND", fmt.Sprintf("Anonymous bind to %s", address), time.Since(start), bindErr)
+			return bindErr
+		}
+	}
+
+	c.logger.Log("CONNECT", fmt.Sprintf("Connected to %s (TLS: %s, Auth: %s)", address, c.profile.TLSMode, c.profile.AuthMethod), time.Since(start), nil)
+	return nil
+}
+
+// Close closes the LDAP connection.
+func (c *Client) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
+}
+
+// IsConnected returns true if the client has an active connection.
+func (c *Client) IsConnected() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn != nil
+}
+
+// GetChildren performs a one-level search under parentDN and returns tree nodes.
+func (c *Client) GetChildren(parentDN string) ([]models.TreeNode, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return nil, ErrNotConnected
+	}
+
+	searchReq := goldap.NewSearchRequest(
+		parentDN,
+		goldap.ScopeSingleLevel,
+		goldap.NeverDerefAliases,
+		0, 0, false,
+		"(objectClass=*)",
+		[]string{"dn", "objectClass", "hasSubordinates"},
+		nil,
+	)
+
+	result, err := c.conn.Search(searchReq)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSearchFailed, err)
+	}
+
+	nodes := make([]models.TreeNode, 0, len(result.Entries))
+	for _, entry := range result.Entries {
+		objectClasses := entry.GetAttributeValues("objectClass")
+		hasSubStr := entry.GetAttributeValue("hasSubordinates")
+
+		hasChildren := false
+		if strings.EqualFold(hasSubStr, "TRUE") {
+			hasChildren = true
+		} else if hasSubStr == "" {
+			// Fallback: probe for children
+			hasChildren = c.probeHasChildren(entry.DN)
+		}
+
+		icon := determineIcon(objectClasses)
+		rdn := extractRDN(entry.DN)
+
+		nodes = append(nodes, models.TreeNode{
+			DN:          entry.DN,
+			RDN:         rdn,
+			HasChildren: hasChildren,
+			ObjectClass: objectClasses,
+			Icon:        icon,
+		})
+	}
+
+	return nodes, nil
+}
+
+// probeHasChildren checks whether a DN has any children by doing a size-limited one-level search.
+func (c *Client) probeHasChildren(dn string) bool {
+	searchReq := goldap.NewSearchRequest(
+		dn,
+		goldap.ScopeSingleLevel,
+		goldap.NeverDerefAliases,
+		1, 5, false,
+		"(objectClass=*)",
+		[]string{"dn"},
+		nil,
+	)
+	result, err := c.conn.Search(searchReq)
+	if err != nil {
+		return false
+	}
+	return len(result.Entries) > 0
+}
+
+// GetEntry retrieves a single entry by DN with all its attributes.
+func (c *Client) GetEntry(dn string) (*models.LDAPEntry, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return nil, ErrNotConnected
+	}
+
+	searchReq := goldap.NewSearchRequest(
+		dn,
+		goldap.ScopeBaseObject,
+		goldap.NeverDerefAliases,
+		0, 0, false,
+		"(objectClass=*)",
+		[]string{"*", "+"},
+		nil,
+	)
+
+	result, err := c.conn.Search(searchReq)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSearchFailed, err)
+	}
+
+	if len(result.Entries) == 0 {
+		return nil, ErrNotFound
+	}
+
+	entry := result.Entries[0]
+	return convertEntry(entry), nil
+}
+
+// Search performs a full LDAP search with the given parameters.
+func (c *Client) Search(params models.SearchParams) (*models.SearchResult, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return nil, ErrNotConnected
+	}
+	searchStart := time.Now()
+
+	if params.Filter == "" {
+		params.Filter = "(objectClass=*)"
+	}
+
+	attrs := params.Attributes
+	if len(attrs) == 0 {
+		attrs = []string{"*"}
+	}
+
+	pageSize := c.profile.PageSize
+	if pageSize <= 0 {
+		pageSize = 500
+	}
+
+	searchReq := goldap.NewSearchRequest(
+		params.BaseDN,
+		int(params.Scope),
+		goldap.NeverDerefAliases,
+		params.SizeLimit,
+		params.TimeLimit,
+		false,
+		params.Filter,
+		attrs,
+		[]goldap.Control{goldap.NewControlPaging(uint32(pageSize))},
+	)
+
+	var allEntries []*goldap.Entry
+	truncated := false
+
+	for {
+		result, err := c.conn.Search(searchReq)
+		if err != nil {
+			// Check for size limit exceeded - partial results are still useful
+			if goldap.IsErrorWithCode(err, goldap.LDAPResultSizeLimitExceeded) {
+				truncated = true
+				if result != nil {
+					allEntries = append(allEntries, result.Entries...)
+				}
+				break
+			}
+			return nil, fmt.Errorf("%w: %v", ErrSearchFailed, err)
+		}
+
+		allEntries = append(allEntries, result.Entries...)
+
+		// Check for paging control in response
+		pagingControl := goldap.FindControl(result.Controls, goldap.ControlTypePaging)
+		if pagingCtrl, ok := pagingControl.(*goldap.ControlPaging); ok && len(pagingCtrl.Cookie) > 0 {
+			searchReq.Controls = []goldap.Control{goldap.NewControlPaging(uint32(pageSize))}
+			// Set the cookie for the next page
+			if ctrl := goldap.FindControl(searchReq.Controls, goldap.ControlTypePaging); ctrl != nil {
+				ctrl.(*goldap.ControlPaging).SetCookie(pagingCtrl.Cookie)
+			}
+			continue
+		}
+		break
+	}
+
+	entries := make([]models.LDAPEntry, 0, len(allEntries))
+	for _, e := range allEntries {
+		entries = append(entries, *convertEntry(e))
+	}
+
+	c.logger.Log("SEARCH", fmt.Sprintf("base=%s scope=%d filter=%s -> %d entries", params.BaseDN, params.Scope, params.Filter, len(entries)), time.Since(searchStart), nil)
+
+	return &models.SearchResult{
+		Entries:    entries,
+		TotalCount: len(entries),
+		Truncated:  truncated,
+	}, nil
+}
+
+// AddEntry creates a new LDAP entry with the given DN and attributes.
+func (c *Client) AddEntry(dn string, attrs []models.LDAPAttribute) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return ErrNotConnected
+	}
+
+	start := time.Now()
+	addReq := goldap.NewAddRequest(dn, nil)
+	for _, attr := range attrs {
+		addReq.Attribute(attr.Name, attr.Values)
+	}
+
+	err := c.conn.Add(addReq)
+	c.logger.Log("ADD", fmt.Sprintf("dn=%s", dn), time.Since(start), err)
+	return err
+}
+
+// ModifyAttribute replaces the values of an attribute on an entry.
+func (c *Client) ModifyAttribute(dn string, attrName string, values []string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return ErrNotConnected
+	}
+
+	start := time.Now()
+	modReq := goldap.NewModifyRequest(dn, nil)
+	modReq.Replace(attrName, values)
+	err := c.conn.Modify(modReq)
+	c.logger.Log("MODIFY", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
+	return err
+}
+
+// AddAttribute adds values to an attribute on an entry.
+func (c *Client) AddAttribute(dn string, attrName string, values []string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return ErrNotConnected
+	}
+
+	start := time.Now()
+	modReq := goldap.NewModifyRequest(dn, nil)
+	modReq.Add(attrName, values)
+	err := c.conn.Modify(modReq)
+	c.logger.Log("ADD_ATTR", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
+	return err
+}
+
+// DeleteAttribute removes an attribute from an entry.
+func (c *Client) DeleteAttribute(dn string, attrName string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return ErrNotConnected
+	}
+
+	start := time.Now()
+	modReq := goldap.NewModifyRequest(dn, nil)
+	modReq.Delete(attrName, []string{})
+	err := c.conn.Modify(modReq)
+	c.logger.Log("DEL_ATTR", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
+	return err
+}
+
+// DeleteEntry removes an entry by DN.
+func (c *Client) DeleteEntry(dn string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return ErrNotConnected
+	}
+
+	start := time.Now()
+	delReq := goldap.NewDelRequest(dn, nil)
+	err := c.conn.Del(delReq)
+	c.logger.Log("DELETE", fmt.Sprintf("dn=%s", dn), time.Since(start), err)
+	return err
+}
+
+// RenameEntry renames or moves an LDAP entry.
+func (c *Client) RenameEntry(dn string, newRDN string, deleteOldRDN bool, newSuperior string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return ErrNotConnected
+	}
+
+	start := time.Now()
+	modDNReq := goldap.NewModifyDNRequest(dn, newRDN, deleteOldRDN, newSuperior)
+	err := c.conn.ModifyDN(modDNReq)
+	c.logger.Log("RENAME", fmt.Sprintf("dn=%s newRDN=%s newSuperior=%s", dn, newRDN, newSuperior), time.Since(start), err)
+	return err
+}
+
+// convertEntry converts a go-ldap Entry to our models.LDAPEntry.
+func convertEntry(entry *goldap.Entry) *models.LDAPEntry {
+	attrs := make([]models.LDAPAttribute, 0, len(entry.Attributes))
+	for _, a := range entry.Attributes {
+		isBinary := len(a.ByteValues) > 0 && !isPrintable(a.ByteValues)
+		attrs = append(attrs, models.LDAPAttribute{
+			Name:   a.Name,
+			Values: a.Values,
+			Binary: isBinary,
+		})
+	}
+	return &models.LDAPEntry{
+		DN:         entry.DN,
+		Attributes: attrs,
+	}
+}
+
+// isPrintable checks if byte values appear to be printable text.
+func isPrintable(byteValues [][]byte) bool {
+	for _, bv := range byteValues {
+		for _, b := range bv {
+			if b < 0x20 && b != '\n' && b != '\r' && b != '\t' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// determineIcon returns an icon name based on objectClass values.
+func determineIcon(objectClasses []string) string {
+	for _, oc := range objectClasses {
+		lower := strings.ToLower(oc)
+		switch lower {
+		case "person", "inetorgperson", "user", "organizationalperson":
+			return "user"
+		case "group", "groupofnames", "groupofuniquenames", "posixgroup":
+			return "users"
+		case "organizationalunit":
+			return "folder"
+		case "organization":
+			return "building"
+		case "domain", "domaindns", "dcobject":
+			return "globe"
+		case "computer":
+			return "monitor"
+		case "container":
+			return "box"
+		}
+	}
+	return "file"
+}
+
+// extractRDN extracts the first RDN component from a full DN.
+func extractRDN(dn string) string {
+	parsed, err := goldap.ParseDN(dn)
+	if err != nil || len(parsed.RDNs) == 0 {
+		// Fallback: just take everything before the first unescaped comma
+		parts := strings.SplitN(dn, ",", 2)
+		return parts[0]
+	}
+	// Reconstruct the first RDN from its attributes
+	parts := make([]string, 0, len(parsed.RDNs[0].Attributes))
+	for _, attr := range parsed.RDNs[0].Attributes {
+		parts = append(parts, fmt.Sprintf("%s=%s", attr.Type, attr.Value))
+	}
+	return strings.Join(parts, "+")
+}

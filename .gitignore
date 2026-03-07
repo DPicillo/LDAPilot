@@ -1,0 +1,33 @@
+# Binaries
+build/bin/
+/main
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+
+# Go workspace
+go.work
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/wailsjs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+org.*
+# OS
+.DS_Store
+Thumbs.db
