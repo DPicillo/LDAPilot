@@ -3,6 +3,7 @@ import { Plug, FolderTree, Search, Download, BookOpen, Info, ExternalLink, Githu
 import { cn } from '../../lib/utils'
 import { useUIStore } from '../../stores/uiStore'
 import { Activity } from '../../types/ui'
+import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 
 interface ActivityItem {
   id: Activity;
@@ -185,7 +186,7 @@ export function ActivityBar() {
               <p className="text-xs text-white/60 leading-relaxed">
                 Developed by{' '}
                 <button
-                  onClick={() => openExternal('https://www.picillo.de/')}
+                  onClick={() => BrowserOpenURL('https://www.picillo.de/')}
                   className="text-purple-400 hover:text-purple-300 font-medium transition-colors inline-flex items-center gap-0.5 cursor-pointer"
                 >
                   David Picillo
@@ -194,7 +195,7 @@ export function ActivityBar() {
               </p>
 
               <button
-                onClick={() => openExternal('https://github.com/DPicillo/LDAPilot')}
+                onClick={() => BrowserOpenURL('https://github.com/DPicillo/LDAPilot')}
                 className={cn(
                   'flex items-center gap-2.5 px-3 py-2.5 rounded-lg w-full text-left',
                   'bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10',
