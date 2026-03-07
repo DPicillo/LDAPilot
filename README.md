@@ -1,10 +1,3 @@
-<h1 align="center">
-  <br>
-  <img src="https://raw.githubusercontent.com/wailsapp/wails/master/docs/static/images/logo.png" alt="LDAPilot" width="100">
-  <br>
-  LDAPilot
-  <br>
-</h1>
 
 <h4 align="center">A Modern, Fast, and Cross-Platform <strong>LDAP Browser</strong> and Management Tool.</h4>
 
