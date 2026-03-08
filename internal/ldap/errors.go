@@ -1,6 +1,11 @@
 package ldap
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+
+	goldap "github.com/go-ldap/ldap/v3"
+)
 
 var (
 	// ErrNotConnected is returned when an operation is attempted without an active connection.
@@ -18,3 +23,21 @@ var (
 	// ErrNotFound is returned when the requested entry does not exist.
 	ErrNotFound = errors.New("LDAP entry not found")
 )
+
+// ldapErrorDetail extracts the LDAP result code name and diagnostic message
+// from a go-ldap error, returning a human-readable string with technical details.
+func ldapErrorDetail(err error) string {
+	var ldapErr *goldap.Error
+	if errors.As(err, &ldapErr) {
+		code := goldap.LDAPResultCodeMap[ldapErr.ResultCode]
+		if code == "" {
+			code = fmt.Sprintf("code %d", ldapErr.ResultCode)
+		}
+		detail := code
+		if ldapErr.Err != nil {
+			detail += ": " + ldapErr.Err.Error()
+		}
+		return detail
+	}
+	return err.Error()
+}

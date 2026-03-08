@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plug, FolderTree, Search, Download, BookOpen, Info, ExternalLink, Github, X } from 'lucide-react'
+import { Plug, FolderTree, Search, Download, BookOpen, Star, Info, ExternalLink, Github, X, type LucideIcon } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useUIStore } from '../../stores/uiStore'
 import { Activity } from '../../types/ui'
 import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
+import { NotificationBell } from '../ui/NotificationLog'
 
 interface ActivityItem {
   id: Activity;
@@ -15,6 +16,7 @@ const activities: ActivityItem[] = [
   { id: 'connections', icon: Plug, label: 'Connections' },
   { id: 'explorer', icon: FolderTree, label: 'Explorer' },
   { id: 'search', icon: Search, label: 'Search' },
+  { id: 'bookmarks', icon: Star, label: 'Bookmarks' },
   { id: 'export', icon: Download, label: 'Export' },
   { id: 'schema', icon: BookOpen, label: 'Schema' },
 ];
@@ -97,6 +99,9 @@ export function ActivityBar() {
           );
         })}
       </div>
+
+      {/* Notification bell */}
+      <NotificationBell />
 
       {/* Info button at bottom */}
       <div className="relative" ref={infoRef}>

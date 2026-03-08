@@ -5,6 +5,7 @@ import { ConnectionManager } from '../connection/ConnectionManager'
 import { DirectoryTree } from '../tree/DirectoryTree'
 import { SearchPanel } from '../search/SearchPanel'
 import { SchemaBrowser } from '../schema/SchemaBrowser'
+import { BookmarkPanel } from '../bookmarks/BookmarkPanel'
 
 function PlaceholderPanel({ title, icon: Icon, description }: { title: string; icon: React.ElementType; description: string }) {
   return (
@@ -29,6 +30,7 @@ export function Sidebar() {
     case 'connections': return <ConnectionManager />;
     case 'explorer': return <DirectoryTree />;
     case 'search': return <SearchPanel />;
+    case 'bookmarks': return <BookmarkPanel />;
     case 'export': return <PlaceholderPanel title="Export" icon={Download} description="Select entries to export" />;
     case 'schema': return <SchemaBrowser />;
     default: return null;

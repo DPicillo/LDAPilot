@@ -86,7 +86,7 @@ func (c *Client) Connect() error {
 		if err := c.conn.Bind(c.profile.BindDN, c.profile.Password); err != nil {
 			c.conn.Close()
 			c.conn = nil
-			bindErr := fmt.Errorf("%w: %v", ErrBindFailed, err)
+			bindErr := fmt.Errorf("%w: %s (bind DN: %s)", ErrBindFailed, ldapErrorDetail(err), c.profile.BindDN)
 			c.logger.Log("BIND", fmt.Sprintf("Simple bind as %s to %s", c.profile.BindDN, address), time.Since(start), bindErr)
 			return bindErr
 		}
@@ -94,7 +94,7 @@ func (c *Client) Connect() error {
 		if err := c.conn.UnauthenticatedBind(""); err != nil {
 			c.conn.Close()
 			c.conn = nil
-			bindErr := fmt.Errorf("%w: %v", ErrBindFailed, err)
+			bindErr := fmt.Errorf("%w: %s", ErrBindFailed, ldapErrorDetail(err))
 			c.logger.Log("BIND", fmt.Sprintf("Anonymous bind to %s", address), time.Since(start), bindErr)
 			return bindErr
 		}
@@ -135,24 +135,28 @@ func (c *Client) GetChildren(parentDN string) ([]models.TreeNode, error) {
 		goldap.NeverDerefAliases,
 		0, 0, false,
 		"(objectClass=*)",
-		[]string{"dn", "objectClass", "hasSubordinates"},
+		[]string{"dn", "objectClass", "hasSubordinates", "msDS-Approx-Immed-Subordinates"},
 		nil,
 	)
 
 	result, err := c.conn.Search(searchReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrSearchFailed, err)
+		return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
 	}
 
 	nodes := make([]models.TreeNode, 0, len(result.Entries))
 	for _, entry := range result.Entries {
 		objectClasses := entry.GetAttributeValues("objectClass")
 		hasSubStr := entry.GetAttributeValue("hasSubordinates")
+		approxChildren := entry.GetAttributeValue("msDS-Approx-Immed-Subordinates")
 
 		hasChildren := false
 		if strings.EqualFold(hasSubStr, "TRUE") {
 			hasChildren = true
-		} else if hasSubStr == "" {
+		} else if approxChildren != "" && approxChildren != "0" {
+			// AD-specific: use approximate child count when hasSubordinates is unavailable
+			hasChildren = true
+		} else if hasSubStr == "" && approxChildren == "" {
 			// Fallback: probe for children
 			hasChildren = c.probeHasChildren(entry.DN)
 		}
@@ -210,15 +214,118 @@ func (c *Client) GetEntry(dn string) (*models.LDAPEntry, error) {
 
 	result, err := c.conn.Search(searchReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrSearchFailed, err)
+		return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
 	}
 
 	if len(result.Entries) == 0 {
-		return nil, ErrNotFound
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, dn)
 	}
 
 	entry := result.Entries[0]
+	c.resolveRangedAttributes(dn, entry)
 	return convertEntry(entry), nil
+}
+
+// resolveRangedAttributes detects AD range-retrieved attributes (e.g. member;range=0-1499)
+// and fetches all remaining chunks, merging them into a single attribute.
+func (c *Client) resolveRangedAttributes(dn string, entry *goldap.Entry) {
+	for i, attr := range entry.Attributes {
+		baseName, _, endVal, isFinal, ok := parseRangeAttr(attr.Name)
+		if !ok || isFinal {
+			continue
+		}
+
+		// Collect all values starting with what we already have
+		allValues := make([]string, len(attr.Values))
+		copy(allValues, attr.Values)
+		allByteValues := make([][]byte, len(attr.ByteValues))
+		copy(allByteValues, attr.ByteValues)
+
+		currentEnd := endVal
+		done := false
+		for iter := 0; iter < 1000 && !done; iter++ {
+			nextStart := currentEnd + 1
+			rangeAttr := fmt.Sprintf("%s;range=%d-*", baseName, nextStart)
+
+			req := goldap.NewSearchRequest(
+				dn,
+				goldap.ScopeBaseObject,
+				goldap.NeverDerefAliases,
+				0, 0, false,
+				"(objectClass=*)",
+				[]string{rangeAttr},
+				nil,
+			)
+
+			res, err := c.conn.Search(req)
+			if err != nil || len(res.Entries) == 0 {
+				break
+			}
+
+			// Find the returned range attribute
+			found := false
+			for _, a := range res.Entries[0].Attributes {
+				_, _, nextEnd, nextFinal, isRange := parseRangeAttr(a.Name)
+				if !isRange && strings.EqualFold(a.Name, baseName) {
+					// Server returned the bare attribute name — this is the final chunk
+					allValues = append(allValues, a.Values...)
+					allByteValues = append(allByteValues, a.ByteValues...)
+					found = true
+					done = true
+					break
+				}
+				if isRange {
+					allValues = append(allValues, a.Values...)
+					allByteValues = append(allByteValues, a.ByteValues...)
+					found = true
+					if nextFinal {
+						done = true
+					} else {
+						currentEnd = nextEnd
+					}
+					break
+				}
+			}
+
+			if !found {
+				break
+			}
+		}
+
+		// Replace the ranged attribute with the merged result
+		entry.Attributes[i].Name = baseName
+		entry.Attributes[i].Values = allValues
+		entry.Attributes[i].ByteValues = allByteValues
+	}
+}
+
+// parseRangeAttr parses "member;range=0-1499" into ("member", 0, 1499, false, true).
+// For the terminal form "member;range=1500-*", isFinal is true.
+// Returns ok=false if the attribute name has no range option.
+func parseRangeAttr(name string) (baseName string, start int, end int, isFinal bool, ok bool) {
+	idx := strings.Index(strings.ToLower(name), ";range=")
+	if idx < 0 {
+		return name, 0, 0, false, false
+	}
+
+	baseName = name[:idx]
+	rangeSpec := name[idx+7:] // after ";range="
+
+	parts := strings.SplitN(rangeSpec, "-", 2)
+	if len(parts) != 2 {
+		return baseName, 0, 0, false, false
+	}
+
+	var s int
+	fmt.Sscanf(parts[0], "%d", &s)
+
+	if parts[1] == "*" {
+		return baseName, s, 0, true, true
+	}
+
+	var e int
+	fmt.Sscanf(parts[1], "%d", &e)
+	return baseName, s, e, false, true
 }
 
 // Search performs a full LDAP search with the given parameters.
@@ -270,7 +377,7 @@ func (c *Client) Search(params models.SearchParams) (*models.SearchResult, error
 				}
 				break
 			}
-			return nil, fmt.Errorf("%w: %v", ErrSearchFailed, err)
+			return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
 		}
 
 		allEntries = append(allEntries, result.Entries...)
@@ -318,7 +425,10 @@ func (c *Client) AddEntry(dn string, attrs []models.LDAPAttribute) error {
 
 	err := c.conn.Add(addReq)
 	c.logger.Log("ADD", fmt.Sprintf("dn=%s", dn), time.Since(start), err)
-	return err
+	if err != nil {
+		return fmt.Errorf("add entry failed: %s", ldapErrorDetail(err))
+	}
+	return nil
 }
 
 // ModifyAttribute replaces the values of an attribute on an entry.
@@ -334,7 +444,10 @@ func (c *Client) ModifyAttribute(dn string, attrName string, values []string) er
 	modReq.Replace(attrName, values)
 	err := c.conn.Modify(modReq)
 	c.logger.Log("MODIFY", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
-	return err
+	if err != nil {
+		return fmt.Errorf("modify %q failed: %s", attrName, ldapErrorDetail(err))
+	}
+	return nil
 }
 
 // AddAttribute adds values to an attribute on an entry.
@@ -350,7 +463,10 @@ func (c *Client) AddAttribute(dn string, attrName string, values []string) error
 	modReq.Add(attrName, values)
 	err := c.conn.Modify(modReq)
 	c.logger.Log("ADD_ATTR", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
-	return err
+	if err != nil {
+		return fmt.Errorf("add attribute %q failed: %s", attrName, ldapErrorDetail(err))
+	}
+	return nil
 }
 
 // DeleteAttribute removes an attribute from an entry.
@@ -366,7 +482,10 @@ func (c *Client) DeleteAttribute(dn string, attrName string) error {
 	modReq.Delete(attrName, []string{})
 	err := c.conn.Modify(modReq)
 	c.logger.Log("DEL_ATTR", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
-	return err
+	if err != nil {
+		return fmt.Errorf("delete attribute %q failed: %s", attrName, ldapErrorDetail(err))
+	}
+	return nil
 }
 
 // DeleteEntry removes an entry by DN.
@@ -381,7 +500,10 @@ func (c *Client) DeleteEntry(dn string) error {
 	delReq := goldap.NewDelRequest(dn, nil)
 	err := c.conn.Del(delReq)
 	c.logger.Log("DELETE", fmt.Sprintf("dn=%s", dn), time.Since(start), err)
-	return err
+	if err != nil {
+		return fmt.Errorf("delete entry failed: %s", ldapErrorDetail(err))
+	}
+	return nil
 }
 
 // RenameEntry renames or moves an LDAP entry.
@@ -396,7 +518,10 @@ func (c *Client) RenameEntry(dn string, newRDN string, deleteOldRDN bool, newSup
 	modDNReq := goldap.NewModifyDNRequest(dn, newRDN, deleteOldRDN, newSuperior)
 	err := c.conn.ModifyDN(modDNReq)
 	c.logger.Log("RENAME", fmt.Sprintf("dn=%s newRDN=%s newSuperior=%s", dn, newRDN, newSuperior), time.Since(start), err)
-	return err
+	if err != nil {
+		return fmt.Errorf("rename entry failed: %s", ldapErrorDetail(err))
+	}
+	return nil
 }
 
 // convertEntry converts a go-ldap Entry to our models.LDAPEntry.
@@ -404,9 +529,18 @@ func convertEntry(entry *goldap.Entry) *models.LDAPEntry {
 	attrs := make([]models.LDAPAttribute, 0, len(entry.Attributes))
 	for _, a := range entry.Attributes {
 		isBinary := len(a.ByteValues) > 0 && !isPrintable(a.ByteValues)
+
+		values := a.Values
+		if isBinary {
+			if formatted := formatBinaryAttr(a.Name, a.ByteValues); formatted != nil {
+				values = formatted
+				isBinary = false
+			}
+		}
+
 		attrs = append(attrs, models.LDAPAttribute{
 			Name:   a.Name,
-			Values: a.Values,
+			Values: values,
 			Binary: isBinary,
 		})
 	}
@@ -445,8 +579,28 @@ func determineIcon(objectClasses []string) string {
 			return "globe"
 		case "computer":
 			return "monitor"
-		case "container":
+		case "container", "builtindomain", "lostandfound":
 			return "box"
+		case "grouppolicycontainer":
+			return "settings"
+		case "printqueue":
+			return "printer"
+		case "volume":
+			return "harddrive"
+		case "server":
+			return "server"
+		case "contact":
+			return "contact"
+		case "foreignsecurityprincipal":
+			return "shield"
+		case "subnet":
+			return "network"
+		case "site", "sitelink":
+			return "landmark"
+		case "ntsdsservice", "ntdsdsa":
+			return "database"
+		case "msds-managedserviceaccount", "msds-groupmanagedserviceaccount":
+			return "usercog"
 		}
 	}
 	return "file"

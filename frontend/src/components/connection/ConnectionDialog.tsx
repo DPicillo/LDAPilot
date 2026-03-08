@@ -1,7 +1,55 @@
 import { useState } from 'react'
-import { X, FlaskConical, Loader2, Check, AlertCircle } from 'lucide-react'
+import { X, FlaskConical, Loader2, Check, AlertCircle, Server } from 'lucide-react'
 import { ConnectionProfile, AuthMethod, TLSMode, newConnectionProfile } from '../../types/ldap'
 import { cn } from '../../lib/utils'
+
+const CONNECTION_PRESETS: { label: string; description: string; apply: (p: ConnectionProfile) => ConnectionProfile }[] = [
+  {
+    label: 'Active Directory',
+    description: 'Microsoft AD with LDAPS',
+    apply: (p) => ({
+      ...p,
+      port: 636,
+      tlsMode: 'ssl' as TLSMode,
+      tlsSkipVerify: true,
+      authMethod: 'simple' as AuthMethod,
+      pageSize: 1000,
+    }),
+  },
+  {
+    label: 'OpenLDAP',
+    description: 'Standard OpenLDAP server',
+    apply: (p) => ({
+      ...p,
+      port: 389,
+      tlsMode: 'starttls' as TLSMode,
+      authMethod: 'simple' as AuthMethod,
+      pageSize: 500,
+    }),
+  },
+  {
+    label: 'FreeIPA',
+    description: 'Red Hat / FreeIPA with LDAPS',
+    apply: (p) => ({
+      ...p,
+      port: 636,
+      tlsMode: 'ssl' as TLSMode,
+      authMethod: 'simple' as AuthMethod,
+      pageSize: 500,
+    }),
+  },
+  {
+    label: 'Plain (dev)',
+    description: 'No TLS, anonymous',
+    apply: (p) => ({
+      ...p,
+      port: 389,
+      tlsMode: 'none' as TLSMode,
+      authMethod: 'none' as AuthMethod,
+      pageSize: 500,
+    }),
+  },
+];
 
 interface ConnectionDialogProps {
   profile?: ConnectionProfile;
@@ -78,6 +126,29 @@ export function ConnectionDialog({ profile, onSave, onCancel, onTest }: Connecti
 
         {/* Form */}
         <div className="flex-1 overflow-auto p-4 space-y-4">
+          {/* Presets - only show for new connections */}
+          {!isEdit && (
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">Quick Start</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {CONNECTION_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    onClick={() => {
+                      setForm(preset.apply(form));
+                      setTestResult(null);
+                    }}
+                    className="flex flex-col items-center gap-0.5 px-2 py-2 rounded border border-border hover:border-primary/50 hover:bg-accent/50 transition-colors"
+                  >
+                    <Server size={14} className="text-primary" />
+                    <span className="text-[10px] font-medium text-foreground">{preset.label}</span>
+                    <span className="text-[9px] text-muted-foreground leading-tight text-center">{preset.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Connection Name */}
           <Field label="Connection Name" error={errors.name}>
             <input

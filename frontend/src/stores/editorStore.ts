@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { EditorTab } from '../types/ui'
 import { LDAPEntry } from '../types/ldap'
 import * as wails from '../lib/wails'
+import { toast } from '../components/ui/Toast'
 
 interface NavigationEntry {
   profileId: string;
@@ -129,7 +130,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }));
       }
     } catch (err) {
-      console.error('Failed to load entry:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to load entry';
+      toast.error(`Failed to load "${dn.split(',')[0]}"`, msg);
       set((state) => ({
         loadingEntries: { ...state.loadingEntries, [tabId]: false },
       }));

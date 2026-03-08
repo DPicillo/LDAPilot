@@ -1,13 +1,15 @@
-import { useState } from 'react'
-import { ArrowUpDown, Plus, Trash2, Pencil, Check, X, Eye, EyeOff, Image, Calendar, Hash } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { ArrowUpDown, Plus, Trash2, Pencil, Check, X, Eye, EyeOff, Image, Calendar, Hash, Link2, Copy } from 'lucide-react'
 import { LDAPAttribute } from '../../types/ldap'
 import { cn } from '../../lib/utils'
+import { DN_REFERENCE_ATTRS, PASSWORD_ATTRS } from '../../lib/ad-constants'
 
 interface AttributeTableProps {
   attributes: LDAPAttribute[];
   onModify?: (attrName: string, values: string[]) => void;
   onAdd?: (attrName: string, values: string[]) => void;
   onDelete?: (attrName: string) => void;
+  onNavigateDN?: (dn: string) => void;
   readOnly?: boolean;
 }
 
@@ -15,7 +17,6 @@ type SortKey = 'name' | 'value';
 type SortDir = 'asc' | 'desc';
 
 // Attribute type detection
-const PASSWORD_ATTRS = new Set(['userpassword', 'unicodepwd', 'sambantpassword', 'sambalmpassword']);
 const TIME_ATTRS = new Set(['createtimestamp', 'modifytimestamp', 'pwdchangedtime', 'whenchanged', 'whencreated', 'accountexpires', 'lastlogon', 'lastlogontimestamp', 'pwdlastset', 'badpasswordtime', 'lockouttime']);
 const IMAGE_ATTRS = new Set(['jpegphoto', 'thumbnailphoto', 'photo']);
 const FLAGS_ATTRS: Record<string, Record<number, string>> = {
@@ -42,14 +43,52 @@ const FLAGS_ATTRS: Record<string, Record<number, string>> = {
     0x800000: 'PASSWORD_EXPIRED',
     0x1000000: 'TRUSTED_TO_AUTH_FOR_DELEGATION',
   },
+  grouptype: {
+    0x00000001: 'BUILTIN_LOCAL',
+    0x00000002: 'ACCOUNT_GROUP',
+    0x00000004: 'RESOURCE_GROUP',
+    0x00000008: 'UNIVERSAL_GROUP',
+    0x80000000: 'SECURITY_ENABLED',
+  },
+  systemflags: {
+    0x00000001: 'ATTR_NOT_REPLICATED',
+    0x00000002: 'ATTR_REQ_PARTIAL_SET_MEMBER',
+    0x00000004: 'ATTR_IS_CONSTRUCTED',
+    0x00000010: 'CATEGORY_1_OBJECT',
+    0x00000020: 'CONFIG_ALLOW_RENAME',
+    0x00000040: 'CONFIG_ALLOW_MOVE',
+    0x00000080: 'CONFIG_ALLOW_LIMITED_MOVE',
+    0x02000000: 'DOMAIN_DISALLOW_RENAME',
+    0x04000000: 'DOMAIN_DISALLOW_MOVE',
+    0x10000000: 'DISALLOW_DELETE',
+  },
 };
 
-function getAttrType(name: string): 'password' | 'time' | 'image' | 'flags' | 'binary' | 'text' {
+const ENUM_ATTRS: Record<string, Record<number, string>> = {
+  samaccounttype: {
+    0x00000000: 'DOMAIN_OBJECT',
+    0x10000000: 'GROUP_OBJECT',
+    0x10000001: 'NON_SECURITY_GROUP_OBJECT',
+    0x20000000: 'ALIAS_OBJECT',
+    0x20000001: 'NON_SECURITY_ALIAS_OBJECT',
+    0x30000000: 'USER_OBJECT',
+    0x30000001: 'MACHINE_ACCOUNT',
+    0x30000002: 'TRUST_ACCOUNT',
+    0x40000000: 'APP_BASIC_GROUP',
+    0x40000001: 'APP_QUERY_GROUP',
+  },
+};
+
+type AttrType = 'password' | 'time' | 'image' | 'flags' | 'enum' | 'dn-reference' | 'binary' | 'text';
+
+function getAttrType(name: string): AttrType {
   const lower = name.toLowerCase();
   if (PASSWORD_ATTRS.has(lower)) return 'password';
   if (TIME_ATTRS.has(lower)) return 'time';
   if (IMAGE_ATTRS.has(lower)) return 'image';
   if (FLAGS_ATTRS[lower]) return 'flags';
+  if (ENUM_ATTRS[lower]) return 'enum';
+  if (DN_REFERENCE_ATTRS.has(lower)) return 'dn-reference';
   return 'text';
 }
 
@@ -58,6 +97,7 @@ export function AttributeTable({
   onModify,
   onAdd,
   onDelete,
+  onNavigateDN,
   readOnly = false,
 }: AttributeTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('name');
@@ -214,10 +254,15 @@ export function AttributeTable({
                   editingAttr === attr.name && 'bg-accent/50'
                 )}
               >
-                <td className="px-3 py-1 font-mono text-primary/80 align-top">
+                <td className="px-3 py-1 font-mono text-primary/80 align-top group/name">
                   <div className="flex items-center gap-1">
                     <AttrIcon type={getAttrType(attr.name)} />
-                    {attr.name}
+                    <span className="truncate">{attr.name}</span>
+                    <CopyBtn
+                      text={attr.values.join('\n')}
+                      className="opacity-0 group-hover/name:opacity-100"
+                      title="Copy value"
+                    />
                   </div>
                 </td>
                 <td className="px-3 py-1 align-top">
@@ -234,7 +279,7 @@ export function AttributeTable({
                       }}
                     />
                   ) : (
-                    <AttrValueRenderer attr={attr} />
+                    <AttrValueRenderer attr={attr} onNavigateDN={onNavigateDN} />
                   )}
                 </td>
                 {!readOnly && (
@@ -277,19 +322,45 @@ export function AttributeTable({
   );
 }
 
-function AttrIcon({ type }: { type: ReturnType<typeof getAttrType> }) {
+function AttrIcon({ type }: { type: AttrType }) {
   switch (type) {
     case 'password': return <EyeOff size={10} className="text-yellow-500 shrink-0" />;
     case 'time': return <Calendar size={10} className="text-blue-400 shrink-0" />;
     case 'image': return <Image size={10} className="text-green-400 shrink-0" />;
     case 'flags': return <Hash size={10} className="text-purple-400 shrink-0" />;
+    case 'enum': return <Hash size={10} className="text-orange-400 shrink-0" />;
+    case 'dn-reference': return <Link2 size={10} className="text-blue-400 shrink-0" />;
     default: return null;
   }
 }
 
-function AttrValueRenderer({ attr }: { attr: LDAPAttribute }) {
+function AttrValueRenderer({ attr, onNavigateDN }: { attr: LDAPAttribute; onNavigateDN?: (dn: string) => void }) {
   const [showPassword, setShowPassword] = useState(false);
   const type = getAttrType(attr.name);
+
+  // Special: objectClass with color-coded chips
+  if (attr.name === 'objectClass') {
+    return (
+      <div className="flex flex-wrap gap-0.5 font-mono">
+        {attr.values.map((v, i) => (
+          <span
+            key={i}
+            className={cn(
+              'px-1.5 py-0 rounded text-[10px]',
+              v === 'top' ? 'bg-muted text-muted-foreground'
+                : v === 'person' || v === 'inetOrgPerson' || v === 'user' ? 'bg-blue-500/15 text-blue-400'
+                : v === 'group' || v === 'groupOfNames' || v === 'posixGroup' ? 'bg-green-500/15 text-green-400'
+                : v === 'organizationalUnit' ? 'bg-yellow-500/15 text-yellow-400'
+                : v === 'computer' ? 'bg-orange-500/15 text-orange-400'
+                : 'bg-accent/50 text-foreground'
+            )}
+          >
+            {v}
+          </span>
+        ))}
+      </div>
+    );
+  }
 
   if (attr.binary) {
     return (
@@ -324,7 +395,7 @@ function AttrValueRenderer({ attr }: { attr: LDAPAttribute }) {
             <div key={i} className="flex items-center gap-2">
               <span className="break-all">{v}</span>
               <span className="text-muted-foreground text-[10px] shrink-0">
-                {formatLDAPTime(v)}
+                {formatLDAPTime(v, attr.name)}
               </span>
             </div>
           ))}
@@ -337,7 +408,7 @@ function AttrValueRenderer({ attr }: { attr: LDAPAttribute }) {
         const numVal = parseInt(attr.values[0]);
         if (!isNaN(numVal)) {
           const activeFlags = Object.entries(flagDefs)
-            .filter(([bit]) => numVal & parseInt(bit))
+            .filter(([bit]) => (numVal & parseInt(bit)) !== 0)
             .map(([, name]) => name);
 
           return (
@@ -359,7 +430,82 @@ function AttrValueRenderer({ attr }: { attr: LDAPAttribute }) {
       return <div className="font-mono break-all">{attr.values.join(', ')}</div>;
     }
 
+    case 'enum': {
+      const enumDefs = ENUM_ATTRS[attr.name.toLowerCase()];
+      if (enumDefs && attr.values[0]) {
+        const numVal = parseInt(attr.values[0]);
+        const label = !isNaN(numVal) ? enumDefs[numVal] : undefined;
+        return (
+          <div>
+            <div className="font-mono break-all">{attr.values[0]}</div>
+            {label && (
+              <span className="px-1 py-0 bg-orange-500/15 text-orange-400 rounded text-[9px] font-mono">
+                {label}
+              </span>
+            )}
+          </div>
+        );
+      }
+      return <div className="font-mono break-all">{attr.values.join(', ')}</div>;
+    }
+
+    case 'dn-reference':
+      return (
+        <div className="font-mono">
+          {attr.values.length > 3 ? (
+            // Compact chip display for many DN references
+            <div className="flex flex-wrap gap-0.5">
+              {attr.values.slice(0, 10).map((v, i) => {
+                const rdn = v.split(',')[0];
+                return (
+                  <button
+                    key={i}
+                    onClick={() => onNavigateDN?.(v)}
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0 bg-blue-500/10 text-blue-300 rounded text-[10px] hover:bg-blue-500/20 hover:text-blue-200 cursor-pointer"
+                    title={`Navigate to ${v}`}
+                  >
+                    <Link2 size={8} className="shrink-0" />
+                    {rdn}
+                  </button>
+                );
+              })}
+              {attr.values.length > 10 && (
+                <span className="text-[10px] text-muted-foreground px-1">+{attr.values.length - 10} more</span>
+              )}
+            </div>
+          ) : (
+            attr.values.map((v, i) => (
+              <div key={i} className="flex items-center gap-1 break-all">
+                <Link2 size={10} className="text-blue-400 shrink-0" />
+                <button
+                  onClick={() => onNavigateDN?.(v)}
+                  className="text-blue-300 hover:text-blue-200 hover:underline cursor-pointer text-left"
+                  title={`Navigate to ${v}`}
+                >
+                  {v}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      );
+
     default:
+      if (attr.values.length > 3) {
+        // Multi-value chips for attributes with many values
+        return (
+          <div className="flex flex-wrap gap-0.5 font-mono">
+            {attr.values.slice(0, 20).map((v, i) => (
+              <span key={i} className="px-1.5 py-0 bg-accent/50 rounded text-[10px] break-all max-w-[300px] truncate" title={v}>
+                {v}
+              </span>
+            ))}
+            {attr.values.length > 20 && (
+              <span className="text-[10px] text-muted-foreground px-1">+{attr.values.length - 20} more</span>
+            )}
+          </div>
+        );
+      }
       return (
         <div className="font-mono">
           {attr.values.map((v, i) => (
@@ -370,7 +516,14 @@ function AttrValueRenderer({ attr }: { attr: LDAPAttribute }) {
   }
 }
 
-function formatLDAPTime(value: string): string {
+function formatLDAPTime(value: string, attrName?: string): string {
+  const lower = attrName?.toLowerCase() || '';
+
+  // AD special sentinel values
+  if (lower === 'pwdlastset' && value === '0') return 'Must change at next logon';
+  if (lower === 'accountexpires' && (value === '0' || value === '9223372036854775807')) return 'Never';
+  if (lower === 'lockouttime' && value === '0') return 'Not locked out';
+
   // Generalized Time: YYYYMMDDHHmmssZ or YYYYMMDDHHMMSS.0Z
   const match = value.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
   if (match) {
@@ -389,4 +542,25 @@ function formatLDAPTime(value: string): string {
   }
 
   return '';
+}
+
+function CopyBtn({ text, className, title }: { text: string; className?: string; title?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  }, [text]);
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={cn('p-0.5 text-muted-foreground hover:text-foreground shrink-0 transition-opacity', className)}
+      title={title || 'Copy'}
+    >
+      {copied ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
+    </button>
+  );
 }
