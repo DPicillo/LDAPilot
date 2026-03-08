@@ -90,9 +90,11 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       const profile = get().profiles.find(p => p.id === id);
       toast.success(`Connected to ${profile?.name || 'server'}`);
     } catch (err: any) {
-      const msg = err?.message || 'Connection failed';
-      set({ error: msg, loading: false });
-      toast.error(msg);
+      const profile = get().profiles.find(p => p.id === id);
+      const detail = err?.message || 'Connection failed';
+      const msg = `Failed to connect to ${profile?.name || 'server'}`;
+      set({ error: detail, loading: false });
+      toast.error(msg, detail);
       throw err;
     }
   },

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { TreeNode } from '../types/ldap'
 import * as wails from '../lib/wails'
+import { toast } from '../components/ui/Toast'
 
 interface TreeState {
   rootNodes: Record<string, TreeNode[]>;
@@ -35,7 +36,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         loading: { ...state.loading, [`root:${profileId}`]: false },
       }));
     } catch (err) {
-      console.error('Failed to load root nodes:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to load root nodes';
+      toast.error('Failed to load directory tree', msg);
       set((state) => ({
         loading: { ...state.loading, [`root:${profileId}`]: false },
       }));
@@ -53,7 +55,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         loading: { ...state.loading, [parentDN]: false },
       }));
     } catch (err) {
-      console.error('Failed to load children:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to load children';
+      toast.error(`Failed to expand "${parentDN.split(',')[0]}"`, msg);
       set((state) => ({
         loading: { ...state.loading, [parentDN]: false },
       }));

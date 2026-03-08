@@ -1,4 +1,4 @@
-export type Activity = 'connections' | 'explorer' | 'search' | 'export' | 'schema';
+export type Activity = 'connections' | 'explorer' | 'search' | 'export' | 'schema' | 'bookmarks';
 
 export interface EditorTab {
   id: string;

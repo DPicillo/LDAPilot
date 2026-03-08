@@ -19,7 +19,7 @@ interface SearchState {
   history: SearchHistoryItem[];
 
   setParams: (params: Partial<SearchParams>) => void;
-  executeSearch: (profileId: string) => Promise<void>;
+  executeSearch: (profileId: string, filterOverride?: string) => Promise<void>;
   clearResults: () => void;
   restoreSearch: (item: SearchHistoryItem) => void;
   togglePin: (id: string) => void;
@@ -49,10 +49,14 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     }));
   },
 
-  executeSearch: async (profileId: string) => {
+  executeSearch: async (profileId: string, filterOverride?: string) => {
     set({ loading: true, error: null });
     try {
-      const params = get().params;
+      const params = { ...get().params };
+      if (filterOverride) {
+        params.filter = filterOverride;
+        set((state) => ({ params: { ...state.params, filter: filterOverride } }));
+      }
       const result = await wails.SearchLDAP(profileId, params);
       const count = result?.entries?.length || 0;
 

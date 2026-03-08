@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { FolderPlus, Trash2, Type, Copy, Download, RefreshCw } from 'lucide-react'
+import { FolderPlus, Trash2, Type, Copy, Download, RefreshCw, Pencil, ClipboardCopy, KeyRound, Star } from 'lucide-react'
 
 interface TreeContextMenuProps {
   x: number;
@@ -7,11 +7,15 @@ interface TreeContextMenuProps {
   dn: string;
   onClose: () => void;
   onNewChild: (parentDN: string) => void;
+  onEditEntry: (dn: string) => void;
   onDelete: (dn: string) => void;
   onRename: (dn: string) => void;
   onCopyDN: (dn: string) => void;
   onExport: (dn: string) => void;
   onRefresh: (dn: string) => void;
+  onChangePassword?: (dn: string) => void;
+  onBookmark?: (dn: string) => void;
+  isBookmarked?: boolean;
 }
 
 interface MenuItem {
@@ -23,7 +27,8 @@ interface MenuItem {
 }
 
 export function TreeContextMenu({
-  x, y, dn, onClose, onNewChild, onDelete, onRename, onCopyDN, onExport, onRefresh,
+  x, y, dn, onClose, onNewChild, onEditEntry, onDelete, onRename, onCopyDN, onExport, onRefresh,
+  onChangePassword, onBookmark, isBookmarked,
 }: TreeContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -44,11 +49,17 @@ export function TreeContextMenu({
     };
   }, [onClose]);
 
+  const rdn = dn.split(',')[0] || dn;
+
   const items: MenuItem[] = [
-    { label: 'New Child Entry', icon: FolderPlus, action: () => onNewChild(dn) },
-    { label: 'Rename', icon: Type, action: () => onRename(dn) },
+    { label: 'Edit Entry', icon: Pencil, action: () => onEditEntry(dn) },
+    { label: 'New Child Entry', icon: FolderPlus, action: () => onNewChild(dn), separator: true },
+    { label: 'Rename / Move', icon: Type, action: () => onRename(dn) },
+    ...(onChangePassword ? [{ label: 'Change Password', icon: KeyRound, action: () => onChangePassword(dn) } as MenuItem] : []),
+    ...(onBookmark ? [{ label: isBookmarked ? 'Remove Bookmark' : 'Bookmark', icon: Star, action: () => onBookmark(dn) } as MenuItem] : []),
     { label: 'Copy DN', icon: Copy, action: () => onCopyDN(dn), separator: true },
-    { label: 'Export LDIF', icon: Download, action: () => onExport(dn) },
+    { label: 'Copy RDN', icon: ClipboardCopy, action: () => { navigator.clipboard.writeText(rdn); } },
+    { label: 'Export LDIF', icon: Download, action: () => onExport(dn), separator: true },
     { label: 'Refresh', icon: RefreshCw, action: () => onRefresh(dn), separator: true },
     { label: 'Delete', icon: Trash2, action: () => onDelete(dn), destructive: true },
   ];

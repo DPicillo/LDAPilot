@@ -1,10 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useUIStore } from '../stores/uiStore'
 import { useEditorStore } from '../stores/editorStore'
+import { useConnectionStore } from '../stores/connectionStore'
 
 export function useKeyboardShortcuts() {
   const setActivity = useUIStore((s) => s.setActivity);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+  const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const toggleBottomPanel = useUIStore((s) => s.toggleBottomPanel);
   const closeTab = useEditorStore((s) => s.closeTab);
   const activeTabId = useEditorStore((s) => s.activeTabId);
@@ -12,12 +14,34 @@ export function useKeyboardShortcuts() {
   const setActiveTab = useEditorStore((s) => s.setActiveTab);
   const goBack = useEditorStore((s) => s.goBack);
   const goForward = useEditorStore((s) => s.goForward);
+  const refreshEntry = useEditorStore((s) => s.refreshEntry);
+  const activeProfileId = useConnectionStore((s) => s.activeProfileId);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showGoToDN, setShowGoToDN] = useState(false);
+
+  const toggleShortcuts = useCallback(() => setShowShortcuts(prev => !prev), []);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const ctrl = e.ctrlKey || e.metaKey;
       const shift = e.shiftKey;
       const alt = e.altKey;
+
+      // Ctrl+? or Ctrl+/ — toggle shortcuts overlay (works always)
+      if (ctrl && (e.key === '?' || e.key === '/')) {
+        e.preventDefault();
+        setShowShortcuts(prev => !prev);
+        return;
+      }
+
+      // Escape — close overlays
+      if (e.key === 'Escape') {
+        if (showShortcuts) {
+          setShowShortcuts(false);
+          e.preventDefault();
+          return;
+        }
+      }
 
       // Alt+Left: Navigate back
       if (alt && !ctrl && e.key === 'ArrowLeft') {
@@ -44,6 +68,7 @@ export function useKeyboardShortcuts() {
       if (ctrl && shift && e.key === 'E') {
         e.preventDefault();
         setActivity('explorer');
+        if (!sidebarVisible) toggleSidebar();
         return;
       }
 
@@ -51,6 +76,7 @@ export function useKeyboardShortcuts() {
       if (ctrl && shift && e.key === 'F') {
         e.preventDefault();
         setActivity('search');
+        if (!sidebarVisible) toggleSidebar();
         return;
       }
 
@@ -58,6 +84,14 @@ export function useKeyboardShortcuts() {
       if (ctrl && shift && e.key === 'C') {
         e.preventDefault();
         setActivity('connections');
+        if (!sidebarVisible) toggleSidebar();
+        return;
+      }
+
+      // Ctrl+G: Go to DN
+      if (ctrl && !shift && e.key === 'g') {
+        e.preventDefault();
+        setShowGoToDN(prev => !prev);
         return;
       }
 
@@ -72,6 +106,16 @@ export function useKeyboardShortcuts() {
       if (ctrl && !shift && e.key === 'w') {
         e.preventDefault();
         if (activeTabId) closeTab(activeTabId);
+        return;
+      }
+
+      // F5: Refresh current entry
+      if (e.key === 'F5') {
+        e.preventDefault();
+        if (activeProfileId && activeTabId) {
+          const tab = tabs.find(t => t.id === activeTabId);
+          if (tab) refreshEntry(tab.profileId, tab.dn);
+        }
         return;
       }
 
@@ -103,5 +147,13 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setActivity, toggleSidebar, toggleBottomPanel, closeTab, activeTabId, tabs, setActiveTab, goBack, goForward]);
+  }, [setActivity, toggleSidebar, sidebarVisible, toggleBottomPanel, closeTab, activeTabId, tabs, setActiveTab, goBack, goForward, showShortcuts, activeProfileId, refreshEntry]);
+
+  return {
+    showShortcuts,
+    toggleShortcuts,
+    closeShortcuts: () => setShowShortcuts(false),
+    showGoToDN,
+    closeGoToDN: () => setShowGoToDN(false),
+  };
 }
