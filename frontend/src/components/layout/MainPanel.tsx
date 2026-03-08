@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { X, Database, Plug, Search, FolderTree, Star, XCircle } from 'lucide-react'
+import logoImg from '../../assets/logo.png'
 import { cn } from '../../lib/utils'
 import { useEditorStore } from '../../stores/editorStore'
 import { useConnectionStore } from '../../stores/connectionStore'
@@ -204,12 +205,7 @@ function WelcomeScreen() {
       <div className="flex flex-col items-center gap-6 max-w-md">
         {/* Logo */}
         <div className="flex items-center gap-3 opacity-60">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-xl"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)' }}
-          >
-            L
-          </div>
+          <img src={logoImg} alt="LDAPilot" className="w-12 h-12 rounded-xl" />
           <div>
             <h1 className="text-2xl font-light tracking-wide">LDAPilot</h1>
             <p className="text-xs text-muted-foreground">Modern LDAP Browser & Editor</p>

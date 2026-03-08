@@ -2,6 +2,7 @@ import { Allotment } from 'allotment'
 import 'allotment/dist/style.css'
 
 import { useUIStore } from '../../stores/uiStore'
+import { TitleBar } from './TitleBar'
 import { ActivityBar } from './ActivityBar'
 import { Sidebar } from './Sidebar'
 import { MainPanel } from './MainPanel'
@@ -14,6 +15,7 @@ export function AppLayout() {
 
   return (
     <div className="h-screen flex flex-col">
+      <TitleBar />
       <div className="flex-1 flex overflow-hidden">
         <ActivityBar />
         <Allotment>

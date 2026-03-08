@@ -227,3 +227,25 @@ export async function StartLogStream(profileID: string): Promise<void> {
   const svc = getBinding('LogService');
   if (svc?.StartLogStream) return svc.StartLogStream(profileID);
 }
+
+// --- AuditService ---
+
+export interface AuditEntry {
+  timestamp: string;
+  operation: string;
+  dn: string;
+  details?: string;
+  error?: string;
+  user?: string;
+}
+
+export async function GetAuditLog(profileID: string, limit: number = 500): Promise<AuditEntry[]> {
+  const svc = getBinding('AuditService');
+  if (svc?.GetAuditLog) return svc.GetAuditLog(profileID, limit);
+  return [];
+}
+
+export async function ClearAuditLog(profileID: string): Promise<void> {
+  const svc = getBinding('AuditService');
+  if (svc?.ClearAuditLog) return svc.ClearAuditLog(profileID);
+}

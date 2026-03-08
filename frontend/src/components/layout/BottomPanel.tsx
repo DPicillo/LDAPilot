@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { ChevronDown, Search, Terminal, Trash2, Filter, Clock, AlertCircle, CheckCircle2, XCircle } from 'lucide-react'
+import { ChevronDown, Search, Terminal, Trash2, Filter, Clock, AlertCircle, CheckCircle2, XCircle, ScrollText, RefreshCw } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useUIStore } from '../../stores/uiStore'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { SearchResults } from '../search/SearchResults'
 import * as wails from '../../lib/wails'
-import type { LogEntry } from '../../lib/wails'
+import type { LogEntry, AuditEntry } from '../../lib/wails'
 
-type BottomTab = 'search-results' | 'output';
+import type { BottomTab } from '../../stores/uiStore'
 
 interface BottomTabItem {
   id: BottomTab;
@@ -18,10 +18,12 @@ interface BottomTabItem {
 const bottomTabs: BottomTabItem[] = [
   { id: 'search-results', label: 'Search Results', icon: Search },
   { id: 'output', label: 'Operations', icon: Terminal },
+  { id: 'audit', label: 'Audit Log', icon: ScrollText },
 ];
 
 export function BottomPanel() {
-  const [activeTab, setActiveTab] = useState<BottomTab>('search-results');
+  const activeTab = useUIStore((s) => s.bottomPanelTab);
+  const showBottomTab = useUIStore((s) => s.showBottomTab);
   const toggleBottomPanel = useUIStore((s) => s.toggleBottomPanel);
 
   return (
@@ -34,7 +36,7 @@ export function BottomPanel() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => showBottomTab(tab.id)}
                 className={cn(
                   'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm',
                   'transition-colors duration-100',
@@ -62,6 +64,7 @@ export function BottomPanel() {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'search-results' && <SearchResults />}
         {activeTab === 'output' && <OutputLog />}
+        {activeTab === 'audit' && <AuditLog />}
       </div>
     </div>
   );
@@ -265,6 +268,183 @@ function OutputLog() {
           Scroll to latest
         </button>
       )}
+    </div>
+  );
+}
+
+// Audit operation color mapping
+const AUDIT_OP_COLORS: Record<string, string> = {
+  CREATE: 'text-green-400',
+  MODIFY: 'text-yellow-400',
+  DELETE: 'text-red-400',
+  RENAME: 'text-orange-400',
+  ADD_ATTR: 'text-cyan-400',
+  DEL_ATTR: 'text-pink-400',
+  MOVE: 'text-purple-400',
+};
+
+function getAuditOpColor(op: string): string {
+  return AUDIT_OP_COLORS[op.toUpperCase()] || 'text-muted-foreground';
+}
+
+function AuditLog() {
+  const activeProfileId = useConnectionStore((s) => s.activeProfileId);
+  const connectionStatuses = useConnectionStore((s) => s.connectionStatuses);
+  const isConnected = activeProfileId ? connectionStatuses[activeProfileId] : false;
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [filter, setFilter] = useState('');
+  const [showErrors, setShowErrors] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const loadEntries = async () => {
+    if (!activeProfileId) return;
+    setLoading(true);
+    try {
+      const result = await wails.GetAuditLog(activeProfileId, 500);
+      setEntries(result || []);
+    } catch {
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!activeProfileId || !isConnected) {
+      setEntries([]);
+      return;
+    }
+    loadEntries();
+  }, [activeProfileId, isConnected]);
+
+  const filteredEntries = useMemo(() => {
+    let result = entries;
+    if (showErrors) {
+      result = result.filter(e => e.error);
+    }
+    if (filter) {
+      const f = filter.toLowerCase();
+      result = result.filter(e =>
+        e.operation.toLowerCase().includes(f) ||
+        e.dn.toLowerCase().includes(f) ||
+        (e.details && e.details.toLowerCase().includes(f)) ||
+        (e.error && e.error.toLowerCase().includes(f))
+      );
+    }
+    return result;
+  }, [entries, filter, showErrors]);
+
+  const errorCount = entries.filter(e => e.error).length;
+
+  function handleClear() {
+    if (activeProfileId) {
+      wails.ClearAuditLog(activeProfileId);
+      setEntries([]);
+    }
+  }
+
+  if (!isConnected) {
+    return (
+      <div className="h-full flex items-center justify-center text-muted-foreground text-xs">
+        <ScrollText size={16} className="mr-2 opacity-40" />
+        Connect to a server to see audit log
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-2 py-1 border-b border-border shrink-0">
+        <div className="flex items-center gap-1 flex-1">
+          <Filter size={11} className="text-muted-foreground shrink-0" />
+          <input
+            type="text"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            placeholder="Filter audit entries..."
+            className="flex-1 text-xs bg-transparent border-none outline-none placeholder:text-muted-foreground/50"
+          />
+        </div>
+        <button
+          onClick={() => setShowErrors(!showErrors)}
+          className={cn(
+            'flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded',
+            showErrors ? 'bg-red-500/15 text-red-400' : 'text-muted-foreground hover:text-foreground'
+          )}
+          title="Show errors only"
+        >
+          <AlertCircle size={10} />
+          {errorCount > 0 && errorCount}
+        </button>
+        <span className="text-[10px] text-muted-foreground">
+          {filteredEntries.length}/{entries.length}
+        </span>
+        <button
+          onClick={loadEntries}
+          className="p-0.5 text-muted-foreground hover:text-foreground rounded hover:bg-accent"
+          title="Refresh"
+        >
+          <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+        </button>
+        <button
+          onClick={handleClear}
+          className="p-0.5 text-muted-foreground hover:text-foreground rounded hover:bg-accent"
+          title="Clear audit log"
+        >
+          <Trash2 size={11} />
+        </button>
+      </div>
+
+      {/* Entries */}
+      <div className="flex-1 overflow-auto font-mono text-[11px]">
+        {filteredEntries.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+            {entries.length === 0 ? 'No audit entries yet — changes will be logged here' : 'No matching entries'}
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead className="sticky top-0 bg-card z-10">
+              <tr className="border-b border-border text-[10px] text-muted-foreground">
+                <th className="px-2 py-0.5 text-left font-medium">Time</th>
+                <th className="px-2 py-0.5 text-left font-medium w-[1%]"></th>
+                <th className="px-2 py-0.5 text-left font-medium">Operation</th>
+                <th className="px-2 py-0.5 text-left font-medium">DN</th>
+                <th className="px-2 py-0.5 text-left font-medium">Details</th>
+                <th className="px-2 py-0.5 text-left font-medium">User</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredEntries.map((entry, i) => (
+                <tr key={i} className="hover:bg-accent/30 border-b border-border/20">
+                  <td className="px-2 py-0.5 text-muted-foreground whitespace-nowrap w-[1%]">
+                    {entry.timestamp}
+                  </td>
+                  <td className="px-2 py-0.5 whitespace-nowrap w-[1%]">
+                    {entry.error ? (
+                      <XCircle size={10} className="text-red-400" />
+                    ) : (
+                      <CheckCircle2 size={10} className="text-green-400/60" />
+                    )}
+                  </td>
+                  <td className={cn('px-2 py-0.5 font-semibold whitespace-nowrap w-[1%]', getAuditOpColor(entry.operation))}>
+                    {entry.operation}
+                  </td>
+                  <td className="px-2 py-0.5 text-foreground truncate max-w-0" title={entry.dn}>
+                    <span className="truncate block">{entry.dn}</span>
+                  </td>
+                  <td className="px-2 py-0.5 text-muted-foreground truncate max-w-0" title={entry.details || ''}>
+                    <span className="truncate block">{entry.details}</span>
+                  </td>
+                  <td className="px-2 py-0.5 text-muted-foreground truncate max-w-[120px]" title={entry.user || ''}>
+                    {entry.user && entry.user.split(',')[0]}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
