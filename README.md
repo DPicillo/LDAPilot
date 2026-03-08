@@ -26,7 +26,7 @@ If you are looking for an open-source alternative to legacy LDAP clients with a 
 - **📥 Export Data:** Export directory searches and structures effortlessly for offline analysis, auditing, or migration planning.
 - **⚡ Super Fast:** Built on a lightweight Go backend with a modern React frontend, delivering native-like performance without the electron bloat.
 
-## 🎯 Why LDAPilot? (SEO & Keywords)
+## 🎯 Why LDAPilot? 
 
 LDAPilot was built to fill the gap for a **Modern LDAP Client** and **Active Directory Explorer**. Traditional tools like Apache Directory Studio or LDAP Admin are powerful but can feel archaic or resource-intensive. LDAPilot combines the familiarity of a classic **Directory Services Management Tool** with modern UI paradigms.
 
