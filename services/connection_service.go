@@ -14,6 +14,7 @@ type ConnectionService struct {
 	store         *config.Store
 	pool          *ldap.Pool
 	schemaService *SchemaService
+	auditStore    *config.AuditStore
 }
 
 // NewConnectionService creates a new ConnectionService.
@@ -27,6 +28,11 @@ func NewConnectionService(store *config.Store, pool *ldap.Pool) *ConnectionServi
 // SetSchemaService sets a reference to the SchemaService for cache cleanup on disconnect.
 func (s *ConnectionService) SetSchemaService(ss *SchemaService) {
 	s.schemaService = ss
+}
+
+// SetAuditStore sets a reference to the AuditStore for cleanup on connection delete.
+func (s *ConnectionService) SetAuditStore(store *config.AuditStore) {
+	s.auditStore = store
 }
 
 // SetContext sets the Wails application context.
@@ -90,10 +96,14 @@ func (s *ConnectionService) SaveConnection(profile models.ConnectionProfile) (*m
 }
 
 // DeleteConnection removes a connection profile by ID and disconnects if active.
+// Also removes associated audit logs.
 func (s *ConnectionService) DeleteConnection(id string) error {
 	s.pool.Disconnect(id)
 	if s.schemaService != nil {
 		s.schemaService.ClearCache(id)
+	}
+	if s.auditStore != nil {
+		_ = s.auditStore.DeleteForProfile(id)
 	}
 	return s.store.Delete(id)
 }

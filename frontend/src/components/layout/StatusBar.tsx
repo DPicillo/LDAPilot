@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plug, PlugZap, Lock, ShieldCheck, Shield, ShieldOff, ChevronUp, Check } from 'lucide-react'
+import { Plug, PlugZap, Lock, ShieldCheck, Shield, ShieldOff, ChevronUp, Check, Terminal, AlertCircle } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { useSearchStore } from '../../stores/searchStore'
+import { useUIStore } from '../../stores/uiStore'
 
 export function StatusBar() {
   const activeProfileId = useConnectionStore((s) => s.activeProfileId);
@@ -14,6 +15,8 @@ export function StatusBar() {
   const tabs = useEditorStore((s) => s.tabs);
   const searchResults = useSearchStore((s) => s.results);
 
+  const bottomPanelVisible = useUIStore((s) => s.bottomPanelVisible);
+  const toggleBottomPanel = useUIStore((s) => s.toggleBottomPanel);
   const [showSwitcher, setShowSwitcher] = useState(false);
   const switcherRef = useRef<HTMLDivElement>(null);
 
@@ -136,6 +139,17 @@ export function StatusBar() {
 
       {/* Right side */}
       <div className="flex items-center gap-3">
+        <button
+          onClick={toggleBottomPanel}
+          className={cn(
+            'flex items-center gap-1 hover:opacity-100 transition-opacity cursor-pointer',
+            bottomPanelVisible ? 'opacity-100' : 'opacity-60'
+          )}
+          title={bottomPanelVisible ? 'Hide Panel (Ctrl+J)' : 'Show Panel (Ctrl+J)'}
+        >
+          <Terminal size={11} />
+          <span className="text-[10px]">Panel</span>
+        </button>
         {isConnected && activeProfile && (
           <span className="flex items-center gap-1 opacity-70" title={`TLS: ${tlsLabel}`}>
             <TlsIcon size={10} />

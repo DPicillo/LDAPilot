@@ -26,6 +26,9 @@ func main() {
 	// Initialize connection pool
 	pool := ldap.NewPool()
 
+	// Initialize audit store
+	auditStore := config.NewAuditStore()
+
 	// Create services
 	connectionService := services.NewConnectionService(store, pool)
 	browserService := services.NewBrowserService(pool)
@@ -34,9 +37,13 @@ func main() {
 	exportService := services.NewExportService(pool)
 	schemaService := services.NewSchemaService(pool)
 	logService := services.NewLogService(pool)
+	auditService := services.NewAuditService(auditStore)
 
 	// Wire up schema cache cleanup on disconnect
 	connectionService.SetSchemaService(schemaService)
+	// Wire up audit store for cascade delete and change logging
+	connectionService.SetAuditStore(auditStore)
+	editorService.SetAuditStore(auditStore)
 
 	// Create application with options
 	err = wails.Run(&options.App{
@@ -48,6 +55,7 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
+		Frameless:        true,
 		BackgroundColour: &options.RGBA{R: 30, G: 30, B: 30, A: 1},
 		OnStartup: func(ctx context.Context) {
 			connectionService.SetContext(ctx)
@@ -57,6 +65,7 @@ func main() {
 			exportService.SetContext(ctx)
 			schemaService.SetContext(ctx)
 			logService.SetContext(ctx)
+			auditService.SetContext(ctx)
 		},
 		OnShutdown: func(ctx context.Context) {
 			pool.DisconnectAll()
@@ -69,6 +78,7 @@ func main() {
 			exportService,
 			schemaService,
 			logService,
+			auditService,
 		},
 	})
 

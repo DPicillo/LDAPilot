@@ -432,6 +432,7 @@ func (c *Client) AddEntry(dn string, attrs []models.LDAPAttribute) error {
 }
 
 // ModifyAttribute replaces the values of an attribute on an entry.
+// For AD unicodePwd, the value is automatically encoded as UTF-16LE with quotes.
 func (c *Client) ModifyAttribute(dn string, attrName string, values []string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -441,13 +442,41 @@ func (c *Client) ModifyAttribute(dn string, attrName string, values []string) er
 
 	start := time.Now()
 	modReq := goldap.NewModifyRequest(dn, nil)
-	modReq.Replace(attrName, values)
+
+	if strings.EqualFold(attrName, "unicodePwd") {
+		// AD requires unicodePwd as UTF-16LE encoded, quoted string
+		for _, v := range values {
+			encoded := encodeUnicodePwd(v)
+			modReq.Changes = append(modReq.Changes, goldap.Change{
+				Operation: goldap.ReplaceAttribute,
+				Modification: goldap.PartialAttribute{
+					Type: "unicodePwd",
+					Vals: []string{string(encoded)},
+				},
+			})
+		}
+	} else {
+		modReq.Replace(attrName, values)
+	}
+
 	err := c.conn.Modify(modReq)
 	c.logger.Log("MODIFY", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
 	if err != nil {
 		return fmt.Errorf("modify %q failed: %s", attrName, ldapErrorDetail(err))
 	}
 	return nil
+}
+
+// encodeUnicodePwd encodes a password for AD's unicodePwd attribute.
+// AD expects the password enclosed in quotes and encoded as UTF-16LE.
+func encodeUnicodePwd(password string) []byte {
+	quoted := "\"" + password + "\""
+	encoded := make([]byte, len(quoted)*2)
+	for i, ch := range quoted {
+		encoded[i*2] = byte(ch & 0xFF)
+		encoded[i*2+1] = byte(ch >> 8)
+	}
+	return encoded
 }
 
 // AddAttribute adds values to an attribute on an entry.

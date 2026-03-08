@@ -83,7 +83,7 @@ export function SearchPanel() {
   const activeProfileId = useConnectionStore((s) => s.activeProfileId);
   const connectionStatuses = useConnectionStore((s) => s.connectionStatuses);
   const profiles = useConnectionStore((s) => s.profiles);
-  const toggleBottomPanel = useUIStore((s) => s.toggleBottomPanel);
+  const showBottomTab = useUIStore((s) => s.showBottomTab);
   const bottomPanelVisible = useUIStore((s) => s.bottomPanelVisible);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -102,13 +102,13 @@ export function SearchPanel() {
 
   async function handleSearch() {
     if (!activeProfileId || !isConnected) return;
-    if (!bottomPanelVisible) toggleBottomPanel();
+    if (!bottomPanelVisible) showBottomTab('search-results');
     await executeSearch(activeProfileId);
   }
 
   async function handleQuickSearch() {
     if (!activeProfileId || !isConnected) return;
-    if (!bottomPanelVisible) toggleBottomPanel();
+    if (!bottomPanelVisible) showBottomTab('search-results');
     const filter = buildQuickFilter(quickSearchText, quickAttr, quickMatchType, quickObjectType);
     await executeSearch(activeProfileId, filter);
   }

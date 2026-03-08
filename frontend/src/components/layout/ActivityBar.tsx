@@ -5,6 +5,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { Activity } from '../../types/ui'
 import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 import { NotificationBell } from '../ui/NotificationLog'
+import logoImg from '../../assets/logo.png'
 
 interface ActivityItem {
   id: Activity;
@@ -162,14 +163,7 @@ export function ActivityBar() {
             {/* Header */}
             <div className="px-4 pt-4 pb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-                  style={{
-                    background: 'linear-gradient(135deg, #6366f1, #a855f7)',
-                  }}
-                >
-                  L
-                </div>
+                <img src={logoImg} alt="LDAPilot" className="w-8 h-8 rounded-lg" />
                 <div>
                   <h3 className="text-sm font-semibold text-white">LDAPilot</h3>
                   <p className="text-[10px] text-white/40">LDAP Management Tool</p>

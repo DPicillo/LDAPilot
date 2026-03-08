@@ -46,7 +46,7 @@ func (l *Logger) Log(operation, details string, duration time.Duration, err erro
 		Duration:  fmt.Sprintf("%.1fms", float64(duration.Microseconds())/1000),
 	}
 	if err != nil {
-		entry.Error = err.Error()
+		entry.Error = ldapErrorDetail(err)
 	}
 
 	l.mu.Lock()
