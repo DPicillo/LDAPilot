@@ -61,24 +61,20 @@ export function MembershipPanel({ tabId }: MembershipPanelProps) {
         />
       )}
 
-      {memberOf.length > 0 && (
-        <MemberList
-          title="Member Of"
-          icon={Users}
-          items={memberOf}
-          attrName="memberOf"
-          profileId={tab.profileId}
-          dn={tab.dn}
-          readOnly={true}
-          onRefresh={() => refreshEntry(tab.profileId, tab.dn)}
-          onNavigate={(dn) => openEntry(tab.profileId, dn)}
-        />
-      )}
+      <MemberOfList
+        items={memberOf}
+        profileId={tab.profileId}
+        entryDN={tab.dn}
+        readOnly={isReadOnly}
+        onRefresh={() => refreshEntry(tab.profileId, tab.dn)}
+        onNavigate={(dn) => openEntry(tab.profileId, dn)}
+        emptyMessage={isGroup ? 'This group is not a member of other groups' : 'Not a member of any group'}
+      />
 
-      {!isGroup && memberOf.length === 0 && (
+      {!isGroup && memberOf.length === 0 && members.length === 0 && (
         <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-4">
           <Users size={32} strokeWidth={1} className="mb-2 opacity-40" />
-          <p className="text-xs text-center">This entry is not a group and has no group memberships.</p>
+          <p className="text-xs text-center">This entry has no group memberships.</p>
         </div>
       )}
     </div>
@@ -95,10 +91,11 @@ interface MemberListProps {
   readOnly: boolean;
   onRefresh: () => void;
   onNavigate: (dn: string) => void;
+  emptyMessage?: string;
 }
 
 function MemberList({
-  title, icon: Icon, items, attrName, profileId, dn, readOnly, onRefresh, onNavigate,
+  title, icon: Icon, items, attrName, profileId, dn, readOnly, onRefresh, onNavigate, emptyMessage,
 }: MemberListProps) {
   const [filter, setFilter] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -200,7 +197,7 @@ function MemberList({
       <div className="flex-1 overflow-auto">
         {filtered.length === 0 ? (
           <div className="text-xs text-muted-foreground text-center py-4">
-            {filter ? 'No matching members' : 'No members'}
+            {filter ? 'No matching members' : (emptyMessage || 'No members')}
           </div>
         ) : (
           filtered.map(memberDN => {
@@ -375,5 +372,328 @@ function DNAutocomplete({ profileId, value, onChange, onSubmit, onCancel, loadin
 }
 
 function escapeLDAPFilter(s: string): string {
-  return s.replace(/([\\*()\\0])/g, '\\$1');
+  return s.replace(/([\\*()\0])/g, '\\$1');
+}
+
+// --- MemberOf section with Add/Remove (modifies the target group, not this entry) ---
+
+interface MemberOfListProps {
+  items: string[];
+  profileId: string;
+  entryDN: string;
+  readOnly: boolean;
+  onRefresh: () => void;
+  onNavigate: (dn: string) => void;
+  emptyMessage?: string;
+}
+
+function MemberOfList({
+  items, profileId, entryDN, readOnly, onRefresh, onNavigate, emptyMessage,
+}: MemberOfListProps) {
+  const [filter, setFilter] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [addDN, setAddDN] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const profile = useConnectionStore((s) => s.profiles.find(p => p.id === profileId));
+
+  const filtered = useMemo(() => {
+    if (!filter) return items;
+    const f = filter.toLowerCase();
+    return items.filter(dn => dn.toLowerCase().includes(f));
+  }, [items, filter]);
+
+  // Add this entry to a group: read group's member attr, append entryDN, modify
+  async function handleAddToGroup() {
+    const groupDN = addDN.trim();
+    if (!groupDN) return;
+    setAdding(true);
+    try {
+      // Read the target group to get its current members
+      const groupEntry = await wails.GetEntry(profileId, groupDN);
+      if (!groupEntry) {
+        toast.error('Group not found', groupDN);
+        return;
+      }
+
+      // Find the member attribute (member or uniqueMember)
+      const memberAttr = groupEntry.attributes?.find(a =>
+        ['member', 'uniquemember'].includes(a.name.toLowerCase())
+      );
+      const attrName = memberAttr?.name || 'member';
+      const currentMembers = memberAttr?.values || [];
+
+      if (currentMembers.some(m => m.toLowerCase() === entryDN.toLowerCase())) {
+        toast.info('Already a member of this group');
+        return;
+      }
+
+      // Add entryDN to the group's member list
+      const newMembers = [...currentMembers, entryDN];
+      await wails.ModifyAttribute(profileId, groupDN, attrName, newMembers);
+      toast.success('Added to group');
+      setAddDN('');
+      setShowAdd(false);
+      onRefresh();
+    } catch (err: any) {
+      toast.error('Failed to add to group', err?.message);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  // Remove this entry from a group: read group's member attr, remove entryDN, modify
+  async function handleRemoveFromGroup(groupDN: string) {
+    setRemoving(groupDN);
+    try {
+      const groupEntry = await wails.GetEntry(profileId, groupDN);
+      if (!groupEntry) {
+        toast.error('Group not found');
+        return;
+      }
+
+      const memberAttr = groupEntry.attributes?.find(a =>
+        ['member', 'uniquemember'].includes(a.name.toLowerCase())
+      );
+      if (!memberAttr) {
+        toast.error('Group has no member attribute');
+        return;
+      }
+
+      const newMembers = memberAttr.values.filter(
+        m => m.toLowerCase() !== entryDN.toLowerCase()
+      );
+      await wails.ModifyAttribute(profileId, groupDN, memberAttr.name, newMembers);
+      toast.success('Removed from group');
+      onRefresh();
+    } catch (err: any) {
+      toast.error('Failed to remove from group', err?.message);
+    } finally {
+      setRemoving(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-card shrink-0">
+        <div className="flex items-center gap-1.5">
+          <Users size={13} className="text-primary" />
+          <span className="text-xs font-semibold">Member Of</span>
+          <span className="text-[10px] text-muted-foreground">({items.length})</span>
+        </div>
+        {!readOnly && (
+          <button
+            onClick={() => setShowAdd(!showAdd)}
+            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+          >
+            <UserPlus size={12} />
+            Add to Group
+          </button>
+        )}
+      </div>
+
+      {/* Add to group input */}
+      {showAdd && (
+        <GroupAutocomplete
+          profileId={profileId}
+          baseDN={profile?.baseDN || ''}
+          value={addDN}
+          onChange={setAddDN}
+          onSubmit={handleAddToGroup}
+          onCancel={() => { setShowAdd(false); setAddDN(''); }}
+          loading={adding}
+          existingGroups={items}
+        />
+      )}
+
+      {/* Filter */}
+      {items.length > 5 && (
+        <div className="flex items-center gap-1 px-3 py-1 border-b border-border">
+          <Search size={11} className="text-muted-foreground shrink-0" />
+          <input
+            type="text"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            placeholder="Filter groups..."
+            className="flex-1 text-xs bg-transparent border-none outline-none placeholder:text-muted-foreground/50"
+          />
+        </div>
+      )}
+
+      {/* List */}
+      <div className="flex-1 overflow-auto">
+        {filtered.length === 0 ? (
+          <div className="text-xs text-muted-foreground text-center py-4">
+            {filter ? 'No matching groups' : (emptyMessage || 'Not a member of any group')}
+          </div>
+        ) : (
+          filtered.map(groupDN => {
+            const rdn = groupDN.split(',')[0] || groupDN;
+            const isRemoving = removing === groupDN;
+            return (
+              <div
+                key={groupDN}
+                className="flex items-center gap-1.5 px-3 py-1 hover:bg-accent/30 group cursor-pointer border-b border-border/30"
+                onClick={() => onNavigate(groupDN)}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs truncate">{rdn}</div>
+                  <div className="text-[10px] text-muted-foreground truncate font-mono">{groupDN}</div>
+                </div>
+                {!readOnly && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleRemoveFromGroup(groupDN); }}
+                    disabled={isRemoving}
+                    className="p-0.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 shrink-0 disabled:opacity-50"
+                    title="Remove from group"
+                  >
+                    {isRemoving ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                  </button>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Group search autocomplete - searches for group objects */
+function GroupAutocomplete({ profileId, baseDN, value, onChange, onSubmit, onCancel, loading, existingGroups }: {
+  profileId: string;
+  baseDN: string;
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  loading: boolean;
+  existingGroups: string[];
+}) {
+  const [suggestions, setSuggestions] = useState<{ dn: string; rdn: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState(-1);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!value || value.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        // Search for groups only
+        const escaped = escapeLDAPFilter(value);
+        const filter = `(&(|(objectClass=group)(objectClass=groupOfNames)(objectClass=groupOfUniqueNames)(objectClass=posixGroup))(|(cn=*${escaped}*)(sAMAccountName=*${escaped}*)))`;
+        const result = await wails.SearchLDAP(profileId, {
+          baseDN,
+          scope: ScopeSub,
+          filter,
+          attributes: ['dn', 'cn'],
+          sizeLimit: 15,
+          timeLimit: 5,
+        });
+        const hits = (result?.entries || [])
+          .filter(e => !existingGroups.some(g => g.toLowerCase() === e.dn.toLowerCase()))
+          .map(e => ({
+            dn: e.dn,
+            rdn: e.dn.split(',')[0] || e.dn,
+          }));
+        setSuggestions(hits);
+        setSelectedIdx(-1);
+        setShowSuggestions(true);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timerRef.current);
+  }, [value, profileId, baseDN, existingGroups]);
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIdx(i => Math.max(i - 1, -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedIdx >= 0 && selectedIdx < suggestions.length) {
+        onChange(suggestions[selectedIdx].dn);
+        setShowSuggestions(false);
+        setTimeout(() => onSubmit(), 50);
+      } else {
+        onSubmit();
+      }
+    } else if (e.key === 'Escape') {
+      if (showSuggestions) {
+        setShowSuggestions(false);
+      } else {
+        onCancel();
+      }
+    }
+  }
+
+  return (
+    <div className="relative border-b border-border bg-accent/30">
+      <div className="flex items-center gap-1 px-3 py-1.5">
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={e => { onChange(e.target.value); setShowSuggestions(true); }}
+          onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+          placeholder="Search for a group..."
+          className="flex-1 px-2 py-1 text-xs bg-input border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring font-mono"
+          autoFocus
+          onKeyDown={handleKeyDown}
+        />
+        {searching && <Loader2 size={12} className="animate-spin text-muted-foreground shrink-0" />}
+        <button
+          onClick={onSubmit}
+          disabled={loading || !value.trim()}
+          className="p-1 text-green-400 hover:text-green-300 disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <UserPlus size={12} />}
+        </button>
+        <button
+          onClick={onCancel}
+          className="p-1 text-muted-foreground hover:text-foreground"
+        >
+          <X size={12} />
+        </button>
+      </div>
+
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute left-2 right-2 top-full z-20 bg-popover border border-border rounded shadow-xl max-h-[200px] overflow-auto">
+          {suggestions.map((s, i) => (
+            <button
+              key={s.dn}
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => {
+                onChange(s.dn);
+                setShowSuggestions(false);
+                setTimeout(() => onSubmit(), 50);
+              }}
+              className={cn(
+                'w-full text-left px-2 py-1.5 text-xs border-b border-border/30 last:border-0',
+                i === selectedIdx ? 'bg-accent' : 'hover:bg-accent/50'
+              )}
+            >
+              <div className="font-medium truncate">{s.rdn}</div>
+              <div className="text-[10px] text-muted-foreground font-mono truncate">{s.dn}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

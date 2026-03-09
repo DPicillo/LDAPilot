@@ -6,6 +6,8 @@ import { DirectoryTree } from '../tree/DirectoryTree'
 import { SearchPanel } from '../search/SearchPanel'
 import { SchemaBrowser } from '../schema/SchemaBrowser'
 import { BookmarkPanel } from '../bookmarks/BookmarkPanel'
+import { AIChatPanel } from '../ai/AIChat'
+import { ReportsPanel } from '../reports/ReportsPanel'
 
 function PlaceholderPanel({ title, icon: Icon, description }: { title: string; icon: React.ElementType; description: string }) {
   return (
@@ -33,6 +35,8 @@ export function Sidebar() {
     case 'bookmarks': return <BookmarkPanel />;
     case 'export': return <PlaceholderPanel title="Export" icon={Download} description="Select entries to export" />;
     case 'schema': return <SchemaBrowser />;
+    case 'reports': return <ReportsPanel />;
+    case 'ai': return <AIChatPanel />;
     default: return null;
   }
 }

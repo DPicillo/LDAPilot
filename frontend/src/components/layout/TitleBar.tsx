@@ -4,6 +4,8 @@ import { cn } from '../../lib/utils'
 import { useUIStore } from '../../stores/uiStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { useConnectionStore } from '../../stores/connectionStore'
+import * as wails from '../../lib/wails'
+import { toast } from '../ui/Toast'
 import logoImg from '../../assets/logo.png'
 
 interface MenuItem {
@@ -70,9 +72,35 @@ export function TitleBar() {
       label: 'File',
       items: [
         { label: 'New Connection...', action: () => showSidebar('connections') },
-        { label: 'Import LDIF...', shortcut: '', action: () => showSidebar('export'), disabled: !isConnected },
+        { separator: true, label: '' },
+        { label: 'Import Connections...', action: async () => {
+            setOpenMenu(null);
+            try {
+              const count = await wails.ImportConnections();
+              if (count > 0) {
+                toast.success(`Imported ${count} connection${count !== 1 ? 's' : ''}`);
+                useConnectionStore.getState().loadProfiles();
+              }
+            } catch (err: any) {
+              toast.error('Import failed', err?.message);
+            }
+          }
+        },
+        { label: 'Export Connections...', action: async () => {
+            setOpenMenu(null);
+            try {
+              await wails.ExportConnections();
+              toast.success('Connections exported');
+            } catch (err: any) {
+              toast.error('Export failed', err?.message);
+            }
+          }
+        },
+        { separator: true, label: '' },
+        { label: 'Import LDIF...', action: () => showSidebar('export'), disabled: !isConnected },
         { label: 'Export...', action: () => showSidebar('export'), disabled: !isConnected },
         { separator: true, label: '' },
+        { label: 'Reconnect', action: () => { if (activeProfileId) { useConnectionStore.getState().reconnect(activeProfileId); } setOpenMenu(null); }, disabled: !isConnected },
         { label: 'Disconnect', action: () => { if (activeProfileId) { disconnect(activeProfileId); } setOpenMenu(null); }, disabled: !isConnected },
         { separator: true, label: '' },
         { label: 'Close Tab', shortcut: 'Ctrl+W', action: () => { if (activeTabId) closeTab(activeTabId); setOpenMenu(null); }, disabled: !activeTabId },
@@ -87,6 +115,14 @@ export function TitleBar() {
         { label: 'Connections', shortcut: 'Ctrl+Shift+C', action: () => showSidebar('connections') },
         { label: 'Bookmarks', action: () => showSidebar('bookmarks') },
         { label: 'Schema Browser', action: () => showSidebar('schema') },
+        { label: 'Server Info (RootDSE)', action: () => {
+            const store = useEditorStore.getState();
+            if (!store.tabs.find(t => t.id === '__server-info__')) {
+              store.addSpecialTab('__server-info__', 'Server Info');
+            }
+            store.setActiveTab('__server-info__');
+            setOpenMenu(null);
+          }, disabled: !isConnected },
         { separator: true, label: '' },
         { label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => { toggleSidebar(); setOpenMenu(null); } },
         { label: 'Toggle Panel', shortcut: 'Ctrl+J', action: () => { toggleBottomPanel(); setOpenMenu(null); } },

@@ -31,3 +31,4 @@ org.*
 # OS
 .DS_Store
 Thumbs.db
+AppDataRoamingCodeUsersettings.json

@@ -1,11 +1,12 @@
-import { useState, useRef } from 'react'
-import { Search, Loader2, AlertCircle, ChevronDown, Clock, Pin, Trash2, Wand2, Code, Zap } from 'lucide-react'
-import { useSearchStore, SearchHistoryItem } from '../../stores/searchStore'
+import { useState, useRef, useEffect } from 'react'
+import { Search, Loader2, AlertCircle, ChevronDown, Clock, Pin, Trash2, Wand2, Code, Zap, Info, Save, BookmarkPlus } from 'lucide-react'
+import { useSearchStore, SearchHistoryItem, SavedSearch } from '../../stores/searchStore'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useUIStore } from '../../stores/uiStore'
 import { ScopeBase, ScopeOne, ScopeSub, SearchScope } from '../../types/ldap'
 import { cn } from '../../lib/utils'
 import { FilterBuilder } from './FilterBuilder'
+import * as wails from '../../lib/wails'
 
 const FILTER_TEMPLATES = [
   { label: 'All Entries', filter: '(objectClass=*)' },
@@ -79,7 +80,7 @@ function buildQuickFilter(searchText: string, attribute: string, matchType: Quic
 }
 
 export function SearchPanel() {
-  const { params, loading, error, history, setParams, executeSearch, clearResults, restoreSearch, togglePin, removeHistory, clearHistory } = useSearchStore();
+  const { params, loading, error, history, setParams, executeSearch, clearResults, restoreSearch, togglePin, removeHistory, clearHistory, setDisplayColumns } = useSearchStore();
   const activeProfileId = useConnectionStore((s) => s.activeProfileId);
   const connectionStatuses = useConnectionStore((s) => s.connectionStatuses);
   const profiles = useConnectionStore((s) => s.profiles);
@@ -89,6 +90,8 @@ export function SearchPanel() {
   const [showHistory, setShowHistory] = useState(false);
   const [showBuilder, setShowBuilder] = useState(false);
   const [searchMode, setSearchMode] = useState<SearchMode>('quick');
+  const [returnAttrsText, setReturnAttrsText] = useState('');
+  const [detectingBaseDN, setDetectingBaseDN] = useState(false);
 
   // Quick search state
   const [quickSearchText, setQuickSearchText] = useState('');
@@ -100,15 +103,44 @@ export function SearchPanel() {
   const isConnected = activeProfileId ? connectionStatuses[activeProfileId] === true : false;
   const activeProfile = activeProfileId ? profiles.find(p => p.id === activeProfileId) : null;
 
+  // Sync baseDN from profile when active profile changes
+  useEffect(() => {
+    if (activeProfile && !params.baseDN) {
+      setParams({ baseDN: activeProfile.baseDN || '' });
+    }
+  }, [activeProfileId]);
+
+  // Auto-detect BaseDN from RootDSE
+  async function handleDetectBaseDN() {
+    if (!activeProfileId) return;
+    setDetectingBaseDN(true);
+    try {
+      const rootDSE = await wails.GetRootDSE(activeProfileId);
+      if (rootDSE) {
+        const defaultNC = rootDSE.attributes?.find(
+          a => a.name.toLowerCase() === 'defaultnamingcontext'
+        );
+        const namingContexts = rootDSE.attributes?.find(
+          a => a.name.toLowerCase() === 'namingcontexts'
+        );
+        const baseDN = defaultNC?.values?.[0] || namingContexts?.values?.[0] || '';
+        if (baseDN) {
+          setParams({ baseDN });
+        }
+      }
+    } catch { /* ignore */ }
+    setDetectingBaseDN(false);
+  }
+
   async function handleSearch() {
     if (!activeProfileId || !isConnected) return;
-    if (!bottomPanelVisible) showBottomTab('search-results');
+    showBottomTab('search-results');
     await executeSearch(activeProfileId);
   }
 
   async function handleQuickSearch() {
     if (!activeProfileId || !isConnected) return;
-    if (!bottomPanelVisible) showBottomTab('search-results');
+    showBottomTab('search-results');
     const filter = buildQuickFilter(quickSearchText, quickAttr, quickMatchType, quickObjectType);
     await executeSearch(activeProfileId, filter);
   }
@@ -163,10 +195,21 @@ export function SearchPanel() {
       <div className="flex-1 overflow-auto p-3 space-y-3">
         {/* Base DN - shown in both modes */}
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Base DN</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-muted-foreground">Base DN</label>
+            <button
+              onClick={handleDetectBaseDN}
+              disabled={detectingBaseDN}
+              className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80"
+              title="Auto-detect Base DN from RootDSE"
+            >
+              {detectingBaseDN ? <Loader2 size={9} className="animate-spin" /> : <Info size={9} />}
+              Detect
+            </button>
+          </div>
           <input
             type="text"
-            value={params.baseDN || activeProfile?.baseDN || ''}
+            value={params.baseDN}
             onChange={(e) => setParams({ baseDN: e.target.value })}
             placeholder={activeProfile?.baseDN || 'dc=example,dc=com'}
             className="input-field"
@@ -340,6 +383,40 @@ export function SearchPanel() {
           </>
         )}
 
+        {/* Return Attributes (advanced only) */}
+        {searchMode === 'advanced' && (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-muted-foreground">Return Attributes</label>
+              <button
+                onClick={() => {
+                  const attrs = returnAttrsText.split(',').map(a => a.trim()).filter(Boolean);
+                  if (attrs.length > 0) {
+                    setParams({ attributes: attrs });
+                    setDisplayColumns(attrs);
+                  }
+                }}
+                className="text-[10px] text-primary hover:text-primary/80"
+                title="Apply and set as display columns"
+              >
+                Apply as Columns
+              </button>
+            </div>
+            <input
+              type="text"
+              value={returnAttrsText}
+              onChange={(e) => {
+                setReturnAttrsText(e.target.value);
+                const attrs = e.target.value.split(',').map(a => a.trim()).filter(Boolean);
+                setParams({ attributes: attrs });
+              }}
+              placeholder="Leave empty for all (e.g. cn,mail,description)"
+              className="input-field font-mono text-[10px]"
+            />
+            <div className="text-[10px] text-muted-foreground mt-0.5">Comma-separated. Empty = all attributes.</div>
+          </div>
+        )}
+
         {/* Size Limit */}
         <div>
           <label className="block text-xs text-muted-foreground mb-1">Size Limit</label>
@@ -374,6 +451,9 @@ export function SearchPanel() {
         >
           Clear Results
         </button>
+
+        {/* Save Search */}
+        <SaveSearchSection />
 
         {/* Search History */}
         {history.length > 0 && (
@@ -468,4 +548,92 @@ function formatTimeAgo(timestamp: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function SaveSearchSection() {
+  const { savedSearches, saveSearch, removeSavedSearch, restoreSavedSearch, params } = useSearchStore();
+  const [showSaved, setShowSaved] = useState(false);
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveName, setSaveName] = useState('');
+
+  function handleSave() {
+    if (!saveName.trim()) return;
+    saveSearch(saveName.trim());
+    setSaveName('');
+    setShowSaveInput(false);
+  }
+
+  return (
+    <div className="border-t border-border pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <button
+          onClick={() => setShowSaved(!showSaved)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <BookmarkPlus size={12} />
+          Saved Searches ({savedSearches.length})
+          <ChevronDown size={10} className={showSaved ? 'rotate-180' : ''} />
+        </button>
+        <button
+          onClick={() => setShowSaveInput(!showSaveInput)}
+          className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80"
+          title="Save current search"
+        >
+          <Save size={10} />
+          Save
+        </button>
+      </div>
+
+      {showSaveInput && (
+        <div className="flex gap-1 mb-2">
+          <input
+            type="text"
+            value={saveName}
+            onChange={(e) => setSaveName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+            placeholder="Search name..."
+            className="input-field text-xs flex-1"
+            autoFocus
+          />
+          <button
+            onClick={handleSave}
+            disabled={!saveName.trim()}
+            className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            Save
+          </button>
+        </div>
+      )}
+
+      {showSaved && savedSearches.length > 0 && (
+        <div className="space-y-1 max-h-[200px] overflow-auto">
+          {savedSearches.map((saved) => (
+            <div key={saved.id} className="flex items-center gap-1 group">
+              <button
+                onClick={() => restoreSavedSearch(saved)}
+                className="flex-1 text-left text-xs px-2 py-1 rounded hover:bg-accent truncate min-w-0"
+                title={`${saved.params.filter}\nColumns: ${saved.displayColumns.join(', ')}`}
+              >
+                <div className="font-medium truncate text-foreground">{saved.name}</div>
+                <div className="text-[10px] text-muted-foreground font-mono truncate">{saved.params.filter}</div>
+              </button>
+              <button
+                onClick={() => removeSavedSearch(saved.id)}
+                className="p-0.5 rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 shrink-0"
+                title="Remove"
+              >
+                <Trash2 size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showSaved && savedSearches.length === 0 && (
+        <div className="text-[10px] text-muted-foreground text-center py-2">
+          No saved searches yet. Click "Save" to save the current search.
+        </div>
+      )}
+    </div>
+  );
 }

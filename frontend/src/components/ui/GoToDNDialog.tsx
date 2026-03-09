@@ -6,6 +6,29 @@ import { useBookmarkStore } from '../../stores/bookmarkStore'
 import * as wails from '../../lib/wails'
 import { toast } from './Toast'
 
+/**
+ * Extract a DN from user input, which may be a plain DN or an LDAP URL.
+ * Supported formats:
+ *   - ldap://host/DN
+ *   - ldap://host:port/DN
+ *   - ldaps://host/DN
+ *   - ldaps://host:port/DN
+ *   - plain DN string
+ */
+function extractDNFromInput(input: string): string {
+  const trimmed = input.trim();
+  const match = trimmed.match(/^ldaps?:\/\/[^/]+(\/(.*))?$/i);
+  if (match) {
+    const rawDN = match[2] || '';
+    try {
+      return decodeURIComponent(rawDN);
+    } catch {
+      return rawDN;
+    }
+  }
+  return trimmed;
+}
+
 interface GoToDNDialogProps {
   onClose: () => void;
 }
@@ -44,13 +67,18 @@ export function GoToDNDialog({ onClose }: GoToDNDialogProps) {
     setLoading(true);
     setError(null);
     try {
+      const resolvedDN = extractDNFromInput(dn);
+      if (!resolvedDN) {
+        setError('Could not extract DN from input');
+        return;
+      }
       // Verify the entry exists
-      const entry = await wails.GetEntry(activeProfileId, dn.trim());
+      const entry = await wails.GetEntry(activeProfileId, resolvedDN);
       if (!entry) {
         setError('Entry not found');
         return;
       }
-      openEntry(activeProfileId, dn.trim());
+      openEntry(activeProfileId, resolvedDN);
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Entry not found');
@@ -69,9 +97,9 @@ export function GoToDNDialog({ onClose }: GoToDNDialogProps) {
   }).slice(0, 8);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20%] bg-black/40" onClick={onClose}>
       <div
-        className="bg-card border border-border rounded-lg shadow-2xl w-[550px] max-w-[90vw] overflow-hidden"
+        className="bg-card border border-border rounded-lg shadow-2xl w-[550px] max-w-[90%] overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Input */}
@@ -82,7 +110,7 @@ export function GoToDNDialog({ onClose }: GoToDNDialogProps) {
             type="text"
             value={dn}
             onChange={e => { setDN(e.target.value); setError(null); }}
-            placeholder="Enter DN to navigate to..."
+            placeholder="Enter DN or LDAP URL (ldap://host/DN)..."
             className="flex-1 text-sm bg-transparent border-none outline-none font-mono placeholder:text-muted-foreground/50"
             onKeyDown={e => {
               if (e.key === 'Enter') handleGo();

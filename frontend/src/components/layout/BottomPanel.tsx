@@ -171,7 +171,7 @@ function OutputLog() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-2 py-1 border-b border-border shrink-0">
         <div className="flex items-center gap-1 flex-1">
@@ -239,16 +239,16 @@ function OutputLog() {
                     {log.operation}
                   </td>
                   <td className="px-2 py-0.5 text-foreground truncate max-w-0">
-                    <span className="truncate block">{log.details}</span>
+                    <span className="truncate block">
+                      {log.details}
+                      {log.error && (
+                        <span className="text-red-400 ml-2" title={log.error}>{log.error}</span>
+                      )}
+                    </span>
                   </td>
                   <td className="px-2 py-0.5 text-muted-foreground whitespace-nowrap w-[1%] text-right">
                     {log.duration}
                   </td>
-                  {log.error && (
-                    <td className="px-2 py-0.5 text-red-400 truncate max-w-[200px]" title={log.error}>
-                      {log.error}
-                    </td>
-                  )}
                 </tr>
               ))}
             </tbody>

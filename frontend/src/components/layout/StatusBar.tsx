@@ -1,10 +1,25 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plug, PlugZap, Lock, ShieldCheck, Shield, ShieldOff, ChevronUp, Check, Terminal, AlertCircle } from 'lucide-react'
+import { Plug, PlugZap, Lock, ShieldCheck, Shield, ShieldOff, ChevronUp, Check, Terminal, AlertCircle, RefreshCw } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { useSearchStore } from '../../stores/searchStore'
 import { useUIStore } from '../../stores/uiStore'
+
+function ZoomIndicator() {
+  const zoomLevel = useUIStore((s) => s.zoomLevel);
+  const zoomReset = useUIStore((s) => s.zoomReset);
+  if (zoomLevel === 1.0) return null;
+  return (
+    <button
+      onClick={zoomReset}
+      className="opacity-70 hover:opacity-100 transition-opacity"
+      title="Reset zoom (Ctrl+0)"
+    >
+      {Math.round(zoomLevel * 100)}%
+    </button>
+  );
+}
 
 export function StatusBar() {
   const activeProfileId = useConnectionStore((s) => s.activeProfileId);
@@ -151,10 +166,23 @@ export function StatusBar() {
           <span className="text-[10px]">Panel</span>
         </button>
         {isConnected && activeProfile && (
-          <span className="flex items-center gap-1 opacity-70" title={`TLS: ${tlsLabel}`}>
-            <TlsIcon size={10} />
-            {tlsLabel}
-          </span>
+          <>
+            <button
+              onClick={() => {
+                if (activeProfileId) {
+                  useConnectionStore.getState().reconnect(activeProfileId);
+                }
+              }}
+              className="flex items-center gap-1 opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
+              title="Reconnect"
+            >
+              <RefreshCw size={10} />
+            </button>
+            <span className="flex items-center gap-1 opacity-70" title={`TLS: ${tlsLabel}`}>
+              <TlsIcon size={10} />
+              {tlsLabel}
+            </span>
+          </>
         )}
         {activeProfile?.readOnly && (
           <span className="flex items-center gap-1 bg-yellow-500/20 px-1.5 rounded text-yellow-200">
@@ -173,6 +201,7 @@ export function StatusBar() {
             {tabs.length} tab{tabs.length !== 1 ? 's' : ''}
           </span>
         )}
+        <ZoomIndicator />
         <span className="font-medium opacity-50">LDAPilot</span>
       </div>
     </div>

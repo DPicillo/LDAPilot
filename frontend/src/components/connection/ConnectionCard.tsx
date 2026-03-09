@@ -1,4 +1,4 @@
-import { Plug, PlugZap, Pencil, Trash2, Server } from 'lucide-react'
+import { Plug, PlugZap, Pencil, Trash2, Server, CopyPlus } from 'lucide-react'
 import { ConnectionProfile } from '../../types/ldap'
 import { cn } from '../../lib/utils'
 
@@ -10,6 +10,7 @@ interface ConnectionCardProps {
   onDisconnect: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onClone: () => void;
   onSelect: () => void;
 }
 
@@ -21,6 +22,7 @@ export function ConnectionCard({
   onDisconnect,
   onEdit,
   onDelete,
+  onClone,
   onSelect,
 }: ConnectionCardProps) {
   return (
@@ -72,6 +74,13 @@ export function ConnectionCard({
           </button>
         )}
         <div className="flex-1" />
+        <button
+          onClick={(e) => { e.stopPropagation(); onClone(); }}
+          className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+          title="Clone"
+        >
+          <CopyPlus size={12} />
+        </button>
         <button
           onClick={(e) => { e.stopPropagation(); onEdit(); }}
           className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"

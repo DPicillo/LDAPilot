@@ -49,6 +49,12 @@
 
   #root {
     height: 100vh;
+    overflow: hidden;
+  }
+
+  .zoom-wrapper {
+    position: relative;
+    overflow: hidden;
   }
 }
 

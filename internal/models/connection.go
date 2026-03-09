@@ -37,5 +37,27 @@ type ConnectionProfile struct {
 	TLSSkipVerify bool       `json:"tlsSkipVerify"`
 	PageSize      int        `json:"pageSize"`
 	Timeout       int        `json:"timeout"`
-	ReadOnly      bool       `json:"readOnly"`
+	ReadOnly          bool       `json:"readOnly"`
+	DisableReferrals  bool       `json:"disableReferrals"`
+}
+
+// Schema validation types
+
+// ObjectClassInfo provides detailed information about an LDAP objectClass,
+// including its inheritance chain and required/optional attributes.
+type ObjectClassInfo struct {
+	Name        string   `json:"name"`
+	OID         string   `json:"oid"`
+	Description string   `json:"description"`
+	Superior    []string `json:"superior"`
+	Must        []string `json:"must"`
+	May         []string `json:"may"`
+	Type        string   `json:"type"`
+}
+
+// ValidationError represents a single schema validation failure.
+type ValidationError struct {
+	Attribute string `json:"attribute"`
+	Message   string `json:"message"`
+	Type      string `json:"type"`
 }

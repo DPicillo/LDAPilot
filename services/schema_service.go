@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/dpicillo/LDAPilot/internal/ldap"
@@ -88,4 +89,154 @@ func (s *SchemaService) GetObjectClass(profileID string, name string) (*models.S
 	}
 
 	return nil, fmt.Errorf("objectClass %q not found", name)
+}
+
+// GetObjectClassDetails returns detailed information about an objectClass,
+// including its MUST/MAY attributes and type (structural/auxiliary/abstract).
+func (s *SchemaService) GetObjectClassDetails(profileID string, name string) (*models.ObjectClassInfo, error) {
+	schema, err := s.GetSchema(profileID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, oc := range schema.ObjectClasses {
+		if strings.EqualFold(oc.Name, name) {
+			return &models.ObjectClassInfo{
+				Name:        oc.Name,
+				OID:         oc.OID,
+				Description: oc.Description,
+				Superior:    oc.SuperClass,
+				Must:        oc.Must,
+				May:         oc.May,
+				Type:        oc.Kind,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("objectClass %q not found", name)
+}
+
+// GetRequiredAttributes collects all MUST attributes from the given objectClasses,
+// walking the inheritance chain via SUP for each class.
+func (s *SchemaService) GetRequiredAttributes(profileID string, objectClasses []string) ([]string, error) {
+	schema, err := s.GetSchema(profileID)
+	if err != nil {
+		return nil, err
+	}
+
+	mustSet := make(map[string]bool)
+	for _, ocName := range objectClasses {
+		collectMustAttrs(schema, ocName, mustSet)
+	}
+
+	result := make([]string, 0, len(mustSet))
+	for attr := range mustSet {
+		result = append(result, attr)
+	}
+	return result, nil
+}
+
+// collectMustAttrs recursively walks the SUP chain of an objectClass and adds
+// all MUST attributes to the provided set (case-insensitive key).
+func collectMustAttrs(schema *models.SchemaInfo, ocName string, mustSet map[string]bool) {
+	for _, oc := range schema.ObjectClasses {
+		if strings.EqualFold(oc.Name, ocName) {
+			for _, attr := range oc.Must {
+				mustSet[attr] = true
+			}
+			// Walk the superclass chain
+			for _, sup := range oc.SuperClass {
+				collectMustAttrs(schema, sup, mustSet)
+			}
+			return
+		}
+	}
+}
+
+// ValidateEntry validates that an entry's attributes satisfy the schema
+// requirements for the given objectClasses. It checks:
+//   - At least one structural objectClass exists
+//   - All MUST attributes (including inherited) are present and non-empty
+func (s *SchemaService) ValidateEntry(profileID string, objectClasses []string, attributes map[string][]string) []models.ValidationError {
+	var errors []models.ValidationError
+
+	schema, err := s.GetSchema(profileID)
+	if err != nil {
+		errors = append(errors, models.ValidationError{
+			Attribute: "",
+			Message:   fmt.Sprintf("Failed to load schema: %v", err),
+			Type:      "error",
+		})
+		return errors
+	}
+
+	// Check for at least one structural objectClass
+	hasStructural := false
+	for _, ocName := range objectClasses {
+		for _, oc := range schema.ObjectClasses {
+			if strings.EqualFold(oc.Name, ocName) && oc.Kind == "structural" {
+				hasStructural = true
+				break
+			}
+		}
+		if hasStructural {
+			break
+		}
+	}
+	if !hasStructural {
+		errors = append(errors, models.ValidationError{
+			Attribute: "objectClass",
+			Message:   "At least one structural objectClass is required",
+			Type:      "error",
+		})
+	}
+
+	// Collect all MUST attributes from all objectClasses (including inherited)
+	mustSet := make(map[string]bool)
+	for _, ocName := range objectClasses {
+		collectMustAttrs(schema, ocName, mustSet)
+	}
+
+	// Build a case-insensitive lookup of provided attributes
+	attrLower := make(map[string][]string)
+	for name, values := range attributes {
+		attrLower[strings.ToLower(name)] = values
+	}
+
+	// Check each required attribute is present and non-empty
+	for mustAttr := range mustSet {
+		lower := strings.ToLower(mustAttr)
+		// Skip objectClass itself — it's handled separately
+		if lower == "objectclass" {
+			continue
+		}
+
+		values, exists := attrLower[lower]
+		if !exists || len(values) == 0 {
+			errors = append(errors, models.ValidationError{
+				Attribute: mustAttr,
+				Message:   fmt.Sprintf("Required attribute %q is missing", mustAttr),
+				Type:      "error",
+			})
+			continue
+		}
+
+		// Check that at least one value is non-empty
+		allEmpty := true
+		for _, v := range values {
+			if strings.TrimSpace(v) != "" {
+				allEmpty = false
+				break
+			}
+		}
+		if allEmpty {
+			errors = append(errors, models.ValidationError{
+				Attribute: mustAttr,
+				Message:   fmt.Sprintf("Required attribute %q must have a non-empty value", mustAttr),
+				Type:      "error",
+			})
+		}
+	}
+
+	return errors
 }

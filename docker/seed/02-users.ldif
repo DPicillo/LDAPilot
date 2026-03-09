@@ -1,0 +1,4460 @@
+dn: uid=klaus.guenther,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: klaus.guenther
+cn: Klaus Guenther
+givenName: Klaus
+sn: Guenther
+mail: klaus.guenther@demo.ldapilot.local
+title: QA Engineer
+ou: Engineering
+employeeNumber: EMP00001
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Klaus Guenther
+initials: KG
+userPassword: klaus.guenther
+telephoneNumber: +49 40 5407263
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10000
+gidNumber: 10000
+homeDirectory: /home/klaus.guenther
+loginShell: /bin/bash
+gecos: Klaus Guenther
+
+dn: uid=felix.sato,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: felix.sato
+cn: Felix Sato
+givenName: Felix
+sn: Sato
+mail: felix.sato@demo.ldapilot.local
+title: Platform Engineer
+ou: Engineering
+employeeNumber: EMP00002
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Felix Sato
+initials: FS
+userPassword: felix.sato
+telephoneNumber: +49 30 2902070
+mobile: +49 172 6668269
+mail: felix.sato@private-mail.example.com
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10001
+gidNumber: 10001
+homeDirectory: /home/felix.sato
+loginShell: /bin/sh
+gecos: Felix Sato
+
+dn: uid=peter.franke,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: peter.franke
+cn: Peter Franke
+givenName: Peter
+sn: Franke
+mail: peter.franke@demo.ldapilot.local
+title: Frontend Developer
+ou: Engineering
+employeeNumber: EMP00003
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Peter Franke
+initials: PF
+userPassword: peter.franke
+telephoneNumber: +49 40 5650931
+mail: peter.franke@private-mail.example.com
+description: Frontend Developer in the Engineering department
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Hauptstrasse 45
+l: Hamburg
+st: Germany
+postalCode: 20095
+uidNumber: 10002
+gidNumber: 10002
+homeDirectory: /home/peter.franke
+loginShell: /bin/bash
+gecos: Peter Franke
+
+dn: uid=heike.winter,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: heike.winter
+cn: Heike Winter
+givenName: Heike
+sn: Winter
+mail: heike.winter@demo.ldapilot.local
+title: Staff Engineer
+ou: Engineering
+employeeNumber: EMP00004
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Heike Winter
+initials: HW
+userPassword: heike.winter
+telephoneNumber: +49 40 3666052
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10003
+gidNumber: 10003
+homeDirectory: /home/heike.winter
+loginShell: /bin/zsh
+gecos: Heike Winter
+
+dn: uid=markus.ivanov,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: markus.ivanov
+cn: Markus Ivanov
+givenName: Markus
+sn: Ivanov
+mail: markus.ivanov@demo.ldapilot.local
+title: Full Stack Developer
+ou: Engineering
+employeeNumber: EMP00005
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Markus Ivanov
+initials: MI
+userPassword: markus.ivanov
+telephoneNumber: +49 221 4673076
+mobile: +49 177 6358946
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 3.25
+
+dn: uid=simone.baumann,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: simone.baumann
+cn: Simone Baumann
+givenName: Simone
+sn: Baumann
+mail: simone.baumann@demo.ldapilot.local
+title: Frontend Developer
+ou: Engineering
+employeeNumber: EMP00006
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Simone Baumann
+initials: SB
+userPassword: simone.baumann
+telephoneNumber: +49 221 5272091
+mobile: +49 179 9426223
+description: Frontend Developer in the Engineering department
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10004
+gidNumber: 10004
+homeDirectory: /home/simone.baumann
+loginShell: /bin/zsh
+gecos: Simone Baumann
+
+dn: uid=julia.neumann,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: julia.neumann
+cn: Julia Neumann
+givenName: Julia
+sn: Neumann
+mail: julia.neumann@demo.ldapilot.local
+title: Staff Engineer
+ou: Engineering
+employeeNumber: EMP00007
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Julia Neumann
+initials: JN
+userPassword: julia.neumann
+telephoneNumber: +49 211 1027665
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Bahnhofstrasse 7
+l: Munich
+st: Germany
+postalCode: 80331
+roomNumber: 5.05
+uidNumber: 10005
+gidNumber: 10005
+homeDirectory: /home/julia.neumann
+loginShell: /bin/zsh
+gecos: Julia Neumann
+
+dn: uid=frank.meier,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: frank.meier
+cn: Frank Meier
+givenName: Frank
+sn: Meier
+mail: frank.meier@demo.ldapilot.local
+title: Platform Engineer
+ou: Engineering
+employeeNumber: EMP00008
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Frank Meier
+initials: FM
+userPassword: frank.meier
+telephoneNumber: +49 69 6598591
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 4.41
+
+dn: uid=anja.schmitz,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: anja.schmitz
+cn: Anja Schmitz
+givenName: Anja
+sn: Schmitz
+mail: anja.schmitz@demo.ldapilot.local
+title: Embedded Developer
+ou: Engineering
+employeeNumber: EMP00009
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Anja Schmitz
+initials: AS
+userPassword: anja.schmitz
+telephoneNumber: +49 69 3941235
+mail: anja.schmitz@private-mail.example.com
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=hans.walter,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hans.walter
+cn: Hans Walter
+givenName: Hans
+sn: Walter
+mail: hans.walter@demo.ldapilot.local
+title: Platform Engineer
+ou: Engineering
+employeeNumber: EMP00010
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Hans Walter
+initials: HW
+userPassword: hans.walter
+telephoneNumber: +49 211 0606283
+mobile: +49 177 1972624
+manager: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Maximilianstrasse 56
+l: Duesseldorf
+st: Germany
+postalCode: 40213
+roomNumber: 3.03
+
+dn: uid=sarah.schroeder,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: sarah.schroeder
+cn: Sarah Schroeder
+givenName: Sarah
+sn: Schroeder
+mail: sarah.schroeder@demo.ldapilot.local
+title: Embedded Developer
+ou: Engineering
+employeeNumber: EMP00011
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Sarah Schroeder
+initials: SS
+userPassword: sarah.schroeder
+telephoneNumber: +49 40 8773936
+mobile: +49 179 9265429
+manager: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10006
+gidNumber: 10006
+homeDirectory: /home/sarah.schroeder
+loginShell: /bin/sh
+gecos: Sarah Schroeder
+
+dn: uid=piotr.singh,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: piotr.singh
+cn: Piotr Singh
+givenName: Piotr
+sn: Singh
+mail: piotr.singh@demo.ldapilot.local
+title: Test Automation Engineer
+ou: Engineering
+employeeNumber: EMP00012
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Piotr Singh
+initials: PS
+userPassword: piotr.singh
+telephoneNumber: +49 89 9038755
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10007
+gidNumber: 10007
+homeDirectory: /home/piotr.singh
+loginShell: /bin/zsh
+gecos: Piotr Singh
+
+dn: uid=klaus.wagner,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: klaus.wagner
+cn: Klaus Wagner
+givenName: Klaus
+sn: Wagner
+mail: klaus.wagner@demo.ldapilot.local
+title: Security Engineer
+ou: Engineering
+employeeNumber: EMP00013
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Klaus Wagner
+initials: KW
+userPassword: klaus.wagner
+telephoneNumber: +49 221 1251670
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10008
+gidNumber: 10008
+homeDirectory: /home/klaus.wagner
+loginShell: /bin/zsh
+gecos: Klaus Wagner
+
+dn: uid=agnieszka.patel,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: agnieszka.patel
+cn: Agnieszka Patel
+givenName: Agnieszka
+sn: Patel
+mail: agnieszka.patel@demo.ldapilot.local
+title: Staff Engineer
+ou: Engineering
+employeeNumber: EMP00014
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Agnieszka Patel
+initials: AP
+userPassword: agnieszka.patel
+telephoneNumber: +49 30 5808482
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10009
+gidNumber: 10009
+homeDirectory: /home/agnieszka.patel
+loginShell: /bin/bash
+gecos: Agnieszka Patel
+
+dn: uid=florian.peters,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: florian.peters
+cn: Florian Peters
+givenName: Florian
+sn: Peters
+mail: florian.peters@demo.ldapilot.local
+title: DevOps Engineer
+ou: Engineering
+employeeNumber: EMP00015
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Florian Peters
+initials: FP
+userPassword: florian.peters
+telephoneNumber: +49 69 8018057
+mobile: +49 176 1308747
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 4.10
+uidNumber: 10010
+gidNumber: 10010
+homeDirectory: /home/florian.peters
+loginShell: /bin/zsh
+gecos: Florian Peters
+
+dn: uid=sandra.kowalski,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sandra.kowalski
+cn: Sandra Kowalski
+givenName: Sandra
+sn: Kowalski
+mail: sandra.kowalski@demo.ldapilot.local
+title: DevOps Engineer
+ou: Engineering
+employeeNumber: EMP00016
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Sandra Kowalski
+initials: SK
+userPassword: sandra.kowalski
+telephoneNumber: +49 221 9426851
+mail: sandra.kowalski@private-mail.example.com
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=felix.berger,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: felix.berger
+cn: Felix Berger
+givenName: Felix
+sn: Berger
+mail: felix.berger@demo.ldapilot.local
+title: ML Engineer
+ou: Engineering
+employeeNumber: EMP00017
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Felix Berger
+initials: FB
+userPassword: felix.berger
+telephoneNumber: +49 511 0643389
+manager: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=martina.schubert,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: martina.schubert
+cn: Martina Schubert
+givenName: Martina
+sn: Schubert
+mail: martina.schubert@demo.ldapilot.local
+title: Senior Software Engineer
+ou: Engineering
+employeeNumber: EMP00018
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Martina Schubert
+initials: MS
+userPassword: martina.schubert
+telephoneNumber: +49 30 6316069
+description: Senior Software Engineer in the Engineering department
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=lena.frank,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: lena.frank
+cn: Lena Frank
+givenName: Lena
+sn: Frank
+mail: lena.frank@demo.ldapilot.local
+title: Data Engineer
+ou: Engineering
+employeeNumber: EMP00019
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Lena Frank
+initials: LF
+userPassword: lena.frank
+telephoneNumber: +49 511 1814709
+mobile: +49 171 8339328
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10011
+gidNumber: 10011
+homeDirectory: /home/lena.frank
+loginShell: /bin/sh
+gecos: Lena Frank
+
+dn: uid=klaus.koch,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: klaus.koch
+cn: Klaus Koch
+givenName: Klaus
+sn: Koch
+mail: klaus.koch@demo.ldapilot.local
+title: Backend Developer
+ou: Engineering
+employeeNumber: EMP00020
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Klaus Koch
+initials: KK
+userPassword: klaus.koch
+telephoneNumber: +49 89 4716708
+manager: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Marienplatz 3
+l: Stuttgart
+st: Germany
+postalCode: 70173
+
+dn: uid=claudia.guenther,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: claudia.guenther
+cn: Claudia Guenther
+givenName: Claudia
+sn: Guenther
+mail: claudia.guenther@demo.ldapilot.local
+title: Security Engineer
+ou: Engineering
+employeeNumber: EMP00021
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Claudia Guenther
+initials: CG
+userPassword: claudia.guenther
+telephoneNumber: +49 211 4689616
+mobile: +49 175 6606926
+manager: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Koenigsallee 12
+l: Cologne
+st: Germany
+postalCode: 50667
+
+dn: uid=anna.kaiser,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: anna.kaiser
+cn: Anna Kaiser
+givenName: Anna
+sn: Kaiser
+mail: anna.kaiser@demo.ldapilot.local
+title: Full Stack Developer
+ou: Engineering
+employeeNumber: EMP00022
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Anna Kaiser
+initials: AK
+userPassword: anna.kaiser
+telephoneNumber: +49 30 4630393
+mobile: +49 178 5760264
+manager: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10012
+gidNumber: 10012
+homeDirectory: /home/anna.kaiser
+loginShell: /bin/sh
+gecos: Anna Kaiser
+
+dn: uid=nina.becker,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: nina.becker
+cn: Nina Becker
+givenName: Nina
+sn: Becker
+mail: nina.becker@demo.ldapilot.local
+title: Site Reliability Engineer
+ou: Engineering
+employeeNumber: EMP00023
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Nina Becker
+initials: NB
+userPassword: nina.becker
+telephoneNumber: +49 69 7131500
+manager: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 3.33
+
+dn: uid=alexander.baumann,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: alexander.baumann
+cn: Alexander Baumann
+givenName: Alexander
+sn: Baumann
+mail: alexander.baumann@demo.ldapilot.local
+title: Backend Developer
+ou: Engineering
+employeeNumber: EMP00024
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Alexander Baumann
+initials: AB
+userPassword: alexander.baumann
+telephoneNumber: +49 221 6980437
+mobile: +49 175 9315250
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 1.38
+uidNumber: 10013
+gidNumber: 10013
+homeDirectory: /home/alexander.baumann
+loginShell: /bin/bash
+gecos: Alexander Baumann
+
+dn: uid=omar.singh,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: omar.singh
+cn: Omar Singh
+givenName: Omar
+sn: Singh
+mail: omar.singh@demo.ldapilot.local
+title: ML Engineer
+ou: Engineering
+employeeNumber: EMP00025
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Omar Singh
+initials: OS
+userPassword: omar.singh
+telephoneNumber: +49 211 2707631
+mobile: +49 176 6407148
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.17
+
+dn: uid=philipp.hoffmann,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: philipp.hoffmann
+cn: Philipp Hoffmann
+givenName: Philipp
+sn: Hoffmann
+mail: philipp.hoffmann@demo.ldapilot.local
+title: Backend Developer
+ou: Engineering
+employeeNumber: EMP00026
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Philipp Hoffmann
+initials: PH
+userPassword: philipp.hoffmann
+telephoneNumber: +49 711 3842850
+mobile: +49 177 3906764
+description: Backend Developer in the Engineering department
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Berliner Allee 89
+l: Frankfurt
+st: Germany
+postalCode: 60311
+uidNumber: 10014
+gidNumber: 10014
+homeDirectory: /home/philipp.hoffmann
+loginShell: /bin/zsh
+gecos: Philipp Hoffmann
+
+dn: uid=martin.schneider,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: martin.schneider
+cn: Martin Schneider
+givenName: Martin
+sn: Schneider
+mail: martin.schneider@demo.ldapilot.local
+title: Platform Engineer
+ou: Engineering
+employeeNumber: EMP00027
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Martin Schneider
+initials: MS
+userPassword: martin.schneider
+telephoneNumber: +49 221 1993727
+description: Platform Engineer in the Engineering department
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.32
+uidNumber: 10015
+gidNumber: 10015
+homeDirectory: /home/martin.schneider
+loginShell: /bin/bash
+gecos: Martin Schneider
+
+dn: uid=omar.simon,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: omar.simon
+cn: Omar Simon
+givenName: Omar
+sn: Simon
+mail: omar.simon@demo.ldapilot.local
+title: QA Engineer
+ou: Engineering
+employeeNumber: EMP00028
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Omar Simon
+initials: OS
+userPassword: omar.simon
+telephoneNumber: +49 89 7280519
+mobile: +49 179 8494628
+manager: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=anja.schneider,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: anja.schneider
+cn: Anja Schneider
+givenName: Anja
+sn: Schneider
+mail: anja.schneider@demo.ldapilot.local
+title: Test Automation Engineer
+ou: Engineering
+employeeNumber: EMP00029
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Anja Schneider
+initials: AS
+userPassword: anja.schneider
+telephoneNumber: +49 711 4007689
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=marco.singh,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: marco.singh
+cn: Marco Singh
+givenName: Marco
+sn: Singh
+mail: marco.singh@demo.ldapilot.local
+title: DevOps Engineer
+ou: Engineering
+employeeNumber: EMP00030
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Marco Singh
+initials: MS
+userPassword: marco.singh
+telephoneNumber: +49 211 0815858
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=hannah.herrmann,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hannah.herrmann
+cn: Hannah Herrmann
+givenName: Hannah
+sn: Herrmann
+mail: hannah.herrmann@demo.ldapilot.local
+title: Software Engineer
+ou: Engineering
+employeeNumber: EMP00031
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Hannah Herrmann
+initials: HH
+userPassword: hannah.herrmann
+telephoneNumber: +49 511 8073261
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=priya.mueller,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: priya.mueller
+cn: Priya Mueller
+givenName: Priya
+sn: Mueller
+mail: priya.mueller@demo.ldapilot.local
+title: Full Stack Developer
+ou: Engineering
+employeeNumber: EMP00032
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Priya Mueller
+initials: PM
+userPassword: priya.mueller
+telephoneNumber: +49 40 9768238
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10016
+gidNumber: 10016
+homeDirectory: /home/priya.mueller
+loginShell: /bin/bash
+gecos: Priya Mueller
+
+dn: uid=priya.singh,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: priya.singh
+cn: Priya Singh
+givenName: Priya
+sn: Singh
+mail: priya.singh@demo.ldapilot.local
+title: QA Engineer
+ou: Engineering
+employeeNumber: EMP00033
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Priya Singh
+initials: PS
+userPassword: priya.singh
+telephoneNumber: +49 711 7811606
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10017
+gidNumber: 10017
+homeDirectory: /home/priya.singh
+loginShell: /bin/bash
+gecos: Priya Singh
+
+dn: uid=lena.ivanov,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: lena.ivanov
+cn: Lena Ivanov
+givenName: Lena
+sn: Ivanov
+mail: lena.ivanov@demo.ldapilot.local
+title: Frontend Developer
+ou: Engineering
+employeeNumber: EMP00034
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Lena Ivanov
+initials: LI
+userPassword: lena.ivanov
+telephoneNumber: +49 30 1114317
+mobile: +49 171 9618075
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10018
+gidNumber: 10018
+homeDirectory: /home/lena.ivanov
+loginShell: /bin/sh
+gecos: Lena Ivanov
+
+dn: uid=patrick.mueller,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: patrick.mueller
+cn: Patrick Mueller
+givenName: Patrick
+sn: Mueller
+mail: patrick.mueller@demo.ldapilot.local
+title: QA Engineer
+ou: Engineering
+employeeNumber: EMP00035
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Patrick Mueller
+initials: PM
+userPassword: patrick.mueller
+telephoneNumber: +49 711 8326058
+manager: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10019
+gidNumber: 10019
+homeDirectory: /home/patrick.mueller
+loginShell: /bin/bash
+gecos: Patrick Mueller
+
+dn: uid=matthias.schmid,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: matthias.schmid
+cn: Matthias Schmid
+givenName: Matthias
+sn: Schmid
+mail: matthias.schmid@demo.ldapilot.local
+title: Frontend Developer
+ou: Engineering
+employeeNumber: EMP00036
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Matthias Schmid
+initials: MS
+userPassword: matthias.schmid
+telephoneNumber: +49 69 8579538
+manager: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Friedrichstrasse 123
+l: Berlin
+st: Germany
+postalCode: 10117
+uidNumber: 10020
+gidNumber: 10020
+homeDirectory: /home/matthias.schmid
+loginShell: /bin/bash
+gecos: Matthias Schmid
+
+dn: uid=sofia.hoffmann,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sofia.hoffmann
+cn: Sofia Hoffmann
+givenName: Sofia
+sn: Hoffmann
+mail: sofia.hoffmann@demo.ldapilot.local
+title: Test Automation Engineer
+ou: Engineering
+employeeNumber: EMP00037
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Sofia Hoffmann
+initials: SH
+userPassword: sofia.hoffmann
+telephoneNumber: +49 511 4513257
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=lukas.lehmann,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: lukas.lehmann
+cn: Lukas Lehmann
+givenName: Lukas
+sn: Lehmann
+mail: lukas.lehmann@demo.ldapilot.local
+title: Frontend Developer
+ou: Engineering
+employeeNumber: EMP00038
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Lukas Lehmann
+initials: LL
+userPassword: lukas.lehmann
+telephoneNumber: +49 211 3789372
+mobile: +49 177 9073456
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10021
+gidNumber: 10021
+homeDirectory: /home/lukas.lehmann
+loginShell: /bin/zsh
+gecos: Lukas Lehmann
+
+dn: uid=fatima.krause,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: fatima.krause
+cn: Fatima Krause
+givenName: Fatima
+sn: Krause
+mail: fatima.krause@demo.ldapilot.local
+title: Senior Software Engineer
+ou: Engineering
+employeeNumber: EMP00039
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Fatima Krause
+initials: FK
+userPassword: fatima.krause
+telephoneNumber: +49 511 7986335
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=viktor.huber,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: viktor.huber
+cn: Viktor Huber
+givenName: Viktor
+sn: Huber
+mail: viktor.huber@demo.ldapilot.local
+title: QA Engineer
+ou: Engineering
+employeeNumber: EMP00040
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Viktor Huber
+initials: VH
+userPassword: viktor.huber
+telephoneNumber: +49 40 3063991
+mail: viktor.huber@private-mail.example.com
+description: QA Engineer in the Engineering department
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.06
+uidNumber: 10022
+gidNumber: 10022
+homeDirectory: /home/viktor.huber
+loginShell: /bin/bash
+gecos: Viktor Huber
+
+dn: uid=jan.beck,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: jan.beck
+cn: Jan Beck
+givenName: Jan
+sn: Beck
+mail: jan.beck@demo.ldapilot.local
+title: Platform Engineer
+ou: Engineering
+employeeNumber: EMP00041
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Jan Beck
+initials: JB
+userPassword: jan.beck
+telephoneNumber: +49 711 2150968
+mobile: +49 179 1537769
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.24
+uidNumber: 10023
+gidNumber: 10023
+homeDirectory: /home/jan.beck
+loginShell: /bin/zsh
+gecos: Jan Beck
+
+dn: uid=nico.wolf,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: nico.wolf
+cn: Nico Wolf
+givenName: Nico
+sn: Wolf
+mail: nico.wolf@demo.ldapilot.local
+title: Backend Developer
+ou: Engineering
+employeeNumber: EMP00042
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Nico Wolf
+initials: NW
+userPassword: nico.wolf
+telephoneNumber: +49 69 9644266
+mobile: +49 171 8493823
+manager: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=sofia.mueller,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sofia.mueller
+cn: Sofia Mueller
+givenName: Sofia
+sn: Mueller
+mail: sofia.mueller@demo.ldapilot.local
+title: QA Engineer
+ou: Engineering
+employeeNumber: EMP00043
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Sofia Mueller
+initials: SM
+userPassword: sofia.mueller
+telephoneNumber: +49 30 8930990
+mail: sofia.mueller@private-mail.example.com
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=jens.werner,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: jens.werner
+cn: Jens Werner
+givenName: Jens
+sn: Werner
+mail: jens.werner@demo.ldapilot.local
+title: Site Reliability Engineer
+ou: Engineering
+employeeNumber: EMP00044
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Jens Werner
+initials: JW
+userPassword: jens.werner
+telephoneNumber: +49 69 3216564
+mobile: +49 176 7625714
+mail: jens.werner@private-mail.example.com
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=maria.beck,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: maria.beck
+cn: Maria Beck
+givenName: Maria
+sn: Beck
+mail: maria.beck@demo.ldapilot.local
+title: DevOps Engineer
+ou: Engineering
+employeeNumber: EMP00045
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Maria Beck
+initials: MB
+userPassword: maria.beck
+telephoneNumber: +49 221 9806807
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Koenigsallee 12
+l: Cologne
+st: Germany
+postalCode: 50667
+
+dn: uid=agnieszka.hoffmann,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: agnieszka.hoffmann
+cn: Agnieszka Hoffmann
+givenName: Agnieszka
+sn: Hoffmann
+mail: agnieszka.hoffmann@demo.ldapilot.local
+title: DevOps Engineer
+ou: Engineering
+employeeNumber: EMP00046
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Agnieszka Hoffmann
+initials: AH
+userPassword: agnieszka.hoffmann
+telephoneNumber: +49 40 6533263
+mobile: +49 171 1527812
+description: DevOps Engineer in the Engineering department
+manager: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=andrea.koenig,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: andrea.koenig
+cn: Andrea Koenig
+givenName: Andrea
+sn: Koenig
+mail: andrea.koenig@demo.ldapilot.local
+title: Test Automation Engineer
+ou: Engineering
+employeeNumber: EMP00047
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Andrea Koenig
+initials: AK
+userPassword: andrea.koenig
+telephoneNumber: +49 511 4771829
+mobile: +49 177 3966867
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.14
+
+dn: uid=katharina.hartmann,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: katharina.hartmann
+cn: Katharina Hartmann
+givenName: Katharina
+sn: Hartmann
+mail: katharina.hartmann@demo.ldapilot.local
+title: Staff Engineer
+ou: Engineering
+employeeNumber: EMP00048
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Katharina Hartmann
+initials: KH
+userPassword: katharina.hartmann
+telephoneNumber: +49 30 4892486
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.32
+uidNumber: 10024
+gidNumber: 10024
+homeDirectory: /home/katharina.hartmann
+loginShell: /bin/bash
+gecos: Katharina Hartmann
+
+dn: uid=daniel.meyer,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: daniel.meyer
+cn: Daniel Meyer
+givenName: Daniel
+sn: Meyer
+mail: daniel.meyer@demo.ldapilot.local
+title: Site Reliability Engineer
+ou: Engineering
+employeeNumber: EMP00049
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Daniel Meyer
+initials: DM
+userPassword: daniel.meyer
+telephoneNumber: +49 511 0031392
+mobile: +49 172 3531422
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.50
+uidNumber: 10025
+gidNumber: 10025
+homeDirectory: /home/daniel.meyer
+loginShell: /bin/sh
+gecos: Daniel Meyer
+
+dn: uid=heike.garcia,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: heike.garcia
+cn: Heike Garcia
+givenName: Heike
+sn: Garcia
+mail: heike.garcia@demo.ldapilot.local
+title: ML Engineer
+ou: Engineering
+employeeNumber: EMP00050
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Heike Garcia
+initials: HG
+userPassword: heike.garcia
+telephoneNumber: +49 221 6881283
+mail: heike.garcia@private-mail.example.com
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10026
+gidNumber: 10026
+homeDirectory: /home/heike.garcia
+loginShell: /bin/sh
+gecos: Heike Garcia
+
+dn: uid=natalia.andersson,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: natalia.andersson
+cn: Natalia Andersson
+givenName: Natalia
+sn: Andersson
+mail: natalia.andersson@demo.ldapilot.local
+title: Senior Software Engineer
+ou: Engineering
+employeeNumber: EMP00051
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Natalia Andersson
+initials: NA
+userPassword: natalia.andersson
+telephoneNumber: +49 511 0020248
+description: Senior Software Engineer in the Engineering department
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Koenigsallee 12
+l: Cologne
+st: Germany
+postalCode: 50667
+
+dn: uid=simone.tanaka,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: simone.tanaka
+cn: Simone Tanaka
+givenName: Simone
+sn: Tanaka
+mail: simone.tanaka@demo.ldapilot.local
+title: DevOps Engineer
+ou: Engineering
+employeeNumber: EMP00052
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Simone Tanaka
+initials: ST
+userPassword: simone.tanaka
+telephoneNumber: +49 511 8253524
+mobile: +49 171 7853159
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10027
+gidNumber: 10027
+homeDirectory: /home/simone.tanaka
+loginShell: /bin/bash
+gecos: Simone Tanaka
+
+dn: uid=yuki.fischer,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: yuki.fischer
+cn: Yuki Fischer
+givenName: Yuki
+sn: Fischer
+mail: yuki.fischer@demo.ldapilot.local
+title: Site Reliability Engineer
+ou: Engineering
+employeeNumber: EMP00053
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Yuki Fischer
+initials: YF
+userPassword: yuki.fischer
+telephoneNumber: +49 40 2869042
+mobile: +49 170 3041263
+description: Site Reliability Engineer in the Engineering department
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10028
+gidNumber: 10028
+homeDirectory: /home/yuki.fischer
+loginShell: /bin/bash
+gecos: Yuki Fischer
+
+dn: uid=susanne.fischer,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: susanne.fischer
+cn: Susanne Fischer
+givenName: Susanne
+sn: Fischer
+mail: susanne.fischer@demo.ldapilot.local
+title: ML Engineer
+ou: Engineering
+employeeNumber: EMP00054
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Susanne Fischer
+initials: SF
+userPassword: susanne.fischer
+telephoneNumber: +49 711 1408699
+mobile: +49 179 3999932
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.08
+uidNumber: 10029
+gidNumber: 10029
+homeDirectory: /home/susanne.fischer
+loginShell: /bin/zsh
+gecos: Susanne Fischer
+
+dn: uid=silke.schneider,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: silke.schneider
+cn: Silke Schneider
+givenName: Silke
+sn: Schneider
+mail: silke.schneider@demo.ldapilot.local
+title: Software Engineer
+ou: Engineering
+employeeNumber: EMP00055
+employeeType: Engineering
+departmentNumber: Engineering
+displayName: Silke Schneider
+initials: SS
+userPassword: silke.schneider
+telephoneNumber: +49 30 0129194
+mobile: +49 175 3529344
+description: Software Engineer in the Engineering department
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 1.37
+uidNumber: 10030
+gidNumber: 10030
+homeDirectory: /home/silke.schneider
+loginShell: /bin/bash
+gecos: Silke Schneider
+
+dn: uid=patrick.simon,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: patrick.simon
+cn: Patrick Simon
+givenName: Patrick
+sn: Simon
+mail: patrick.simon@demo.ldapilot.local
+title: Sales Representative
+ou: Sales
+employeeNumber: EMP00056
+employeeType: Sales
+departmentNumber: Sales
+displayName: Patrick Simon
+initials: PS
+userPassword: patrick.simon
+telephoneNumber: +49 511 6740747
+mobile: +49 171 4704688
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.38
+
+dn: uid=philipp.hartmann,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: philipp.hartmann
+cn: Philipp Hartmann
+givenName: Philipp
+sn: Hartmann
+mail: philipp.hartmann@demo.ldapilot.local
+title: Regional Sales Director
+ou: Sales
+employeeNumber: EMP00057
+employeeType: Sales
+departmentNumber: Sales
+displayName: Philipp Hartmann
+initials: PH
+userPassword: philipp.hartmann
+telephoneNumber: +49 711 5073002
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=hans.patel,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hans.patel
+cn: Hans Patel
+givenName: Hans
+sn: Patel
+mail: hans.patel@demo.ldapilot.local
+title: Regional Sales Director
+ou: Sales
+employeeNumber: EMP00058
+employeeType: Sales
+departmentNumber: Sales
+displayName: Hans Patel
+initials: HP
+userPassword: hans.patel
+telephoneNumber: +49 711 2632853
+description: Regional Sales Director in the Sales department
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=lukas.schubert,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: lukas.schubert
+cn: Lukas Schubert
+givenName: Lukas
+sn: Schubert
+mail: lukas.schubert@demo.ldapilot.local
+title: Sales Manager
+ou: Sales
+employeeNumber: EMP00059
+employeeType: Sales
+departmentNumber: Sales
+displayName: Lukas Schubert
+initials: LS
+userPassword: lukas.schubert
+telephoneNumber: +49 89 3243237
+mobile: +49 178 4421265
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=philipp.neumann,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: philipp.neumann
+cn: Philipp Neumann
+givenName: Philipp
+sn: Neumann
+mail: philipp.neumann@demo.ldapilot.local
+title: Pre-Sales Consultant
+ou: Sales
+employeeNumber: EMP00060
+employeeType: Sales
+departmentNumber: Sales
+displayName: Philipp Neumann
+initials: PN
+userPassword: philipp.neumann
+telephoneNumber: +49 711 1264278
+mobile: +49 170 8471942
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Marienplatz 3
+l: Stuttgart
+st: Germany
+postalCode: 70173
+roomNumber: 3.02
+
+dn: uid=hiroshi.patel,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hiroshi.patel
+cn: Hiroshi Patel
+givenName: Hiroshi
+sn: Patel
+mail: hiroshi.patel@demo.ldapilot.local
+title: Business Development Manager
+ou: Sales
+employeeNumber: EMP00061
+employeeType: Sales
+departmentNumber: Sales
+displayName: Hiroshi Patel
+initials: HP
+userPassword: hiroshi.patel
+telephoneNumber: +49 221 7164788
+mobile: +49 176 6923747
+description: Business Development Manager in the Sales department
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.12
+
+dn: uid=hiroshi.klein,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hiroshi.klein
+cn: Hiroshi Klein
+givenName: Hiroshi
+sn: Klein
+mail: hiroshi.klein@demo.ldapilot.local
+title: Regional Sales Director
+ou: Sales
+employeeNumber: EMP00062
+employeeType: Sales
+departmentNumber: Sales
+displayName: Hiroshi Klein
+initials: HK
+userPassword: hiroshi.klein
+telephoneNumber: +49 211 9777067
+manager: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=heike.schulz,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: heike.schulz
+cn: Heike Schulz
+givenName: Heike
+sn: Schulz
+mail: heike.schulz@demo.ldapilot.local
+title: Pre-Sales Consultant
+ou: Sales
+employeeNumber: EMP00063
+employeeType: Sales
+departmentNumber: Sales
+displayName: Heike Schulz
+initials: HS
+userPassword: heike.schulz
+telephoneNumber: +49 30 5145707
+description: Pre-Sales Consultant in the Sales department
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Friedrichstrasse 123
+l: Berlin
+st: Germany
+postalCode: 10117
+
+dn: uid=elena.mueller,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: elena.mueller
+cn: Elena Mueller
+givenName: Elena
+sn: Mueller
+mail: elena.mueller@demo.ldapilot.local
+title: Channel Partner Manager
+ou: Sales
+employeeNumber: EMP00064
+employeeType: Sales
+departmentNumber: Sales
+displayName: Elena Mueller
+initials: EM
+userPassword: elena.mueller
+telephoneNumber: +49 211 0044627
+mobile: +49 179 9981626
+description: Channel Partner Manager in the Sales department
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Marienplatz 3
+l: Stuttgart
+st: Germany
+postalCode: 70173
+roomNumber: 2.38
+
+dn: uid=christine.friedrich,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: christine.friedrich
+cn: Christine Friedrich
+givenName: Christine
+sn: Friedrich
+mail: christine.friedrich@demo.ldapilot.local
+title: Channel Partner Manager
+ou: Sales
+employeeNumber: EMP00065
+employeeType: Sales
+departmentNumber: Sales
+displayName: Christine Friedrich
+initials: CF
+userPassword: christine.friedrich
+telephoneNumber: +49 89 8925481
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Friedrichstrasse 123
+l: Berlin
+st: Germany
+postalCode: 10117
+
+dn: uid=sarah.lorenz,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sarah.lorenz
+cn: Sarah Lorenz
+givenName: Sarah
+sn: Lorenz
+mail: sarah.lorenz@demo.ldapilot.local
+title: Sales Manager
+ou: Sales
+employeeNumber: EMP00066
+employeeType: Sales
+departmentNumber: Sales
+displayName: Sarah Lorenz
+initials: SL
+userPassword: sarah.lorenz
+telephoneNumber: +49 30 3453676
+mail: sarah.lorenz@private-mail.example.com
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 3.15
+
+dn: uid=tobias.hofmann,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: tobias.hofmann
+cn: Tobias Hofmann
+givenName: Tobias
+sn: Hofmann
+mail: tobias.hofmann@demo.ldapilot.local
+title: Inside Sales Representative
+ou: Sales
+employeeNumber: EMP00067
+employeeType: Sales
+departmentNumber: Sales
+displayName: Tobias Hofmann
+initials: TH
+userPassword: tobias.hofmann
+telephoneNumber: +49 69 0563979
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=nico.meier,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: nico.meier
+cn: Nico Meier
+givenName: Nico
+sn: Meier
+mail: nico.meier@demo.ldapilot.local
+title: Sales Manager
+ou: Sales
+employeeNumber: EMP00068
+employeeType: Sales
+departmentNumber: Sales
+displayName: Nico Meier
+initials: NM
+userPassword: nico.meier
+telephoneNumber: +49 89 0325325
+mobile: +49 171 8168088
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=anja.weiss,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: anja.weiss
+cn: Anja Weiss
+givenName: Anja
+sn: Weiss
+mail: anja.weiss@demo.ldapilot.local
+title: Sales Representative
+ou: Sales
+employeeNumber: EMP00069
+employeeType: Sales
+departmentNumber: Sales
+displayName: Anja Weiss
+initials: AW
+userPassword: anja.weiss
+telephoneNumber: +49 711 6540770
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=michael.friedrich,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: michael.friedrich
+cn: Michael Friedrich
+givenName: Michael
+sn: Friedrich
+mail: michael.friedrich@demo.ldapilot.local
+title: Regional Sales Director
+ou: Sales
+employeeNumber: EMP00070
+employeeType: Sales
+departmentNumber: Sales
+displayName: Michael Friedrich
+initials: MF
+userPassword: michael.friedrich
+telephoneNumber: +49 40 5177106
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 4.37
+
+dn: uid=martina.maier,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: martina.maier
+cn: Martina Maier
+givenName: Martina
+sn: Maier
+mail: martina.maier@demo.ldapilot.local
+title: Pre-Sales Consultant
+ou: Sales
+employeeNumber: EMP00071
+employeeType: Sales
+departmentNumber: Sales
+displayName: Martina Maier
+initials: MM
+userPassword: martina.maier
+telephoneNumber: +49 211 9974661
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.38
+
+dn: uid=lukas.guenther,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: lukas.guenther
+cn: Lukas Guenther
+givenName: Lukas
+sn: Guenther
+mail: lukas.guenther@demo.ldapilot.local
+title: Key Account Manager
+ou: Sales
+employeeNumber: EMP00072
+employeeType: Sales
+departmentNumber: Sales
+displayName: Lukas Guenther
+initials: LG
+userPassword: lukas.guenther
+telephoneNumber: +49 711 6490035
+mail: lukas.guenther@private-mail.example.com
+description: Key Account Manager in the Sales department
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 1.06
+
+dn: uid=frank.fischer,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: frank.fischer
+cn: Frank Fischer
+givenName: Frank
+sn: Fischer
+mail: frank.fischer@demo.ldapilot.local
+title: Sales Manager
+ou: Sales
+employeeNumber: EMP00073
+employeeType: Sales
+departmentNumber: Sales
+displayName: Frank Fischer
+initials: FF
+userPassword: frank.fischer
+telephoneNumber: +49 711 2952432
+mail: frank.fischer@private-mail.example.com
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Leopoldstrasse 99
+l: Hannover
+st: Germany
+postalCode: 30159
+roomNumber: 3.11
+
+dn: uid=lisa.peters,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: lisa.peters
+cn: Lisa Peters
+givenName: Lisa
+sn: Peters
+mail: lisa.peters@demo.ldapilot.local
+title: Sales Manager
+ou: Sales
+employeeNumber: EMP00074
+employeeType: Sales
+departmentNumber: Sales
+displayName: Lisa Peters
+initials: LP
+userPassword: lisa.peters
+telephoneNumber: +49 511 5238743
+manager: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Koenigsallee 12
+l: Cologne
+st: Germany
+postalCode: 50667
+roomNumber: 1.13
+
+dn: uid=jan.fuchs,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: jan.fuchs
+cn: Jan Fuchs
+givenName: Jan
+sn: Fuchs
+mail: jan.fuchs@demo.ldapilot.local
+title: Account Executive
+ou: Sales
+employeeNumber: EMP00075
+employeeType: Sales
+departmentNumber: Sales
+displayName: Jan Fuchs
+initials: JF
+userPassword: jan.fuchs
+telephoneNumber: +49 40 7464302
+mobile: +49 179 6875918
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.07
+
+dn: uid=sarah.schulz,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sarah.schulz
+cn: Sarah Schulz
+givenName: Sarah
+sn: Schulz
+mail: sarah.schulz@demo.ldapilot.local
+title: Account Executive
+ou: Sales
+employeeNumber: EMP00076
+employeeType: Sales
+departmentNumber: Sales
+displayName: Sarah Schulz
+initials: SS
+userPassword: sarah.schulz
+telephoneNumber: +49 211 6948138
+mobile: +49 170 1695798
+manager: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=petra.ludwig,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: petra.ludwig
+cn: Petra Ludwig
+givenName: Petra
+sn: Ludwig
+mail: petra.ludwig@demo.ldapilot.local
+title: Account Executive
+ou: Sales
+employeeNumber: EMP00077
+employeeType: Sales
+departmentNumber: Sales
+displayName: Petra Ludwig
+initials: PL
+userPassword: petra.ludwig
+telephoneNumber: +49 69 2606005
+mail: petra.ludwig@private-mail.example.com
+description: Account Executive in the Sales department
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Berliner Allee 89
+l: Frankfurt
+st: Germany
+postalCode: 60311
+
+dn: uid=stefan.singh,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: stefan.singh
+cn: Stefan Singh
+givenName: Stefan
+sn: Singh
+mail: stefan.singh@demo.ldapilot.local
+title: Channel Partner Manager
+ou: Sales
+employeeNumber: EMP00078
+employeeType: Sales
+departmentNumber: Sales
+displayName: Stefan Singh
+initials: SS
+userPassword: stefan.singh
+telephoneNumber: +49 211 8680440
+mobile: +49 175 0478318
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Leopoldstrasse 99
+l: Hannover
+st: Germany
+postalCode: 30159
+
+dn: uid=omar.hoffmann,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: omar.hoffmann
+cn: Omar Hoffmann
+givenName: Omar
+sn: Hoffmann
+mail: omar.hoffmann@demo.ldapilot.local
+title: Inside Sales Representative
+ou: Sales
+employeeNumber: EMP00079
+employeeType: Sales
+departmentNumber: Sales
+displayName: Omar Hoffmann
+initials: OH
+userPassword: omar.hoffmann
+telephoneNumber: +49 69 8677732
+mail: omar.hoffmann@private-mail.example.com
+manager: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Friedrichstrasse 123
+l: Berlin
+st: Germany
+postalCode: 10117
+
+dn: uid=piotr.fischer,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: piotr.fischer
+cn: Piotr Fischer
+givenName: Piotr
+sn: Fischer
+mail: piotr.fischer@demo.ldapilot.local
+title: Pre-Sales Consultant
+ou: Sales
+employeeNumber: EMP00080
+employeeType: Sales
+departmentNumber: Sales
+displayName: Piotr Fischer
+initials: PF
+userPassword: piotr.fischer
+telephoneNumber: +49 211 8905804
+mobile: +49 176 7176531
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.07
+
+dn: uid=tobias.hofmann2,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: tobias.hofmann2
+cn: Tobias Hofmann
+givenName: Tobias
+sn: Hofmann
+mail: tobias.hofmann2@demo.ldapilot.local
+title: Sales Representative
+ou: Sales
+employeeNumber: EMP00081
+employeeType: Sales
+departmentNumber: Sales
+displayName: Tobias Hofmann
+initials: TH
+userPassword: tobias.hofmann2
+telephoneNumber: +49 511 4944476
+manager: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 1.35
+
+dn: uid=tim.schmitz,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: tim.schmitz
+cn: Tim Schmitz
+givenName: Tim
+sn: Schmitz
+mail: tim.schmitz@demo.ldapilot.local
+title: Sales Representative
+ou: Sales
+employeeNumber: EMP00082
+employeeType: Sales
+departmentNumber: Sales
+displayName: Tim Schmitz
+initials: TS
+userPassword: tim.schmitz
+telephoneNumber: +49 30 0016601
+mobile: +49 177 6270249
+description: Sales Representative in the Sales department
+manager: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=nico.hofmann,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: nico.hofmann
+cn: Nico Hofmann
+givenName: Nico
+sn: Hofmann
+mail: nico.hofmann@demo.ldapilot.local
+title: Pre-Sales Consultant
+ou: Sales
+employeeNumber: EMP00083
+employeeType: Sales
+departmentNumber: Sales
+displayName: Nico Hofmann
+initials: NH
+userPassword: nico.hofmann
+telephoneNumber: +49 511 5308504
+mail: nico.hofmann@private-mail.example.com
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=philipp.schmitt,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: philipp.schmitt
+cn: Philipp Schmitt
+givenName: Philipp
+sn: Schmitt
+mail: philipp.schmitt@demo.ldapilot.local
+title: Key Account Manager
+ou: Sales
+employeeNumber: EMP00084
+employeeType: Sales
+departmentNumber: Sales
+displayName: Philipp Schmitt
+initials: PS
+userPassword: philipp.schmitt
+telephoneNumber: +49 711 4400768
+mobile: +49 172 0189370
+mail: philipp.schmitt@private-mail.example.com
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Marienplatz 3
+l: Stuttgart
+st: Germany
+postalCode: 70173
+
+dn: uid=thomas.peters,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: thomas.peters
+cn: Thomas Peters
+givenName: Thomas
+sn: Peters
+mail: thomas.peters@demo.ldapilot.local
+title: Inside Sales Representative
+ou: Sales
+employeeNumber: EMP00085
+employeeType: Sales
+departmentNumber: Sales
+displayName: Thomas Peters
+initials: TP
+userPassword: thomas.peters
+telephoneNumber: +49 40 7751059
+mobile: +49 179 6175556
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=birgit.koehler,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: birgit.koehler
+cn: Birgit Koehler
+givenName: Birgit
+sn: Koehler
+mail: birgit.koehler@demo.ldapilot.local
+title: Sales Engineer
+ou: Sales
+employeeNumber: EMP00086
+employeeType: Sales
+departmentNumber: Sales
+displayName: Birgit Koehler
+initials: BK
+userPassword: birgit.koehler
+telephoneNumber: +49 221 0307841
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=laura.schmidt,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: laura.schmidt
+cn: Laura Schmidt
+givenName: Laura
+sn: Schmidt
+mail: laura.schmidt@demo.ldapilot.local
+title: Key Account Manager
+ou: Sales
+employeeNumber: EMP00087
+employeeType: Sales
+departmentNumber: Sales
+displayName: Laura Schmidt
+initials: LS
+userPassword: laura.schmidt
+telephoneNumber: +49 221 7011538
+manager: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 4.29
+
+dn: uid=jens.kowalski,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: jens.kowalski
+cn: Jens Kowalski
+givenName: Jens
+sn: Kowalski
+mail: jens.kowalski@demo.ldapilot.local
+title: Account Executive
+ou: Sales
+employeeNumber: EMP00088
+employeeType: Sales
+departmentNumber: Sales
+displayName: Jens Kowalski
+initials: JK
+userPassword: jens.kowalski
+telephoneNumber: +49 711 1650415
+description: Account Executive in the Sales department
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Berliner Allee 89
+l: Frankfurt
+st: Germany
+postalCode: 60311
+roomNumber: 5.08
+
+dn: uid=piotr.fuchs,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: piotr.fuchs
+cn: Piotr Fuchs
+givenName: Piotr
+sn: Fuchs
+mail: piotr.fuchs@demo.ldapilot.local
+title: Regional Sales Director
+ou: Sales
+employeeNumber: EMP00089
+employeeType: Sales
+departmentNumber: Sales
+displayName: Piotr Fuchs
+initials: PF
+userPassword: piotr.fuchs
+telephoneNumber: +49 89 8978001
+mobile: +49 175 6555917
+description: Regional Sales Director in the Sales department
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Maximilianstrasse 56
+l: Duesseldorf
+st: Germany
+postalCode: 40213
+
+dn: uid=patrick.lange,ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: patrick.lange
+cn: Patrick Lange
+givenName: Patrick
+sn: Lange
+mail: patrick.lange@demo.ldapilot.local
+title: Sales Manager
+ou: Sales
+employeeNumber: EMP00090
+employeeType: Sales
+departmentNumber: Sales
+displayName: Patrick Lange
+initials: PL
+userPassword: patrick.lange
+telephoneNumber: +49 40 9291602
+manager: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: leila.schulz
+cn: Leila Schulz
+givenName: Leila
+sn: Schulz
+mail: leila.schulz@demo.ldapilot.local
+title: Head of Product
+ou: Management
+employeeNumber: EMP00091
+employeeType: Management
+departmentNumber: Management
+displayName: Leila Schulz
+initials: LS
+userPassword: leila.schulz
+telephoneNumber: +49 511 8614352
+description: Head of Product in the Management department
+o: LDAPilot Demo GmbH
+
+dn: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: bernd.wagner
+cn: Bernd Wagner
+givenName: Bernd
+sn: Wagner
+mail: bernd.wagner@demo.ldapilot.local
+title: Managing Director
+ou: Management
+employeeNumber: EMP00092
+employeeType: Management
+departmentNumber: Management
+displayName: Bernd Wagner
+initials: BW
+userPassword: bernd.wagner
+telephoneNumber: +49 89 5058741
+o: LDAPilot Demo GmbH
+
+dn: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: stefanie.ludwig
+cn: Stefanie Ludwig
+givenName: Stefanie
+sn: Ludwig
+mail: stefanie.ludwig@demo.ldapilot.local
+title: Director of Operations
+ou: Management
+employeeNumber: EMP00093
+employeeType: Management
+departmentNumber: Management
+displayName: Stefanie Ludwig
+initials: SL
+userPassword: stefanie.ludwig
+telephoneNumber: +49 30 4342626
+mobile: +49 178 5389967
+o: LDAPilot Demo GmbH
+postalAddress: Hauptstrasse 45
+l: Hamburg
+st: Germany
+postalCode: 20095
+
+dn: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: thomas.wolf
+cn: Thomas Wolf
+givenName: Thomas
+sn: Wolf
+mail: thomas.wolf@demo.ldapilot.local
+title: Director of Operations
+ou: Management
+employeeNumber: EMP00094
+employeeType: Management
+departmentNumber: Management
+displayName: Thomas Wolf
+initials: TW
+userPassword: thomas.wolf
+telephoneNumber: +49 89 0928999
+mobile: +49 176 4648066
+description: Director of Operations in the Management department
+o: LDAPilot Demo GmbH
+
+dn: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: klaus.koch2
+cn: Klaus Koch
+givenName: Klaus
+sn: Koch
+mail: klaus.koch2@demo.ldapilot.local
+title: Director of Operations
+ou: Management
+employeeNumber: EMP00095
+employeeType: Management
+departmentNumber: Management
+displayName: Klaus Koch
+initials: KK
+userPassword: klaus.koch2
+telephoneNumber: +49 211 2950193
+o: LDAPilot Demo GmbH
+
+dn: uid=patrick.fischer,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: patrick.fischer
+cn: Patrick Fischer
+givenName: Patrick
+sn: Fischer
+mail: patrick.fischer@demo.ldapilot.local
+title: Head of Product
+ou: Management
+employeeNumber: EMP00096
+employeeType: Management
+departmentNumber: Management
+displayName: Patrick Fischer
+initials: PF
+userPassword: patrick.fischer
+telephoneNumber: +49 30 5714813
+mobile: +49 179 5033707
+mail: patrick.fischer@private-mail.example.com
+o: LDAPilot Demo GmbH
+postalAddress: Friedrichstrasse 123
+l: Berlin
+st: Germany
+postalCode: 10117
+roomNumber: 3.17
+
+dn: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: andreas.krueger
+cn: Andreas Krueger
+givenName: Andreas
+sn: Krueger
+mail: andreas.krueger@demo.ldapilot.local
+title: Head of Product
+ou: Management
+employeeNumber: EMP00097
+employeeType: Management
+departmentNumber: Management
+displayName: Andreas Krueger
+initials: AK
+userPassword: andreas.krueger
+telephoneNumber: +49 40 2136819
+o: LDAPilot Demo GmbH
+
+dn: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sebastian.schuster
+cn: Sebastian Schuster
+givenName: Sebastian
+sn: Schuster
+mail: sebastian.schuster@demo.ldapilot.local
+title: Managing Director
+ou: Management
+employeeNumber: EMP00098
+employeeType: Management
+departmentNumber: Management
+displayName: Sebastian Schuster
+initials: SS
+userPassword: sebastian.schuster
+telephoneNumber: +49 511 6600028
+mobile: +49 175 5161140
+mail: sebastian.schuster@private-mail.example.com
+o: LDAPilot Demo GmbH
+
+dn: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: susanne.fuchs
+cn: Susanne Fuchs
+givenName: Susanne
+sn: Fuchs
+mail: susanne.fuchs@demo.ldapilot.local
+title: VP Engineering
+ou: Management
+employeeNumber: EMP00099
+employeeType: Management
+departmentNumber: Management
+displayName: Susanne Fuchs
+initials: SF
+userPassword: susanne.fuchs
+telephoneNumber: +49 511 7121004
+mobile: +49 170 2322875
+o: LDAPilot Demo GmbH
+postalAddress: Koenigsallee 12
+l: Cologne
+st: Germany
+postalCode: 50667
+roomNumber: 5.21
+
+dn: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: jens.singh
+cn: Jens Singh
+givenName: Jens
+sn: Singh
+mail: jens.singh@demo.ldapilot.local
+title: VP Engineering
+ou: Management
+employeeNumber: EMP00100
+employeeType: Management
+departmentNumber: Management
+displayName: Jens Singh
+initials: JS
+userPassword: jens.singh
+telephoneNumber: +49 40 2374505
+mail: jens.singh@private-mail.example.com
+o: LDAPilot Demo GmbH
+
+dn: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: martina.zimmermann
+cn: Martina Zimmermann
+givenName: Martina
+sn: Zimmermann
+mail: martina.zimmermann@demo.ldapilot.local
+title: VP Human Resources
+ou: Management
+employeeNumber: EMP00101
+employeeType: Management
+departmentNumber: Management
+displayName: Martina Zimmermann
+initials: MZ
+userPassword: martina.zimmermann
+telephoneNumber: +49 211 9317642
+mobile: +49 178 5944928
+description: VP Human Resources in the Management department
+o: LDAPilot Demo GmbH
+
+dn: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: markus.ali
+cn: Markus Ali
+givenName: Markus
+sn: Ali
+mail: markus.ali@demo.ldapilot.local
+title: COO
+ou: Management
+employeeNumber: EMP00102
+employeeType: Management
+departmentNumber: Management
+displayName: Markus Ali
+initials: MA
+userPassword: markus.ali
+telephoneNumber: +49 711 4291068
+mobile: +49 177 0791500
+description: COO in the Management department
+o: LDAPilot Demo GmbH
+
+dn: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: maximilian.schulze
+cn: Maximilian Schulze
+givenName: Maximilian
+sn: Schulze
+mail: maximilian.schulze@demo.ldapilot.local
+title: Managing Director
+ou: Management
+employeeNumber: EMP00103
+employeeType: Management
+departmentNumber: Management
+displayName: Maximilian Schulze
+initials: MS
+userPassword: maximilian.schulze
+telephoneNumber: +49 221 5660269
+o: LDAPilot Demo GmbH
+
+dn: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: andreas.hofmann
+cn: Andreas Hofmann
+givenName: Andreas
+sn: Hofmann
+mail: andreas.hofmann@demo.ldapilot.local
+title: Director of Operations
+ou: Management
+employeeNumber: EMP00104
+employeeType: Management
+departmentNumber: Management
+displayName: Andreas Hofmann
+initials: AH
+userPassword: andreas.hofmann
+telephoneNumber: +49 711 9623034
+mobile: +49 175 0999210
+o: LDAPilot Demo GmbH
+postalAddress: Berliner Allee 89
+l: Frankfurt
+st: Germany
+postalCode: 60311
+
+dn: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: marco.winkler
+cn: Marco Winkler
+givenName: Marco
+sn: Winkler
+mail: marco.winkler@demo.ldapilot.local
+title: Head of Product
+ou: Management
+employeeNumber: EMP00105
+employeeType: Management
+departmentNumber: Management
+displayName: Marco Winkler
+initials: MW
+userPassword: marco.winkler
+telephoneNumber: +49 221 9597688
+description: Head of Product in the Management department
+o: LDAPilot Demo GmbH
+postalAddress: Marienplatz 3
+l: Stuttgart
+st: Germany
+postalCode: 70173
+
+dn: uid=andreas.schaefer,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: andreas.schaefer
+cn: Andreas Schaefer
+givenName: Andreas
+sn: Schaefer
+mail: andreas.schaefer@demo.ldapilot.local
+title: Senior Recruiter
+ou: HR
+employeeNumber: EMP00106
+employeeType: HR
+departmentNumber: HR
+displayName: Andreas Schaefer
+initials: AS
+userPassword: andreas.schaefer
+telephoneNumber: +49 89 6224300
+mobile: +49 172 7933178
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=maximilian.lang,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: maximilian.lang
+cn: Maximilian Lang
+givenName: Maximilian
+sn: Lang
+mail: maximilian.lang@demo.ldapilot.local
+title: HR Manager
+ou: HR
+employeeNumber: EMP00107
+employeeType: HR
+departmentNumber: HR
+displayName: Maximilian Lang
+initials: ML
+userPassword: maximilian.lang
+telephoneNumber: +49 69 3627619
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=elena.moeller,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: elena.moeller
+cn: Elena Moeller
+givenName: Elena
+sn: Moeller
+mail: elena.moeller@demo.ldapilot.local
+title: People Operations Manager
+ou: HR
+employeeNumber: EMP00108
+employeeType: HR
+departmentNumber: HR
+displayName: Elena Moeller
+initials: EM
+userPassword: elena.moeller
+telephoneNumber: +49 511 6628751
+mobile: +49 175 0461362
+description: People Operations Manager in the HR department
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 3.41
+
+dn: uid=thomas.lorenz,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: thomas.lorenz
+cn: Thomas Lorenz
+givenName: Thomas
+sn: Lorenz
+mail: thomas.lorenz@demo.ldapilot.local
+title: Diversity & Inclusion Lead
+ou: HR
+employeeNumber: EMP00109
+employeeType: HR
+departmentNumber: HR
+displayName: Thomas Lorenz
+initials: TL
+userPassword: thomas.lorenz
+telephoneNumber: +49 30 6087792
+description: Diversity & Inclusion Lead in the HR department
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=klaus.koehler,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: klaus.koehler
+cn: Klaus Koehler
+givenName: Klaus
+sn: Koehler
+mail: klaus.koehler@demo.ldapilot.local
+title: HR Business Partner
+ou: HR
+employeeNumber: EMP00110
+employeeType: HR
+departmentNumber: HR
+displayName: Klaus Koehler
+initials: KK
+userPassword: klaus.koehler
+telephoneNumber: +49 40 1852804
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=franziska.friedrich,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: franziska.friedrich
+cn: Franziska Friedrich
+givenName: Franziska
+sn: Friedrich
+mail: franziska.friedrich@demo.ldapilot.local
+title: Senior Recruiter
+ou: HR
+employeeNumber: EMP00111
+employeeType: HR
+departmentNumber: HR
+displayName: Franziska Friedrich
+initials: FF
+userPassword: franziska.friedrich
+telephoneNumber: +49 69 8556644
+mobile: +49 176 3545522
+description: Senior Recruiter in the HR department
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Maximilianstrasse 56
+l: Duesseldorf
+st: Germany
+postalCode: 40213
+roomNumber: 5.07
+
+dn: uid=maximilian.berger,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: maximilian.berger
+cn: Maximilian Berger
+givenName: Maximilian
+sn: Berger
+mail: maximilian.berger@demo.ldapilot.local
+title: Recruiter
+ou: HR
+employeeNumber: EMP00112
+employeeType: HR
+departmentNumber: HR
+displayName: Maximilian Berger
+initials: MB
+userPassword: maximilian.berger
+telephoneNumber: +49 69 0932358
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=sabine.wagner,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sabine.wagner
+cn: Sabine Wagner
+givenName: Sabine
+sn: Wagner
+mail: sabine.wagner@demo.ldapilot.local
+title: Talent Acquisition Lead
+ou: HR
+employeeNumber: EMP00113
+employeeType: HR
+departmentNumber: HR
+displayName: Sabine Wagner
+initials: SW
+userPassword: sabine.wagner
+telephoneNumber: +49 30 6836087
+mobile: +49 176 0213170
+description: Talent Acquisition Lead in the HR department
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.32
+
+dn: uid=maria.ali,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: maria.ali
+cn: Maria Ali
+givenName: Maria
+sn: Ali
+mail: maria.ali@demo.ldapilot.local
+title: HR Business Partner
+ou: HR
+employeeNumber: EMP00114
+employeeType: HR
+departmentNumber: HR
+displayName: Maria Ali
+initials: MA
+userPassword: maria.ali
+telephoneNumber: +49 69 3674568
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=tobias.rossi,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: tobias.rossi
+cn: Tobias Rossi
+givenName: Tobias
+sn: Rossi
+mail: tobias.rossi@demo.ldapilot.local
+title: People Operations Manager
+ou: HR
+employeeNumber: EMP00115
+employeeType: HR
+departmentNumber: HR
+displayName: Tobias Rossi
+initials: TR
+userPassword: tobias.rossi
+telephoneNumber: +49 511 3750457
+mobile: +49 176 2325560
+mail: tobias.rossi@private-mail.example.com
+description: People Operations Manager in the HR department
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=omar.ludwig,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: omar.ludwig
+cn: Omar Ludwig
+givenName: Omar
+sn: Ludwig
+mail: omar.ludwig@demo.ldapilot.local
+title: Diversity & Inclusion Lead
+ou: HR
+employeeNumber: EMP00116
+employeeType: HR
+departmentNumber: HR
+displayName: Omar Ludwig
+initials: OL
+userPassword: omar.ludwig
+telephoneNumber: +49 211 1668715
+mobile: +49 179 2580365
+mail: omar.ludwig@private-mail.example.com
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=maximilian.koenig,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: maximilian.koenig
+cn: Maximilian Koenig
+givenName: Maximilian
+sn: Koenig
+mail: maximilian.koenig@demo.ldapilot.local
+title: Diversity & Inclusion Lead
+ou: HR
+employeeNumber: EMP00117
+employeeType: HR
+departmentNumber: HR
+displayName: Maximilian Koenig
+initials: MK
+userPassword: maximilian.koenig
+telephoneNumber: +49 211 6332253
+mobile: +49 178 5446981
+mail: maximilian.koenig@private-mail.example.com
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.02
+
+dn: uid=hans.singh,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hans.singh
+cn: Hans Singh
+givenName: Hans
+sn: Singh
+mail: hans.singh@demo.ldapilot.local
+title: Recruiter
+ou: HR
+employeeNumber: EMP00118
+employeeType: HR
+departmentNumber: HR
+displayName: Hans Singh
+initials: HS
+userPassword: hans.singh
+telephoneNumber: +49 30 2382242
+manager: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Leopoldstrasse 99
+l: Hannover
+st: Germany
+postalCode: 30159
+roomNumber: 5.32
+
+dn: uid=martina.krause,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: martina.krause
+cn: Martina Krause
+givenName: Martina
+sn: Krause
+mail: martina.krause@demo.ldapilot.local
+title: Compensation Analyst
+ou: HR
+employeeNumber: EMP00119
+employeeType: HR
+departmentNumber: HR
+displayName: Martina Krause
+initials: MK
+userPassword: martina.krause
+telephoneNumber: +49 211 3470616
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=anna.hofmann,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: anna.hofmann
+cn: Anna Hofmann
+givenName: Anna
+sn: Hofmann
+mail: anna.hofmann@demo.ldapilot.local
+title: Compensation Analyst
+ou: HR
+employeeNumber: EMP00120
+employeeType: HR
+departmentNumber: HR
+displayName: Anna Hofmann
+initials: AH
+userPassword: anna.hofmann
+telephoneNumber: +49 221 4565916
+description: Compensation Analyst in the HR department
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=piotr.winter,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: piotr.winter
+cn: Piotr Winter
+givenName: Piotr
+sn: Winter
+mail: piotr.winter@demo.ldapilot.local
+title: Recruiter
+ou: HR
+employeeNumber: EMP00121
+employeeType: HR
+departmentNumber: HR
+displayName: Piotr Winter
+initials: PW
+userPassword: piotr.winter
+telephoneNumber: +49 40 1778713
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=florian.wolf,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: florian.wolf
+cn: Florian Wolf
+givenName: Florian
+sn: Wolf
+mail: florian.wolf@demo.ldapilot.local
+title: Talent Acquisition Lead
+ou: HR
+employeeNumber: EMP00122
+employeeType: HR
+departmentNumber: HR
+displayName: Florian Wolf
+initials: FW
+userPassword: florian.wolf
+telephoneNumber: +49 221 5277001
+manager: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.04
+
+dn: uid=peter.sato,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: peter.sato
+cn: Peter Sato
+givenName: Peter
+sn: Sato
+mail: peter.sato@demo.ldapilot.local
+title: HR Business Partner
+ou: HR
+employeeNumber: EMP00123
+employeeType: HR
+departmentNumber: HR
+displayName: Peter Sato
+initials: PS
+userPassword: peter.sato
+telephoneNumber: +49 69 9239311
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=sebastian.jung,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sebastian.jung
+cn: Sebastian Jung
+givenName: Sebastian
+sn: Jung
+mail: sebastian.jung@demo.ldapilot.local
+title: HR Manager
+ou: HR
+employeeNumber: EMP00124
+employeeType: HR
+departmentNumber: HR
+displayName: Sebastian Jung
+initials: SJ
+userPassword: sebastian.jung
+telephoneNumber: +49 221 8416681
+manager: uid=patrick.fischer,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=sandra.simon,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sandra.simon
+cn: Sandra Simon
+givenName: Sandra
+sn: Simon
+mail: sandra.simon@demo.ldapilot.local
+title: People Operations Manager
+ou: HR
+employeeNumber: EMP00125
+employeeType: HR
+departmentNumber: HR
+displayName: Sandra Simon
+initials: SS
+userPassword: sandra.simon
+telephoneNumber: +49 221 3013410
+mobile: +49 171 0170734
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=klaus.koehler2,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: klaus.koehler2
+cn: Klaus Koehler
+givenName: Klaus
+sn: Koehler
+mail: klaus.koehler2@demo.ldapilot.local
+title: IT Security Analyst
+ou: IT
+employeeNumber: EMP00126
+employeeType: IT
+departmentNumber: IT
+displayName: Klaus Koehler
+initials: KK
+userPassword: klaus.koehler2
+telephoneNumber: +49 40 6543292
+mail: klaus.koehler@private-mail.example.com
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=amir.wagner,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: amir.wagner
+cn: Amir Wagner
+givenName: Amir
+sn: Wagner
+mail: amir.wagner@demo.ldapilot.local
+title: Cloud Architect
+ou: IT
+employeeNumber: EMP00127
+employeeType: IT
+departmentNumber: IT
+displayName: Amir Wagner
+initials: AW
+userPassword: amir.wagner
+telephoneNumber: +49 40 8360475
+mobile: +49 178 2741993
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Hauptstrasse 45
+l: Hamburg
+st: Germany
+postalCode: 20095
+uidNumber: 10031
+gidNumber: 10031
+homeDirectory: /home/amir.wagner
+loginShell: /bin/bash
+gecos: Amir Wagner
+
+dn: uid=michael.simon,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: michael.simon
+cn: Michael Simon
+givenName: Michael
+sn: Simon
+mail: michael.simon@demo.ldapilot.local
+title: IT Support Specialist
+ou: IT
+employeeNumber: EMP00128
+employeeType: IT
+departmentNumber: IT
+displayName: Michael Simon
+initials: MS
+userPassword: michael.simon
+telephoneNumber: +49 30 1807753
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10032
+gidNumber: 10032
+homeDirectory: /home/michael.simon
+loginShell: /bin/sh
+gecos: Michael Simon
+
+dn: uid=anja.simon,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: anja.simon
+cn: Anja Simon
+givenName: Anja
+sn: Simon
+mail: anja.simon@demo.ldapilot.local
+title: IT Security Analyst
+ou: IT
+employeeNumber: EMP00129
+employeeType: IT
+departmentNumber: IT
+displayName: Anja Simon
+initials: AS
+userPassword: anja.simon
+telephoneNumber: +49 30 5648961
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 1.22
+uidNumber: 10033
+gidNumber: 10033
+homeDirectory: /home/anja.simon
+loginShell: /bin/sh
+gecos: Anja Simon
+
+dn: uid=david.hoffmann,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: david.hoffmann
+cn: David Hoffmann
+givenName: David
+sn: Hoffmann
+mail: david.hoffmann@demo.ldapilot.local
+title: IT Manager
+ou: IT
+employeeNumber: EMP00130
+employeeType: IT
+departmentNumber: IT
+displayName: David Hoffmann
+initials: DH
+userPassword: david.hoffmann
+telephoneNumber: +49 89 1856351
+mobile: +49 172 2812162
+mail: david.hoffmann@private-mail.example.com
+description: IT Manager in the IT department
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10034
+gidNumber: 10034
+homeDirectory: /home/david.hoffmann
+loginShell: /bin/zsh
+gecos: David Hoffmann
+
+dn: uid=anja.lang,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: anja.lang
+cn: Anja Lang
+givenName: Anja
+sn: Lang
+mail: anja.lang@demo.ldapilot.local
+title: IT Manager
+ou: IT
+employeeNumber: EMP00131
+employeeType: IT
+departmentNumber: IT
+displayName: Anja Lang
+initials: AL
+userPassword: anja.lang
+telephoneNumber: +49 221 3649148
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10035
+gidNumber: 10035
+homeDirectory: /home/anja.lang
+loginShell: /bin/zsh
+gecos: Anja Lang
+
+dn: uid=viktor.hoffmann,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: viktor.hoffmann
+cn: Viktor Hoffmann
+givenName: Viktor
+sn: Hoffmann
+mail: viktor.hoffmann@demo.ldapilot.local
+title: System Administrator
+ou: IT
+employeeNumber: EMP00132
+employeeType: IT
+departmentNumber: IT
+displayName: Viktor Hoffmann
+initials: VH
+userPassword: viktor.hoffmann
+telephoneNumber: +49 30 7743199
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Berliner Allee 89
+l: Frankfurt
+st: Germany
+postalCode: 60311
+
+dn: uid=melanie.rossi,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: melanie.rossi
+cn: Melanie Rossi
+givenName: Melanie
+sn: Rossi
+mail: melanie.rossi@demo.ldapilot.local
+title: IT Support Specialist
+ou: IT
+employeeNumber: EMP00133
+employeeType: IT
+departmentNumber: IT
+displayName: Melanie Rossi
+initials: MR
+userPassword: melanie.rossi
+telephoneNumber: +49 89 7115183
+mobile: +49 171 1858148
+description: IT Support Specialist in the IT department
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=martina.hartmann,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: martina.hartmann
+cn: Martina Hartmann
+givenName: Martina
+sn: Hartmann
+mail: martina.hartmann@demo.ldapilot.local
+title: Senior System Administrator
+ou: IT
+employeeNumber: EMP00134
+employeeType: IT
+departmentNumber: IT
+displayName: Martina Hartmann
+initials: MH
+userPassword: martina.hartmann
+telephoneNumber: +49 30 3631488
+description: Senior System Administrator in the IT department
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=nicole.mayer,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: nicole.mayer
+cn: Nicole Mayer
+givenName: Nicole
+sn: Mayer
+mail: nicole.mayer@demo.ldapilot.local
+title: Identity & Access Manager
+ou: IT
+employeeNumber: EMP00135
+employeeType: IT
+departmentNumber: IT
+displayName: Nicole Mayer
+initials: NM
+userPassword: nicole.mayer
+telephoneNumber: +49 69 2086285
+manager: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10036
+gidNumber: 10036
+homeDirectory: /home/nicole.mayer
+loginShell: /bin/sh
+gecos: Nicole Mayer
+
+dn: uid=frank.maier,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: frank.maier
+cn: Frank Maier
+givenName: Frank
+sn: Maier
+mail: frank.maier@demo.ldapilot.local
+title: Identity & Access Manager
+ou: IT
+employeeNumber: EMP00136
+employeeType: IT
+departmentNumber: IT
+displayName: Frank Maier
+initials: FM
+userPassword: frank.maier
+telephoneNumber: +49 711 8145166
+description: Identity & Access Manager in the IT department
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.24
+
+dn: uid=christine.werner,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: christine.werner
+cn: Christine Werner
+givenName: Christine
+sn: Werner
+mail: christine.werner@demo.ldapilot.local
+title: Database Administrator
+ou: IT
+employeeNumber: EMP00137
+employeeType: IT
+departmentNumber: IT
+displayName: Christine Werner
+initials: CW
+userPassword: christine.werner
+telephoneNumber: +49 211 5216275
+mail: christine.werner@private-mail.example.com
+manager: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10037
+gidNumber: 10037
+homeDirectory: /home/christine.werner
+loginShell: /bin/sh
+gecos: Christine Werner
+
+dn: uid=sebastian.hahn,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: sebastian.hahn
+cn: Sebastian Hahn
+givenName: Sebastian
+sn: Hahn
+mail: sebastian.hahn@demo.ldapilot.local
+title: IT Support Specialist
+ou: IT
+employeeNumber: EMP00138
+employeeType: IT
+departmentNumber: IT
+displayName: Sebastian Hahn
+initials: SH
+userPassword: sebastian.hahn
+telephoneNumber: +49 211 3584949
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.27
+uidNumber: 10038
+gidNumber: 10038
+homeDirectory: /home/sebastian.hahn
+loginShell: /bin/sh
+gecos: Sebastian Hahn
+
+dn: uid=yuki.ludwig,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: yuki.ludwig
+cn: Yuki Ludwig
+givenName: Yuki
+sn: Ludwig
+mail: yuki.ludwig@demo.ldapilot.local
+title: Cloud Architect
+ou: IT
+employeeNumber: EMP00139
+employeeType: IT
+departmentNumber: IT
+displayName: Yuki Ludwig
+initials: YL
+userPassword: yuki.ludwig
+telephoneNumber: +49 511 7763937
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=amir.kaiser,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: amir.kaiser
+cn: Amir Kaiser
+givenName: Amir
+sn: Kaiser
+mail: amir.kaiser@demo.ldapilot.local
+title: Infrastructure Engineer
+ou: IT
+employeeNumber: EMP00140
+employeeType: IT
+departmentNumber: IT
+displayName: Amir Kaiser
+initials: AK
+userPassword: amir.kaiser
+telephoneNumber: +49 30 2556573
+mobile: +49 171 5372197
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=stefan.schulze,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: stefan.schulze
+cn: Stefan Schulze
+givenName: Stefan
+sn: Schulze
+mail: stefan.schulze@demo.ldapilot.local
+title: Cloud Architect
+ou: IT
+employeeNumber: EMP00141
+employeeType: IT
+departmentNumber: IT
+displayName: Stefan Schulze
+initials: SS
+userPassword: stefan.schulze
+telephoneNumber: +49 211 9625557
+mobile: +49 178 1754292
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+uidNumber: 10039
+gidNumber: 10039
+homeDirectory: /home/stefan.schulze
+loginShell: /bin/sh
+gecos: Stefan Schulze
+
+dn: uid=melanie.guenther,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: melanie.guenther
+cn: Melanie Guenther
+givenName: Melanie
+sn: Guenther
+mail: melanie.guenther@demo.ldapilot.local
+title: Database Administrator
+ou: IT
+employeeNumber: EMP00142
+employeeType: IT
+departmentNumber: IT
+displayName: Melanie Guenther
+initials: MG
+userPassword: melanie.guenther
+telephoneNumber: +49 89 0604249
+mobile: +49 171 8092388
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.28
+
+dn: uid=alexander.hahn,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: alexander.hahn
+cn: Alexander Hahn
+givenName: Alexander
+sn: Hahn
+mail: alexander.hahn@demo.ldapilot.local
+title: IT Support Specialist
+ou: IT
+employeeNumber: EMP00143
+employeeType: IT
+departmentNumber: IT
+displayName: Alexander Hahn
+initials: AH
+userPassword: alexander.hahn
+telephoneNumber: +49 221 7349044
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Friedrichstrasse 123
+l: Berlin
+st: Germany
+postalCode: 10117
+roomNumber: 1.39
+
+dn: uid=frank.schulz,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: frank.schulz
+cn: Frank Schulz
+givenName: Frank
+sn: Schulz
+mail: frank.schulz@demo.ldapilot.local
+title: IT Security Analyst
+ou: IT
+employeeNumber: EMP00144
+employeeType: IT
+departmentNumber: IT
+displayName: Frank Schulz
+initials: FS
+userPassword: frank.schulz
+telephoneNumber: +49 711 4822465
+mail: frank.schulz@private-mail.example.com
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=yuki.tanaka,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: yuki.tanaka
+cn: Yuki Tanaka
+givenName: Yuki
+sn: Tanaka
+mail: yuki.tanaka@demo.ldapilot.local
+title: IT Manager
+ou: IT
+employeeNumber: EMP00145
+employeeType: IT
+departmentNumber: IT
+displayName: Yuki Tanaka
+initials: YT
+userPassword: yuki.tanaka
+telephoneNumber: +49 221 0538303
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 3.46
+
+dn: uid=frank.schuster,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: frank.schuster
+cn: Frank Schuster
+givenName: Frank
+sn: Schuster
+mail: frank.schuster@demo.ldapilot.local
+title: Senior System Administrator
+ou: IT
+employeeNumber: EMP00146
+employeeType: IT
+departmentNumber: IT
+displayName: Frank Schuster
+initials: FS
+userPassword: frank.schuster
+telephoneNumber: +49 211 1120999
+mobile: +49 170 7111876
+mail: frank.schuster@private-mail.example.com
+manager: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=felix.koenig,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: felix.koenig
+cn: Felix Koenig
+givenName: Felix
+sn: Koenig
+mail: felix.koenig@demo.ldapilot.local
+title: IT Manager
+ou: IT
+employeeNumber: EMP00147
+employeeType: IT
+departmentNumber: IT
+displayName: Felix Koenig
+initials: FK
+userPassword: felix.koenig
+telephoneNumber: +49 40 0940438
+description: IT Manager in the IT department
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=philipp.lopez,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: philipp.lopez
+cn: Philipp Lopez
+givenName: Philipp
+sn: Lopez
+mail: philipp.lopez@demo.ldapilot.local
+title: Senior System Administrator
+ou: IT
+employeeNumber: EMP00148
+employeeType: IT
+departmentNumber: IT
+displayName: Philipp Lopez
+initials: PL
+userPassword: philipp.lopez
+telephoneNumber: +49 211 3530439
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=stefanie.mueller,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: stefanie.mueller
+cn: Stefanie Mueller
+givenName: Stefanie
+sn: Mueller
+mail: stefanie.mueller@demo.ldapilot.local
+title: Senior System Administrator
+ou: IT
+employeeNumber: EMP00149
+employeeType: IT
+departmentNumber: IT
+displayName: Stefanie Mueller
+initials: SM
+userPassword: stefanie.mueller
+telephoneNumber: +49 511 8354584
+mobile: +49 179 3109058
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Bahnhofstrasse 7
+l: Munich
+st: Germany
+postalCode: 80331
+
+dn: uid=yuki.mueller,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: yuki.mueller
+cn: Yuki Mueller
+givenName: Yuki
+sn: Mueller
+mail: yuki.mueller@demo.ldapilot.local
+title: Cloud Architect
+ou: IT
+employeeNumber: EMP00150
+employeeType: IT
+departmentNumber: IT
+displayName: Yuki Mueller
+initials: YM
+userPassword: yuki.mueller
+telephoneNumber: +49 221 6360242
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=lukas.lange,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: lukas.lange
+cn: Lukas Lange
+givenName: Lukas
+sn: Lange
+mail: lukas.lange@demo.ldapilot.local
+title: Endpoint Management Specialist
+ou: IT
+employeeNumber: EMP00151
+employeeType: IT
+departmentNumber: IT
+displayName: Lukas Lange
+initials: LL
+userPassword: lukas.lange
+telephoneNumber: +49 711 4572675
+mobile: +49 172 2955468
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 1.24
+
+dn: uid=christian.braun,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: christian.braun
+cn: Christian Braun
+givenName: Christian
+sn: Braun
+mail: christian.braun@demo.ldapilot.local
+title: Network Engineer
+ou: IT
+employeeNumber: EMP00152
+employeeType: IT
+departmentNumber: IT
+displayName: Christian Braun
+initials: CB
+userPassword: christian.braun
+telephoneNumber: +49 511 5813845
+mail: christian.braun@private-mail.example.com
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.27
+
+dn: uid=philipp.lehmann,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: philipp.lehmann
+cn: Philipp Lehmann
+givenName: Philipp
+sn: Lehmann
+mail: philipp.lehmann@demo.ldapilot.local
+title: Infrastructure Engineer
+ou: IT
+employeeNumber: EMP00153
+employeeType: IT
+departmentNumber: IT
+displayName: Philipp Lehmann
+initials: PL
+userPassword: philipp.lehmann
+telephoneNumber: +49 69 3814917
+mobile: +49 179 2514242
+mail: philipp.lehmann@private-mail.example.com
+manager: uid=susanne.fuchs,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.25
+
+dn: uid=giuseppe.franke,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: giuseppe.franke
+cn: Giuseppe Franke
+givenName: Giuseppe
+sn: Franke
+mail: giuseppe.franke@demo.ldapilot.local
+title: Endpoint Management Specialist
+ou: IT
+employeeNumber: EMP00154
+employeeType: IT
+departmentNumber: IT
+displayName: Giuseppe Franke
+initials: GF
+userPassword: giuseppe.franke
+telephoneNumber: +49 211 9002965
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=eva.weber,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: eva.weber
+cn: Eva Weber
+givenName: Eva
+sn: Weber
+mail: eva.weber@demo.ldapilot.local
+title: System Administrator
+ou: IT
+employeeNumber: EMP00155
+employeeType: IT
+departmentNumber: IT
+displayName: Eva Weber
+initials: EW
+userPassword: eva.weber
+telephoneNumber: +49 89 8553784
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Leopoldstrasse 99
+l: Hannover
+st: Germany
+postalCode: 30159
+
+dn: uid=lukas.walter,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: lukas.walter
+cn: Lukas Walter
+givenName: Lukas
+sn: Walter
+mail: lukas.walter@demo.ldapilot.local
+title: Help Desk Technician
+ou: IT
+employeeNumber: EMP00156
+employeeType: IT
+departmentNumber: IT
+displayName: Lukas Walter
+initials: LW
+userPassword: lukas.walter
+telephoneNumber: +49 511 1796362
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=sebastian.hoffmann,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sebastian.hoffmann
+cn: Sebastian Hoffmann
+givenName: Sebastian
+sn: Hoffmann
+mail: sebastian.hoffmann@demo.ldapilot.local
+title: IT Support Specialist
+ou: IT
+employeeNumber: EMP00157
+employeeType: IT
+departmentNumber: IT
+displayName: Sebastian Hoffmann
+initials: SH
+userPassword: sebastian.hoffmann
+telephoneNumber: +49 221 9921847
+mail: sebastian.hoffmann@private-mail.example.com
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=hiroshi.meyer,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hiroshi.meyer
+cn: Hiroshi Meyer
+givenName: Hiroshi
+sn: Meyer
+mail: hiroshi.meyer@demo.ldapilot.local
+title: Cloud Architect
+ou: IT
+employeeNumber: EMP00158
+employeeType: IT
+departmentNumber: IT
+displayName: Hiroshi Meyer
+initials: HM
+userPassword: hiroshi.meyer
+telephoneNumber: +49 30 3075959
+manager: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=natalia.weiss,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: natalia.weiss
+cn: Natalia Weiss
+givenName: Natalia
+sn: Weiss
+mail: natalia.weiss@demo.ldapilot.local
+title: Endpoint Management Specialist
+ou: IT
+employeeNumber: EMP00159
+employeeType: IT
+departmentNumber: IT
+displayName: Natalia Weiss
+initials: NW
+userPassword: natalia.weiss
+telephoneNumber: +49 511 7825799
+mobile: +49 176 3215767
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=marco.schuster,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: marco.schuster
+cn: Marco Schuster
+givenName: Marco
+sn: Schuster
+mail: marco.schuster@demo.ldapilot.local
+title: Cloud Architect
+ou: IT
+employeeNumber: EMP00160
+employeeType: IT
+departmentNumber: IT
+displayName: Marco Schuster
+initials: MS
+userPassword: marco.schuster
+telephoneNumber: +49 89 4517077
+mobile: +49 176 8164831
+description: Cloud Architect in the IT department
+manager: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Maximilianstrasse 56
+l: Duesseldorf
+st: Germany
+postalCode: 40213
+
+dn: uid=tim.roth,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: tim.roth
+cn: Tim Roth
+givenName: Tim
+sn: Roth
+mail: tim.roth@demo.ldapilot.local
+title: Auditor
+ou: Finance
+employeeNumber: EMP00161
+employeeType: Finance
+departmentNumber: Finance
+displayName: Tim Roth
+initials: TR
+userPassword: tim.roth
+telephoneNumber: +49 221 2759783
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Friedrichstrasse 123
+l: Berlin
+st: Germany
+postalCode: 10117
+
+dn: uid=carlos.hahn,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: carlos.hahn
+cn: Carlos Hahn
+givenName: Carlos
+sn: Hahn
+mail: carlos.hahn@demo.ldapilot.local
+title: Financial Analyst
+ou: Finance
+employeeNumber: EMP00162
+employeeType: Finance
+departmentNumber: Finance
+displayName: Carlos Hahn
+initials: CH
+userPassword: carlos.hahn
+telephoneNumber: +49 69 0772100
+manager: uid=leila.schulz,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=lukas.lopez,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: lukas.lopez
+cn: Lukas Lopez
+givenName: Lukas
+sn: Lopez
+mail: lukas.lopez@demo.ldapilot.local
+title: Financial Controller
+ou: Finance
+employeeNumber: EMP00163
+employeeType: Finance
+departmentNumber: Finance
+displayName: Lukas Lopez
+initials: LL
+userPassword: lukas.lopez
+telephoneNumber: +49 511 8833962
+mobile: +49 170 4558223
+description: Financial Controller in the Finance department
+manager: uid=maximilian.schulze,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 4.28
+
+dn: uid=matthias.lange,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: matthias.lange
+cn: Matthias Lange
+givenName: Matthias
+sn: Lange
+mail: matthias.lange@demo.ldapilot.local
+title: Payroll Manager
+ou: Finance
+employeeNumber: EMP00164
+employeeType: Finance
+departmentNumber: Finance
+displayName: Matthias Lange
+initials: ML
+userPassword: matthias.lange
+telephoneNumber: +49 30 1500700
+description: Payroll Manager in the Finance department
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=martina.meyer,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: martina.meyer
+cn: Martina Meyer
+givenName: Martina
+sn: Meyer
+mail: martina.meyer@demo.ldapilot.local
+title: Financial Analyst
+ou: Finance
+employeeNumber: EMP00165
+employeeType: Finance
+departmentNumber: Finance
+displayName: Martina Meyer
+initials: MM
+userPassword: martina.meyer
+telephoneNumber: +49 211 5669005
+mobile: +49 170 9028001
+manager: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Berliner Allee 89
+l: Frankfurt
+st: Germany
+postalCode: 60311
+
+dn: uid=viktor.schneider,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: viktor.schneider
+cn: Viktor Schneider
+givenName: Viktor
+sn: Schneider
+mail: viktor.schneider@demo.ldapilot.local
+title: Senior Accountant
+ou: Finance
+employeeNumber: EMP00166
+employeeType: Finance
+departmentNumber: Finance
+displayName: Viktor Schneider
+initials: VS
+userPassword: viktor.schneider
+telephoneNumber: +49 211 5481729
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 4.35
+
+dn: uid=bernd.krause,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: bernd.krause
+cn: Bernd Krause
+givenName: Bernd
+sn: Krause
+mail: bernd.krause@demo.ldapilot.local
+title: Budget Analyst
+ou: Finance
+employeeNumber: EMP00167
+employeeType: Finance
+departmentNumber: Finance
+displayName: Bernd Krause
+initials: BK
+userPassword: bernd.krause
+telephoneNumber: +49 711 9452790
+manager: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 4.38
+
+dn: uid=nicole.lopez,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: nicole.lopez
+cn: Nicole Lopez
+givenName: Nicole
+sn: Lopez
+mail: nicole.lopez@demo.ldapilot.local
+title: Financial Analyst
+ou: Finance
+employeeNumber: EMP00168
+employeeType: Finance
+departmentNumber: Finance
+displayName: Nicole Lopez
+initials: NL
+userPassword: nicole.lopez
+telephoneNumber: +49 69 6956867
+mobile: +49 179 6552013
+description: Financial Analyst in the Finance department
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=petra.andersson,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: petra.andersson
+cn: Petra Andersson
+givenName: Petra
+sn: Andersson
+mail: petra.andersson@demo.ldapilot.local
+title: Budget Analyst
+ou: Finance
+employeeNumber: EMP00169
+employeeType: Finance
+departmentNumber: Finance
+displayName: Petra Andersson
+initials: PA
+userPassword: petra.andersson
+telephoneNumber: +49 89 0602062
+mobile: +49 172 2415379
+mail: petra.andersson@private-mail.example.com
+manager: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 2.30
+
+dn: uid=tobias.ivanov,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: tobias.ivanov
+cn: Tobias Ivanov
+givenName: Tobias
+sn: Ivanov
+mail: tobias.ivanov@demo.ldapilot.local
+title: Treasury Analyst
+ou: Finance
+employeeNumber: EMP00170
+employeeType: Finance
+departmentNumber: Finance
+displayName: Tobias Ivanov
+initials: TI
+userPassword: tobias.ivanov
+telephoneNumber: +49 511 8448870
+mail: tobias.ivanov@private-mail.example.com
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 4.07
+
+dn: uid=markus.krause,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: markus.krause
+cn: Markus Krause
+givenName: Markus
+sn: Krause
+mail: markus.krause@demo.ldapilot.local
+title: Auditor
+ou: Finance
+employeeNumber: EMP00171
+employeeType: Finance
+departmentNumber: Finance
+displayName: Markus Krause
+initials: MK
+userPassword: markus.krause
+telephoneNumber: +49 711 3265800
+manager: uid=patrick.fischer,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=christian.werner,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: christian.werner
+cn: Christian Werner
+givenName: Christian
+sn: Werner
+mail: christian.werner@demo.ldapilot.local
+title: Treasury Analyst
+ou: Finance
+employeeNumber: EMP00172
+employeeType: Finance
+departmentNumber: Finance
+displayName: Christian Werner
+initials: CW
+userPassword: christian.werner
+telephoneNumber: +49 40 2365687
+mobile: +49 177 1391251
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=frank.klein,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: frank.klein
+cn: Frank Klein
+givenName: Frank
+sn: Klein
+mail: frank.klein@demo.ldapilot.local
+title: Accounts Payable Specialist
+ou: Finance
+employeeNumber: EMP00173
+employeeType: Finance
+departmentNumber: Finance
+displayName: Frank Klein
+initials: FK
+userPassword: frank.klein
+telephoneNumber: +49 69 6498744
+mobile: +49 179 2649412
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Marienplatz 3
+l: Stuttgart
+st: Germany
+postalCode: 70173
+roomNumber: 2.42
+
+dn: uid=martina.weiss,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: martina.weiss
+cn: Martina Weiss
+givenName: Martina
+sn: Weiss
+mail: martina.weiss@demo.ldapilot.local
+title: Budget Analyst
+ou: Finance
+employeeNumber: EMP00174
+employeeType: Finance
+departmentNumber: Finance
+displayName: Martina Weiss
+initials: MW
+userPassword: martina.weiss
+telephoneNumber: +49 711 6404650
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=jens.mueller,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: jens.mueller
+cn: Jens Mueller
+givenName: Jens
+sn: Mueller
+mail: jens.mueller@demo.ldapilot.local
+title: Financial Controller
+ou: Finance
+employeeNumber: EMP00175
+employeeType: Finance
+departmentNumber: Finance
+displayName: Jens Mueller
+initials: JM
+userPassword: jens.mueller
+telephoneNumber: +49 69 2692128
+mail: jens.mueller@private-mail.example.com
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 1.21
+
+dn: uid=nina.simon,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: nina.simon
+cn: Nina Simon
+givenName: Nina
+sn: Simon
+mail: nina.simon@demo.ldapilot.local
+title: Financial Controller
+ou: Finance
+employeeNumber: EMP00176
+employeeType: Finance
+departmentNumber: Finance
+displayName: Nina Simon
+initials: NS
+userPassword: nina.simon
+telephoneNumber: +49 221 9230769
+mobile: +49 175 2984123
+description: Financial Controller in the Finance department
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=bernd.franke,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: bernd.franke
+cn: Bernd Franke
+givenName: Bernd
+sn: Franke
+mail: bernd.franke@demo.ldapilot.local
+title: Financial Analyst
+ou: Finance
+employeeNumber: EMP00177
+employeeType: Finance
+departmentNumber: Finance
+displayName: Bernd Franke
+initials: BF
+userPassword: bernd.franke
+telephoneNumber: +49 69 3641735
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=melanie.schulz,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: melanie.schulz
+cn: Melanie Schulz
+givenName: Melanie
+sn: Schulz
+mail: melanie.schulz@demo.ldapilot.local
+title: Financial Controller
+ou: Finance
+employeeNumber: EMP00178
+employeeType: Finance
+departmentNumber: Finance
+displayName: Melanie Schulz
+initials: MS
+userPassword: melanie.schulz
+telephoneNumber: +49 89 4602192
+mobile: +49 179 6611373
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Marienplatz 3
+l: Stuttgart
+st: Germany
+postalCode: 70173
+
+dn: uid=hiroshi.schmitz,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hiroshi.schmitz
+cn: Hiroshi Schmitz
+givenName: Hiroshi
+sn: Schmitz
+mail: hiroshi.schmitz@demo.ldapilot.local
+title: Budget Analyst
+ou: Finance
+employeeNumber: EMP00179
+employeeType: Finance
+departmentNumber: Finance
+displayName: Hiroshi Schmitz
+initials: HS
+userPassword: hiroshi.schmitz
+telephoneNumber: +49 711 9423657
+mobile: +49 171 1657318
+manager: uid=thomas.wolf,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=sofia.schroeder,ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: sofia.schroeder
+cn: Sofia Schroeder
+givenName: Sofia
+sn: Schroeder
+mail: sofia.schroeder@demo.ldapilot.local
+title: Auditor
+ou: Finance
+employeeNumber: EMP00180
+employeeType: Finance
+departmentNumber: Finance
+displayName: Sofia Schroeder
+initials: SS
+userPassword: sofia.schroeder
+telephoneNumber: +49 221 1427281
+mobile: +49 171 5761449
+description: Auditor in the Finance department
+manager: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=raj.friedrich,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: raj.friedrich
+cn: Raj Friedrich
+givenName: Raj
+sn: Friedrich
+mail: raj.friedrich@demo.ldapilot.local
+title: Interim Manager
+ou: Contractors
+employeeNumber: EMP00181
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Raj Friedrich
+initials: RF
+userPassword: raj.friedrich
+telephoneNumber: +49 89 8914107
+mobile: +49 177 2255905
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=omar.rossi,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: omar.rossi
+cn: Omar Rossi
+givenName: Omar
+sn: Rossi
+mail: omar.rossi@demo.ldapilot.local
+title: Freelance Designer
+ou: Contractors
+employeeNumber: EMP00182
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Omar Rossi
+initials: OR
+userPassword: omar.rossi
+telephoneNumber: +49 69 5854768
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=julia.schroeder,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: julia.schroeder
+cn: Julia Schroeder
+givenName: Julia
+sn: Schroeder
+mail: julia.schroeder@demo.ldapilot.local
+title: Interim Manager
+ou: Contractors
+employeeNumber: EMP00183
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Julia Schroeder
+initials: JS
+userPassword: julia.schroeder
+telephoneNumber: +49 69 8807909
+mobile: +49 178 2408260
+manager: uid=sebastian.schuster,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=susanne.schmitt,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: susanne.schmitt
+cn: Susanne Schmitt
+givenName: Susanne
+sn: Schmitt
+mail: susanne.schmitt@demo.ldapilot.local
+title: External Auditor
+ou: Contractors
+employeeNumber: EMP00184
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Susanne Schmitt
+initials: SS
+userPassword: susanne.schmitt
+telephoneNumber: +49 30 4654015
+mobile: +49 172 8035155
+mail: susanne.schmitt@private-mail.example.com
+manager: uid=markus.ali,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=michael.lange,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: michael.lange
+cn: Michael Lange
+givenName: Michael
+sn: Lange
+mail: michael.lange@demo.ldapilot.local
+title: External Auditor
+ou: Contractors
+employeeNumber: EMP00185
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Michael Lange
+initials: ML
+userPassword: michael.lange
+telephoneNumber: +49 211 2770319
+description: External Auditor in the Contractors department
+manager: uid=patrick.fischer,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.24
+
+dn: uid=monika.koenig,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: monika.koenig
+cn: Monika Koenig
+givenName: Monika
+sn: Koenig
+mail: monika.koenig@demo.ldapilot.local
+title: Contract Engineer
+ou: Contractors
+employeeNumber: EMP00186
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Monika Koenig
+initials: MK
+userPassword: monika.koenig
+telephoneNumber: +49 511 1892327
+mobile: +49 179 2051547
+manager: uid=martina.zimmermann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=matthias.schmid2,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: matthias.schmid2
+cn: Matthias Schmid
+givenName: Matthias
+sn: Schmid
+mail: matthias.schmid2@demo.ldapilot.local
+title: Contract DBA
+ou: Contractors
+employeeNumber: EMP00187
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Matthias Schmid
+initials: MS
+userPassword: matthias.schmid2
+telephoneNumber: +49 30 1384003
+mobile: +49 171 9463510
+manager: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=markus.baumann,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: markus.baumann
+cn: Markus Baumann
+givenName: Markus
+sn: Baumann
+mail: markus.baumann@demo.ldapilot.local
+title: Security Consultant
+ou: Contractors
+employeeNumber: EMP00188
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Markus Baumann
+initials: MB
+userPassword: markus.baumann
+telephoneNumber: +49 30 2183523
+mail: markus.baumann@private-mail.example.com
+manager: uid=bernd.wagner,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=franziska.schmid,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: franziska.schmid
+cn: Franziska Schmid
+givenName: Franziska
+sn: Schmid
+mail: franziska.schmid@demo.ldapilot.local
+title: IT Consultant
+ou: Contractors
+employeeNumber: EMP00189
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Franziska Schmid
+initials: FS
+userPassword: franziska.schmid
+telephoneNumber: +49 30 4056509
+mail: franziska.schmid@private-mail.example.com
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 1.41
+
+dn: uid=heike.singh,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: heike.singh
+cn: Heike Singh
+givenName: Heike
+sn: Singh
+mail: heike.singh@demo.ldapilot.local
+title: Contract DBA
+ou: Contractors
+employeeNumber: EMP00190
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Heike Singh
+initials: HS
+userPassword: heike.singh
+telephoneNumber: +49 40 4572218
+description: Contract DBA in the Contractors department
+manager: uid=patrick.fischer,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 1.22
+
+dn: uid=anna.fuchs,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: anna.fuchs
+cn: Anna Fuchs
+givenName: Anna
+sn: Fuchs
+mail: anna.fuchs@demo.ldapilot.local
+title: Contract DBA
+ou: Contractors
+employeeNumber: EMP00191
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Anna Fuchs
+initials: AF
+userPassword: anna.fuchs
+telephoneNumber: +49 221 1393854
+mobile: +49 178 8370908
+mail: anna.fuchs@private-mail.example.com
+manager: uid=patrick.fischer,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=stefanie.schmidt,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: stefanie.schmidt
+cn: Stefanie Schmidt
+givenName: Stefanie
+sn: Schmidt
+mail: stefanie.schmidt@demo.ldapilot.local
+title: Security Consultant
+ou: Contractors
+employeeNumber: EMP00192
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Stefanie Schmidt
+initials: SS
+userPassword: stefanie.schmidt
+telephoneNumber: +49 30 5626904
+mobile: +49 172 3954087
+description: Security Consultant in the Contractors department
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 5.28
+
+dn: uid=piotr.koch,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: piotr.koch
+cn: Piotr Koch
+givenName: Piotr
+sn: Koch
+mail: piotr.koch@demo.ldapilot.local
+title: Freelance Developer
+ou: Contractors
+employeeNumber: EMP00193
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Piotr Koch
+initials: PK
+userPassword: piotr.koch
+telephoneNumber: +49 30 8248922
+manager: uid=marco.winkler,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Berliner Allee 89
+l: Frankfurt
+st: Germany
+postalCode: 60311
+roomNumber: 5.07
+
+dn: uid=hannah.peters,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hannah.peters
+cn: Hannah Peters
+givenName: Hannah
+sn: Peters
+mail: hannah.peters@demo.ldapilot.local
+title: External Consultant
+ou: Contractors
+employeeNumber: EMP00194
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Hannah Peters
+initials: HP
+userPassword: hannah.peters
+telephoneNumber: +49 89 9380698
+description: External Consultant in the Contractors department
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+postalAddress: Berliner Allee 89
+l: Frankfurt
+st: Germany
+postalCode: 60311
+
+dn: uid=viktor.vogel,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: viktor.vogel
+cn: Viktor Vogel
+givenName: Viktor
+sn: Vogel
+mail: viktor.vogel@demo.ldapilot.local
+title: Freelance Developer
+ou: Contractors
+employeeNumber: EMP00195
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Viktor Vogel
+initials: VV
+userPassword: viktor.vogel
+telephoneNumber: +49 69 1203179
+mail: viktor.vogel@private-mail.example.com
+description: Freelance Developer in the Contractors department
+manager: uid=andreas.hofmann,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=fatima.zimmermann,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: fatima.zimmermann
+cn: Fatima Zimmermann
+givenName: Fatima
+sn: Zimmermann
+mail: fatima.zimmermann@demo.ldapilot.local
+title: Project Contractor
+ou: Contractors
+employeeNumber: EMP00196
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Fatima Zimmermann
+initials: FZ
+userPassword: fatima.zimmermann
+telephoneNumber: +49 511 1857643
+description: Project Contractor in the Contractors department
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 3.29
+
+dn: uid=amir.guenther,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: amir.guenther
+cn: Amir Guenther
+givenName: Amir
+sn: Guenther
+mail: amir.guenther@demo.ldapilot.local
+title: External Consultant
+ou: Contractors
+employeeNumber: EMP00197
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Amir Guenther
+initials: AG
+userPassword: amir.guenther
+telephoneNumber: +49 89 7540146
+mail: amir.guenther@private-mail.example.com
+description: External Consultant in the Contractors department
+manager: uid=klaus.koch2,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=thomas.hahn,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: thomas.hahn
+cn: Thomas Hahn
+givenName: Thomas
+sn: Hahn
+mail: thomas.hahn@demo.ldapilot.local
+title: Contract Engineer
+ou: Contractors
+employeeNumber: EMP00198
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Thomas Hahn
+initials: TH
+userPassword: thomas.hahn
+telephoneNumber: +49 221 7766523
+mobile: +49 172 6951756
+description: Contract Engineer in the Contractors department
+manager: uid=andreas.krueger,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+roomNumber: 4.31
+
+dn: uid=petra.patel,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: petra.patel
+cn: Petra Patel
+givenName: Petra
+sn: Patel
+mail: petra.patel@demo.ldapilot.local
+title: Interim Manager
+ou: Contractors
+employeeNumber: EMP00199
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Petra Patel
+initials: PP
+userPassword: petra.patel
+telephoneNumber: +49 69 5954666
+mail: petra.patel@private-mail.example.com
+manager: uid=stefanie.ludwig,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH
+
+dn: uid=hannah.lange,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: hannah.lange
+cn: Hannah Lange
+givenName: Hannah
+sn: Lange
+mail: hannah.lange@demo.ldapilot.local
+title: External Auditor
+ou: Contractors
+employeeNumber: EMP00200
+employeeType: Contractors
+departmentNumber: Contractors
+displayName: Hannah Lange
+initials: HL
+userPassword: hannah.lange
+telephoneNumber: +49 211 8043733
+mobile: +49 171 6120686
+manager: uid=jens.singh,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+o: LDAPilot Demo GmbH

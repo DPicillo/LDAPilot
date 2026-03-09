@@ -1,0 +1,130 @@
+dn: cn=Meier\, Dr. Hans-Peter,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+cn: Meier, Dr. Hans-Peter
+givenName: Hans-Peter
+sn: Meier
+title: Chief Medical Officer (Advisory)
+mail: hans-peter.meier@demo.ldapilot.local
+uid: hans-peter.meier
+employeeNumber: EMP90001
+userPassword: hans-peter.meier
+o: LDAPilot Demo GmbH
+
+dn: cn=Patrick O'Brien,ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+cn: Patrick O'Brien
+givenName: Patrick
+sn: O'Brien
+title: External Security Consultant
+mail: patrick.obrien@demo.ldapilot.local
+uid: patrick.obrien
+employeeNumber: EMP90002
+userPassword: patrick.obrien
+o: LDAPilot Demo GmbH
+
+dn: cn=C++ Build Service,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: C++ Build Service
+description: Build service for C++ projects
+
+dn: cn=policy-data-governance,ou=Policies,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalRole
+objectClass: top
+cn: policy-data-governance
+description: This entry represents the comprehensive data governance and compliance framework that was established in Q3 2023 to address the increasing regulatory requirements across multiple jurisdictions including GDPR (EU), BDSG (Germany), CCPA (California), and various industry-specific standards such as ISO 27001, SOC 2 Type II, and PCI DSS. The framework encompasses data classification policies (public, internal, confidential, strictly confidential), data retention schedules aligned with legal hold requirements, cross-border data transfer mechanisms including Standard Contractual Clauses (SCCs) and Binding Corporate Rules (BCRs), incident response procedures with defined escalation paths and notification timelines (72 hours for GDPR supervisory authority notification), regular privacy impact assessments (PIAs/DPIAs) for new processing activities, employee training programs on data protection awareness, vendor risk management procedures including data processing agreements (DPAs) review, technical and organizational measures (TOMs) documentation, records of processing activities (ROPA), and annual compliance audits conducted by both internal audit teams and external certified auditors. Contact the Data Protection Officer for questions.
+
+dn: cn=multi-class-test,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: top
+objectClass: applicationProcess
+objectClass: labeledURIObject
+cn: multi-class-test
+description: Test entry with multiple objectClasses
+labeledURI: https://ldapilot.example.com LDAPilot Homepage
+labeledURI: https://docs.ldapilot.example.com Documentation
+
+dn: uid=juergen.muenchen,ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: juergen.muenchen
+cn:: SsO8cmdlbiBNw7xuY2hlbi1HcsO8bndhbGQ=
+givenName:: SsO8cmdlbg==
+sn:: TcO8bmNoZW4tR3LDvG53YWxk
+title:: R2VzY2jDpGZ0c2bDvGhyZXI=
+description:: WnVzdMOkbmRpZyBmw7xyIMOcYmVycHLDvGZ1bmcgZGVyIFF1YWxpdMOkdHNzaWNoZXJ1bmdzbWHDn25haG1lbg==
+mail: juergen.muenchen@demo.ldapilot.local
+employeeNumber: EMP90003
+userPassword: juergen.muenchen
+o: LDAPilot Demo GmbH
+
+dn: uid=baerbel.schoenefeld,ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: baerbel.schoenefeld
+cn:: QsOkcmJlbCBTY2jDtm5lZmVsZA==
+givenName:: QsOkcmJlbA==
+sn:: U2Now7ZuZWZlbGQ=
+title:: TGVpdGVyaW4gZsO8ciDDlmZmZW50bGljaGtlaXRzYXJiZWl0
+mail: baerbel.schoenefeld@demo.ldapilot.local
+employeeNumber: EMP90004
+userPassword: baerbel.schoenefeld
+o: LDAPilot Demo GmbH
+
+dn: cn=strasse-test,ou=Policies,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalRole
+objectClass: top
+cn:: U3RyYcOfZSBUZXN0LUVpbnRyYWc=
+description:: U3RyYcOfZW52ZXJ6ZWljaG5pcyBmw7xyIEZ1w59nw6RuZ2Vyem9uZW4=
+
+dn: uid=photo.test,ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: photo.test
+cn: Photo Test User
+givenName: Photo
+sn: Test
+mail: photo.test@demo.ldapilot.local
+employeeNumber: EMP90005
+userPassword: photo.test
+title: Test User with Photo
+jpegPhoto:: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+Pw==
+o: LDAPilot Demo GmbH
+
+dn: uid=multi.value,ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: inetOrgPerson
+uid: multi.value
+cn: Multi Value Test
+givenName: Multi
+sn: Value
+mail: multi.value@demo.ldapilot.local
+mail: multi.value@secondary.example.com
+mail: multi.value@tertiary.example.com
+telephoneNumber: +49 30 1234567
+telephoneNumber: +49 40 7654321
+telephoneNumber: +49 89 1112233
+mobile: +49 170 1234567
+mobile: +49 171 7654321
+description: User with many multi-valued attributes for testing
+description: This is a second description value
+description: And a third description value for good measure
+employeeNumber: EMP90006
+userPassword: multi.value
+title: Multi-Value Test Engineer
+o: LDAPilot Demo GmbH
+ou: Engineering
+ou: Research
+ou: Special Projects
+
+dn: cn=minimal-entry,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: minimal-entry
+
+dn: cn=web-links,ou=Policies,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalRole
+objectClass: labeledURIObject
+objectClass: top
+cn: web-links
+description: Collection of important web links
+labeledURI: https://intranet.demo.ldapilot.local Company Intranet
+labeledURI: https://wiki.demo.ldapilot.local Internal Wiki
+labeledURI: https://jira.demo.ldapilot.local Issue Tracker
+labeledURI: https://git.demo.ldapilot.local Git Repository
+

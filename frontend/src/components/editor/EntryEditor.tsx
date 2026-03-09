@@ -1,10 +1,13 @@
-import { useState, useMemo } from 'react'
-import { RefreshCw, Loader2, ArrowLeft, ArrowRight, Lock, Copy, Check, ChevronRight, Star, List, Users, FileText } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { RefreshCw, Loader2, ArrowLeft, ArrowRight, Lock, Copy, Check, ChevronRight, Star, List, Users, FileText, Crosshair, ClipboardCopy } from 'lucide-react'
 import { useEditorStore } from '../../stores/editorStore'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useBookmarkStore } from '../../stores/bookmarkStore'
+import { useTreeStore } from '../../stores/treeStore'
+import { useUIStore } from '../../stores/uiStore'
 import { AttributeTable } from './AttributeTable'
 import { MembershipPanel } from './MembershipPanel'
+import { SchemaAttribute } from '../../types/ldap'
 import { cn } from '../../lib/utils'
 import * as wails from '../../lib/wails'
 import { toast } from '../ui/Toast'
@@ -28,18 +31,35 @@ export function EntryEditor({ tabId }: EntryEditorProps) {
 
   const openEntry = useEditorStore((s) => s.openEntry);
   const { addBookmark, removeBookmark, isBookmarked: checkBookmarked } = useBookmarkStore();
+  const locateInTree = useTreeStore((s) => s.locateInTree);
+  const setActivity = useUIStore((s) => s.setActivity);
 
   const [dnCopied, setDnCopied] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'attributes' | 'members'>('attributes');
+  const [activeSubTab, setActiveSubTab] = useState<'attributes' | 'members' | 'ldif'>('attributes');
+  const [schemaAttributes, setSchemaAttributes] = useState<SchemaAttribute[] | undefined>();
+  const [ldifCopied, setLdifCopied] = useState(false);
+
+  // Load schema attributes for tooltip
+  useEffect(() => {
+    if (!tab) return;
+    let cancelled = false;
+    wails.GetSchema(tab.profileId).then(schema => {
+      if (!cancelled && schema?.attributes) {
+        setSchemaAttributes(schema.attributes);
+      }
+    }).catch(() => { /* Schema may not be available */ });
+    return () => { cancelled = true; };
+  }, [tab?.profileId]);
 
   // Split DN into breadcrumb parts: each part is an RDN + full DN to navigate to
+  // Uses lookbehind to avoid splitting on escaped commas (e.g. CN=Doe\, John)
   const breadcrumbs = useMemo(() => {
-    if (!tab) return [];
-    const parts = tab.dn.split(',');
+    if (!tab || !tab.dn) return [];
+    const parts = tab.dn.split(/(?<!\\),/);
     const crumbs: { rdn: string; dn: string }[] = [];
     for (let i = 0; i < parts.length; i++) {
       crumbs.push({
-        rdn: parts[i],
+        rdn: parts[i].replace(/\\,/g, ','),
         dn: parts.slice(i).join(','),
       });
     }
@@ -64,6 +84,14 @@ export function EntryEditor({ tabId }: EntryEditorProps) {
     navigator.clipboard.writeText(tab.dn);
     setDnCopied(true);
     setTimeout(() => setDnCopied(false), 1500);
+  }
+
+  async function handleLocateInTree() {
+    if (!tab) return;
+    setActivity('explorer');
+    const sv = useUIStore.getState().sidebarVisible;
+    if (!sv) useUIStore.getState().toggleSidebar();
+    await locateInTree(tab.profileId, tab.dn);
   }
 
   function copyAsLDIF() {
@@ -177,6 +205,15 @@ export function EntryEditor({ tabId }: EntryEditorProps) {
           ))}
         </div>
 
+        {/* Locate in Tree */}
+        <button
+          onClick={handleLocateInTree}
+          className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground shrink-0"
+          title="Locate in Tree"
+        >
+          <Crosshair size={12} />
+        </button>
+
         {/* Bookmark */}
         <button
           onClick={toggleBookmark}
@@ -210,7 +247,7 @@ export function EntryEditor({ tabId }: EntryEditorProps) {
       </div>
 
       {/* Sub-tab bar */}
-      {entry && hasMembershipAttrs(entry) && (
+      {entry && (
         <div className="flex items-center border-b border-border bg-card/50 px-2 shrink-0">
           <SubTabButton
             label="Attributes"
@@ -218,12 +255,20 @@ export function EntryEditor({ tabId }: EntryEditorProps) {
             active={activeSubTab === 'attributes'}
             onClick={() => setActiveSubTab('attributes')}
           />
+          {hasMembershipAttrs(entry) && (
+            <SubTabButton
+              label="Membership"
+              icon={Users}
+              active={activeSubTab === 'members'}
+              onClick={() => setActiveSubTab('members')}
+              badge={getMemberCount(entry) + getMemberOfCount(entry)}
+            />
+          )}
           <SubTabButton
-            label="Members"
-            icon={Users}
-            active={activeSubTab === 'members'}
-            onClick={() => setActiveSubTab('members')}
-            badge={getMemberCount(entry)}
+            label="LDIF"
+            icon={FileText}
+            active={activeSubTab === 'ldif'}
+            onClick={() => setActiveSubTab('ldif')}
           />
         </div>
       )}
@@ -236,6 +281,14 @@ export function EntryEditor({ tabId }: EntryEditorProps) {
           </div>
         ) : activeSubTab === 'members' && hasMembershipAttrs(entry) ? (
           <MembershipPanel tabId={tabId} />
+        ) : activeSubTab === 'ldif' ? (
+          <LdifViewer dn={tab.dn} entry={entry} ldifCopied={ldifCopied} onCopy={() => {
+            const ldifText = formatEntryAsLDIF(tab.dn, entry);
+            navigator.clipboard.writeText(ldifText);
+            setLdifCopied(true);
+            toast.info('LDIF copied to clipboard');
+            setTimeout(() => setLdifCopied(false), 1500);
+          }} />
         ) : (
           <AttributeTable
             attributes={entry.attributes || []}
@@ -244,6 +297,7 @@ export function EntryEditor({ tabId }: EntryEditorProps) {
             onDelete={handleDelete}
             onNavigateDN={(dn) => openEntry(tab.profileId, dn)}
             readOnly={isReadOnly}
+            schemaAttributes={schemaAttributes}
           />
         )}
       </div>
@@ -288,7 +342,84 @@ function hasMembershipAttrs(entry: { attributes?: { name: string; values: string
 function getMemberCount(entry: { attributes?: { name: string; values: string[] }[] }): number {
   if (!entry.attributes) return 0;
   const memberAttr = entry.attributes.find(a =>
-    ['member', 'uniquemember', 'memberof'].includes(a.name.toLowerCase())
+    ['member', 'uniquemember'].includes(a.name.toLowerCase())
   );
   return memberAttr?.values.length || 0;
+}
+
+function getMemberOfCount(entry: { attributes?: { name: string; values: string[] }[] }): number {
+  if (!entry.attributes) return 0;
+  const memberOfAttr = entry.attributes.find(a => a.name.toLowerCase() === 'memberof');
+  return memberOfAttr?.values.length || 0;
+}
+
+function needsBase64(value: string): boolean {
+  if (!value) return false;
+  if (value.startsWith(' ') || value.startsWith(':') || value.startsWith('<')) return true;
+  if (value.includes('\n') || value.includes('\r') || value.includes('\0')) return true;
+  // Check for non-ASCII characters
+  for (let i = 0; i < value.length; i++) {
+    if (value.charCodeAt(i) > 127) return true;
+  }
+  return false;
+}
+
+function formatEntryAsLDIF(dn: string, entry: { attributes?: { name: string; values: string[]; binary?: boolean }[] }): string {
+  const lines: string[] = [];
+
+  // DN line - may need base64 encoding
+  if (needsBase64(dn)) {
+    lines.push(`dn:: ${btoa(unescape(encodeURIComponent(dn)))}`);
+  } else {
+    lines.push(`dn: ${dn}`);
+  }
+
+  for (const attr of entry.attributes || []) {
+    if (attr.binary) {
+      for (const val of attr.values) {
+        lines.push(`${attr.name}:: ${val}`);
+      }
+    } else {
+      for (const val of attr.values) {
+        if (needsBase64(val)) {
+          lines.push(`${attr.name}:: ${btoa(unescape(encodeURIComponent(val)))}`);
+        } else {
+          lines.push(`${attr.name}: ${val}`);
+        }
+      }
+    }
+  }
+
+  lines.push('');
+  return lines.join('\n');
+}
+
+function LdifViewer({ dn, entry, ldifCopied, onCopy }: {
+  dn: string;
+  entry: { attributes?: { name: string; values: string[]; binary?: boolean }[] };
+  ldifCopied: boolean;
+  onCopy: () => void;
+}) {
+  const ldifText = useMemo(() => formatEntryAsLDIF(dn, entry), [dn, entry]);
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0">
+        <span className="text-xs text-muted-foreground flex-1">LDIF representation of this entry</span>
+        <button
+          onClick={onCopy}
+          className="flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+          title="Copy LDIF to clipboard"
+        >
+          {ldifCopied ? <Check size={12} className="text-green-400" /> : <ClipboardCopy size={12} />}
+          {ldifCopied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto p-3">
+        <pre className="text-xs font-mono text-foreground whitespace-pre-wrap break-all select-text leading-5">
+          {ldifText}
+        </pre>
+      </div>
+    </div>
+  );
 }

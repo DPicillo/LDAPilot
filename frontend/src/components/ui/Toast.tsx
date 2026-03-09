@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { create } from 'zustand'
 import { X, CheckCircle, AlertCircle, Info, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { useUIStore } from '../../stores/uiStore'
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -129,11 +130,24 @@ function ToastItem({ toast: t, onRemove }: { toast: Toast; onRemove: () => void 
 export function ToastContainer() {
   const toasts = useToastStore((s) => s.toasts);
   const removeToast = useToastStore((s) => s.removeToast);
+  const zoomLevel = useUIStore((s) => s.zoomLevel);
 
   if (toasts.length === 0) return null;
 
+  // Inside the zoom wrapper, 'fixed' positioning is relative to the transformed
+  // container, not the viewport. Compute the actual viewport dimensions in the
+  // zoomed coordinate space so the toast stays anchored to the real bottom-right.
+  const bottom = 32 / zoomLevel;
+  const right = 16 / zoomLevel;
+
   return (
-    <div className="fixed bottom-8 right-4 z-[100] flex flex-col gap-2">
+    <div
+      className="fixed z-[100] flex flex-col gap-2"
+      style={{
+        bottom: `${bottom}px`,
+        right: `${right}px`,
+      }}
+    >
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onRemove={() => removeToast(t.id)} />
       ))}

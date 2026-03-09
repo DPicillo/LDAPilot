@@ -31,6 +31,8 @@ interface EditorState {
   goForward: () => void;
   canGoBack: () => boolean;
   canGoForward: () => boolean;
+
+  addSpecialTab: (id: string, label: string) => void;
 }
 
 function extractRDN(dn: string): string {
@@ -51,6 +53,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   navIndex: -1,
 
   openEntry: (profileId: string, dn: string) => {
+    // Track recent entries in localStorage
+    try {
+      const key = 'ldapilot-recent-entries';
+      const recent: { profileId: string; dn: string; label: string; timestamp: number }[] =
+        JSON.parse(localStorage.getItem(key) || '[]');
+      const filtered = recent.filter(r => !(r.profileId === profileId && r.dn === dn));
+      filtered.unshift({ profileId, dn, label: extractRDN(dn), timestamp: Date.now() });
+      localStorage.setItem(key, JSON.stringify(filtered.slice(0, 30)));
+    } catch { /* ignore */ }
+
     const tabId = `${profileId}:${dn}`;
     const existingTab = get().tabs.find((t) => t.id === tabId);
 
@@ -218,5 +230,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   canGoForward: () => {
     const state = get();
     return state.navIndex < state.navHistory.length - 1;
+  },
+
+  addSpecialTab: (id: string, label: string) => {
+    set((state) => {
+      if (state.tabs.find(t => t.id === id)) return state;
+      return {
+        tabs: [...state.tabs, { id, profileId: '', label, dn: '', dirty: false }],
+        activeTabId: id,
+      };
+    });
   },
 }))

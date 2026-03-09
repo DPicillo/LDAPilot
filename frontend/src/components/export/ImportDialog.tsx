@@ -72,7 +72,7 @@ export function ImportDialog({ onClose }: ImportDialogProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-card border border-border rounded-md shadow-2xl w-[600px] max-h-[80vh] flex flex-col">
+      <div className="bg-card border border-border rounded-md shadow-2xl w-[600px] max-h-[80%] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold">Import LDIF</h2>

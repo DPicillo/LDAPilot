@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plug, FolderTree, Search, Download, BookOpen, Star, Info, ExternalLink, Github, X, type LucideIcon } from 'lucide-react'
+import { Plug, FolderTree, Search, Download, BookOpen, Star, Info, ExternalLink, Github, X, Bot, FileBarChart, type LucideIcon } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useUIStore } from '../../stores/uiStore'
 import { Activity } from '../../types/ui'
@@ -20,6 +20,8 @@ const activities: ActivityItem[] = [
   { id: 'bookmarks', icon: Star, label: 'Bookmarks' },
   { id: 'export', icon: Download, label: 'Export' },
   { id: 'schema', icon: BookOpen, label: 'Schema' },
+  { id: 'reports', icon: FileBarChart, label: 'Reports' },
+  { id: 'ai', icon: Bot, label: 'AI Chat' },
 ];
 
 export function ActivityBar() {

@@ -29,6 +29,18 @@ func main() {
 	// Initialize audit store
 	auditStore := config.NewAuditStore()
 
+	// Initialize AI config store
+	aiConfigStore, err := config.NewAIConfigStore()
+	if err != nil {
+		log.Fatalf("Failed to initialize AI config store: %v", err)
+	}
+
+	// Initialize chat store
+	chatStore, err := config.NewChatStore()
+	if err != nil {
+		log.Fatalf("Failed to initialize chat store: %v", err)
+	}
+
 	// Create services
 	connectionService := services.NewConnectionService(store, pool)
 	browserService := services.NewBrowserService(pool)
@@ -38,6 +50,8 @@ func main() {
 	schemaService := services.NewSchemaService(pool)
 	logService := services.NewLogService(pool)
 	auditService := services.NewAuditService(auditStore)
+	aiService := services.NewAIService(pool, aiConfigStore, chatStore)
+	batchService := services.NewBatchService(pool, logService)
 
 	// Wire up schema cache cleanup on disconnect
 	connectionService.SetSchemaService(schemaService)
@@ -66,6 +80,8 @@ func main() {
 			schemaService.SetContext(ctx)
 			logService.SetContext(ctx)
 			auditService.SetContext(ctx)
+			aiService.SetContext(ctx)
+			batchService.SetContext(ctx)
 		},
 		OnShutdown: func(ctx context.Context) {
 			pool.DisconnectAll()
@@ -79,6 +95,8 @@ func main() {
 			schemaService,
 			logService,
 			auditService,
+			aiService,
+			batchService,
 		},
 	})
 

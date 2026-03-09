@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { useConnectionStore } from '../../stores/connectionStore'
 import {
-  LDAPEntry, LDAPAttribute, SchemaInfo, SchemaObjectClass, SchemaAttribute
+  LDAPEntry, LDAPAttribute, SchemaInfo, SchemaObjectClass, SchemaAttribute, ValidationError
 } from '../../types/ldap'
 import { cn } from '../../lib/utils'
 import { DN_REFERENCE_ATTRS, PASSWORD_ATTRS } from '../../lib/ad-constants'
@@ -101,6 +101,7 @@ export function EditEntryDialog({ dn, onClose, onSaved }: EditEntryDialogProps) 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
 
   // Editable state: object classes & attribute working copies
   const [objectClasses, setObjectClasses] = useState<string[]>([]);
@@ -332,8 +333,32 @@ export function EditEntryDialog({ dn, onClose, onSaved }: EditEntryDialogProps) 
 
   // --- Save ---
 
+  // Clear validation errors when attributes or object classes change
+  useEffect(() => {
+    setValidationErrors([]);
+  }, [workingAttrs, objectClasses]);
+
   async function handleSave() {
     if (!activeProfileId || isReadOnly) return;
+
+    // Build attributes map for validation
+    const attrMapForValidation: Record<string, string[]> = {};
+    for (const [name, values] of workingAttrs) {
+      attrMapForValidation[name] = values;
+    }
+
+    // Validate against schema before saving
+    try {
+      const valErrors = await wails.ValidateEntry(activeProfileId, objectClasses, attrMapForValidation);
+      if (valErrors && valErrors.length > 0) {
+        setValidationErrors(valErrors);
+        return;
+      }
+    } catch {
+      // Validation service unavailable — proceed without validation
+    }
+    setValidationErrors([]);
+
     setSaving(true);
     setError(null);
 
@@ -587,6 +612,19 @@ export function EditEntryDialog({ dn, onClose, onSaved }: EditEntryDialogProps) 
         </div>
       </div>
 
+      {/* Validation errors */}
+      {validationErrors.length > 0 && (
+        <div className="px-4 py-2 border-t border-border shrink-0">
+          <div className="bg-red-500/10 border border-red-500/30 rounded p-2 text-xs text-red-400 space-y-1">
+            {validationErrors.map((e, i) => (
+              <div key={i}>
+                <span className="font-medium">{e.attribute}:</span> {e.message}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="px-4 py-2 border-t border-border bg-destructive/10 shrink-0">
@@ -634,7 +672,7 @@ export function EditEntryDialog({ dn, onClose, onSaved }: EditEntryDialogProps) 
 function DialogShell({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-card border border-border rounded-md shadow-2xl w-[900px] max-w-[95vw] h-[700px] max-h-[90vh] flex flex-col">
+      <div className="bg-card border border-border rounded-md shadow-2xl w-[900px] max-w-[95%] h-[700px] max-h-[90%] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
           <h2 className="text-sm font-semibold flex items-center gap-2">
