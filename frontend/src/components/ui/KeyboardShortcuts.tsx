@@ -1,8 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { X, Keyboard } from 'lucide-react'
-import { useUIStore } from '../../stores/uiStore'
-import { useEditorStore } from '../../stores/editorStore'
-import { useConnectionStore } from '../../stores/connectionStore'
 import { cn } from '../../lib/utils'
 
 interface Shortcut {
@@ -13,9 +10,9 @@ interface Shortcut {
 
 const shortcuts: Shortcut[] = [
   // Navigation
-  { keys: ['Ctrl', '1'], description: 'Connections panel', category: 'Navigation' },
-  { keys: ['Ctrl', '2'], description: 'Explorer panel', category: 'Navigation' },
-  { keys: ['Ctrl', '3'], description: 'Search panel', category: 'Navigation' },
+  { keys: ['Ctrl', 'Shift', 'C'], description: 'Connections panel', category: 'Navigation' },
+  { keys: ['Ctrl', 'Shift', 'E'], description: 'Explorer panel', category: 'Navigation' },
+  { keys: ['Ctrl', 'Shift', 'F'], description: 'Search panel', category: 'Navigation' },
   { keys: ['Ctrl', 'B'], description: 'Toggle sidebar', category: 'Navigation' },
   { keys: ['Ctrl', 'J'], description: 'Toggle bottom panel', category: 'Navigation' },
   { keys: ['Ctrl', 'G'], description: 'Go to DN', category: 'Navigation' },
@@ -23,119 +20,18 @@ const shortcuts: Shortcut[] = [
   // Editor
   { keys: ['Ctrl', 'W'], description: 'Close active tab', category: 'Editor' },
   { keys: ['Ctrl', 'Tab'], description: 'Next tab', category: 'Editor' },
+  { keys: ['Ctrl', 'Shift', 'Tab'], description: 'Previous tab', category: 'Editor' },
+  { keys: ['Ctrl', '1-9'], description: 'Switch to tab by index', category: 'Editor' },
   { keys: ['Alt', '\u2190'], description: 'Navigate back', category: 'Editor' },
   { keys: ['Alt', '\u2192'], description: 'Navigate forward', category: 'Editor' },
+  // View
+  { keys: ['Ctrl', '+'], description: 'Zoom in', category: 'View' },
+  { keys: ['Ctrl', '-'], description: 'Zoom out', category: 'View' },
+  { keys: ['Ctrl', '0'], description: 'Reset zoom', category: 'View' },
   // Actions
-  { keys: ['Ctrl', 'F'], description: 'Focus search/filter', category: 'Actions' },
   { keys: ['F5'], description: 'Refresh current view', category: 'Actions' },
   { keys: ['Escape'], description: 'Close dialog / cancel', category: 'Actions' },
 ];
-
-export function useKeyboardShortcuts() {
-  const setActivity = useUIStore((s) => s.setActivity);
-  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
-  const toggleBottomPanel = useUIStore((s) => s.toggleBottomPanel);
-  const sidebarVisible = useUIStore((s) => s.sidebarVisible);
-  const closeTab = useEditorStore((s) => s.closeTab);
-  const activeTabId = useEditorStore((s) => s.activeTabId);
-  const goBack = useEditorStore((s) => s.goBack);
-  const goForward = useEditorStore((s) => s.goForward);
-  const activeProfileId = useConnectionStore((s) => s.activeProfileId);
-  const refreshEntry = useEditorStore((s) => s.refreshEntry);
-  const tabs = useEditorStore((s) => s.tabs);
-  const [showHelp, setShowHelp] = useState(false);
-
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      // Ignore if in input/textarea
-      const tag = (e.target as HTMLElement)?.tagName;
-      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-
-      // Ctrl+? — show help (works everywhere)
-      if (e.ctrlKey && (e.key === '?' || e.key === '/')) {
-        e.preventDefault();
-        setShowHelp(prev => !prev);
-        return;
-      }
-
-      // Ctrl+B — toggle sidebar
-      if (e.ctrlKey && e.key === 'b' && !isInput) {
-        e.preventDefault();
-        toggleSidebar();
-        return;
-      }
-
-      // Ctrl+J — toggle bottom panel
-      if (e.ctrlKey && e.key === 'j' && !isInput) {
-        e.preventDefault();
-        toggleBottomPanel();
-        return;
-      }
-
-      // Ctrl+1/2/3 — switch panels
-      if (e.ctrlKey && e.key === '1') {
-        e.preventDefault();
-        setActivity('connections');
-        if (!sidebarVisible) toggleSidebar();
-        return;
-      }
-      if (e.ctrlKey && e.key === '2') {
-        e.preventDefault();
-        setActivity('explorer');
-        if (!sidebarVisible) toggleSidebar();
-        return;
-      }
-      if (e.ctrlKey && e.key === '3') {
-        e.preventDefault();
-        setActivity('search');
-        if (!sidebarVisible) toggleSidebar();
-        return;
-      }
-
-      // Ctrl+W — close active tab
-      if (e.ctrlKey && e.key === 'w' && !isInput) {
-        e.preventDefault();
-        if (activeTabId) closeTab(activeTabId);
-        return;
-      }
-
-      // Alt+Left/Right — navigate
-      if (e.altKey && e.key === 'ArrowLeft' && !isInput) {
-        e.preventDefault();
-        goBack();
-        return;
-      }
-      if (e.altKey && e.key === 'ArrowRight' && !isInput) {
-        e.preventDefault();
-        goForward();
-        return;
-      }
-
-      // F5 — refresh current entry
-      if (e.key === 'F5') {
-        e.preventDefault();
-        if (activeProfileId && activeTabId) {
-          const tab = tabs.find(t => t.id === activeTabId);
-          if (tab) refreshEntry(tab.profileId, tab.dn);
-        }
-        return;
-      }
-
-      // Escape — close help
-      if (e.key === 'Escape') {
-        if (showHelp) {
-          setShowHelp(false);
-          e.preventDefault();
-        }
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [setActivity, toggleSidebar, toggleBottomPanel, sidebarVisible, closeTab, activeTabId, goBack, goForward, showHelp, activeProfileId, refreshEntry, tabs]);
-
-  return { showHelp, setShowHelp };
-}
 
 export function KeyboardShortcutsDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
@@ -151,7 +47,7 @@ export function KeyboardShortcutsDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="bg-card border border-border rounded-lg shadow-2xl w-[500px] max-w-[90vw] max-h-[80vh] flex flex-col"
+        className="bg-card border border-border rounded-lg shadow-2xl w-[500px] max-w-[90%] max-h-[80%] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">

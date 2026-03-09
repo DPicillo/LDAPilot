@@ -16,6 +16,7 @@ interface ConnectionState {
   connect: (id: string) => Promise<void>;
   disconnect: (id: string) => Promise<void>;
   testConnection: (profile: ConnectionProfile) => Promise<void>;
+  reconnect: (id: string) => Promise<void>;
   setActiveProfile: (id: string | null) => void;
   updateStatus: (id: string, connected: boolean) => void;
   clearError: () => void;
@@ -117,6 +118,29 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
   testConnection: async (profile: ConnectionProfile) => {
     await wails.TestConnection(profile);
+  },
+
+  reconnect: async (id: string) => {
+    set({ loading: true, error: null });
+    try {
+      await wails.Reconnect(id);
+      set((state) => ({
+        connectionStatuses: { ...state.connectionStatuses, [id]: true },
+        loading: false,
+      }));
+      const profile = get().profiles.find(p => p.id === id);
+      toast.success(`Reconnected to ${profile?.name || 'server'}`);
+    } catch (err: any) {
+      const profile = get().profiles.find(p => p.id === id);
+      const detail = err?.message || 'Reconnect failed';
+      set({
+        error: detail,
+        loading: false,
+        connectionStatuses: { ...get().connectionStatuses, [id]: false },
+      });
+      toast.error(`Failed to reconnect to ${profile?.name || 'server'}`, detail);
+      throw err;
+    }
   },
 
   setActiveProfile: (id: string | null) => {

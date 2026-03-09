@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { X, Database, Plug, Search, FolderTree, Star, XCircle } from 'lucide-react'
+import { X, Database, Plug, Search, FolderTree, Star, XCircle, Server, ChevronDown, Clock } from 'lucide-react'
 import logoImg from '../../assets/logo.png'
 import { cn } from '../../lib/utils'
 import { useEditorStore } from '../../stores/editorStore'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useBookmarkStore } from '../../stores/bookmarkStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useTreeStore, getPrimarySelectedNode } from '../../stores/treeStore'
 import { EntryEditor } from '../editor/EntryEditor'
+import { ServerInfo } from '../connection/ServerInfo'
+import { ContainerListView } from '../browser/ContainerListView'
 
 export function MainPanel() {
   const tabs = useEditorStore((s) => s.tabs);
@@ -14,6 +17,8 @@ export function MainPanel() {
   const setActiveTab = useEditorStore((s) => s.setActiveTab);
   const closeTab = useEditorStore((s) => s.closeTab);
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null);
+  const [showTabList, setShowTabList] = useState(false);
+  const tabListRef = useRef<HTMLDivElement>(null);
 
   function closeOtherTabs(keepTabId: string) {
     tabs.filter(t => t.id !== keepTabId).forEach(t => closeTab(t.id));
@@ -30,8 +35,27 @@ export function MainPanel() {
     }
   }
 
+  // Close tab list dropdown when clicking outside
+  useEffect(() => {
+    if (!showTabList) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (tabListRef.current && !tabListRef.current.contains(e.target as Node)) {
+        setShowTabList(false);
+      }
+    }
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowTabList(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [showTabList]);
+
   if (tabs.length === 0) {
-    return <WelcomeScreen />;
+    return <TreeListViewOrWelcome />;
   }
 
   return (
@@ -58,7 +82,11 @@ export function MainPanel() {
             {tab.id === activeTabId && (
               <div className="absolute top-0 left-0 right-0 h-px bg-primary" />
             )}
-            <Database size={14} className="shrink-0 opacity-70" />
+            {tab.id === '__server-info__' ? (
+              <Server size={14} className="shrink-0 text-purple-400" />
+            ) : (
+              <Database size={14} className="shrink-0 opacity-70" />
+            )}
             <span className="truncate max-w-[120px]" title={tab.dn}>
               {tab.dirty && <span className="mr-0.5 text-primary">*</span>}
               {tab.label}
@@ -87,6 +115,67 @@ export function MainPanel() {
             <XCircle size={14} />
           </button>
         )}
+
+        {/* Tab overflow dropdown */}
+        {tabs.length > 3 && (
+          <div className="relative shrink-0" ref={tabListRef}>
+            <button
+              onClick={() => setShowTabList(!showTabList)}
+              className={cn(
+                'p-1 ml-0.5 rounded hover:bg-accent shrink-0',
+                showTabList ? 'text-foreground bg-accent' : 'text-muted-foreground hover:text-foreground'
+              )}
+              title="Show all tabs"
+            >
+              <ChevronDown size={14} />
+            </button>
+            {showTabList && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded shadow-xl py-1 min-w-[240px] max-w-[360px] max-h-[320px] overflow-auto">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setShowTabList(false);
+                    }}
+                    className={cn(
+                      'w-full flex items-start gap-2 px-3 py-1.5 text-left hover:bg-accent',
+                      tab.id === activeTabId && 'bg-accent/60'
+                    )}
+                  >
+                    {tab.id === '__server-info__' ? (
+                      <Server size={13} className="shrink-0 mt-0.5 text-purple-400" />
+                    ) : (
+                      <Database size={13} className="shrink-0 mt-0.5 opacity-70" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-medium truncate">
+                        {tab.dirty && <span className="mr-0.5 text-primary">*</span>}
+                        {tab.label}
+                      </div>
+                      {tab.dn && (
+                        <div className="text-[10px] font-mono text-muted-foreground truncate" title={tab.dn}>
+                          {tab.dn}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+                <div className="h-px bg-border mx-2 my-1" />
+                <button
+                  onClick={() => {
+                    closeAllTabs();
+                    setShowTabList(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-accent"
+                >
+                  <XCircle size={12} />
+                  Close All
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tab Context Menu */}
@@ -106,7 +195,11 @@ export function MainPanel() {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-hidden">
-        {activeTabId && <EntryEditor tabId={activeTabId} />}
+        {activeTabId === '__server-info__' ? (
+          <ServerInfo />
+        ) : activeTabId ? (
+          <EntryEditor tabId={activeTabId} />
+        ) : null}
       </div>
     </div>
   );
@@ -124,6 +217,7 @@ function TabContextMenu({ x, y, onClose, onCloseTab, onCloseOthers, onCloseAll, 
   hasTabsToRight: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const zoomLevel = useUIStore((s) => s.zoomLevel);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -140,11 +234,16 @@ function TabContextMenu({ x, y, onClose, onCloseTab, onCloseOthers, onCloseAll, 
     };
   }, [onClose]);
 
+  // clientX/clientY are in viewport space but rendering happens inside the
+  // zoom wrapper (transform: scale), so divide by zoomLevel to convert.
+  const adjustedX = x / zoomLevel;
+  const adjustedY = y / zoomLevel;
+
   return (
     <div
       ref={ref}
       className="fixed z-50 bg-popover border border-border rounded shadow-xl py-1 min-w-[160px]"
-      style={{ left: x, top: y }}
+      style={{ left: adjustedX, top: adjustedY }}
     >
       <button
         className="w-full flex items-center gap-2 px-3 py-1 text-xs hover:bg-accent text-popover-foreground"
@@ -175,6 +274,23 @@ function TabContextMenu({ x, y, onClose, onCloseTab, onCloseOthers, onCloseAll, 
       </button>
     </div>
   );
+}
+function TreeListViewOrWelcome() {
+  const activeProfileId = useConnectionStore((s) => s.activeProfileId);
+  const selectedNodes = useTreeStore((s) => s.selectedNodes);
+  const childNodes = useTreeStore((s) => s.childNodes);
+
+  // Get the primary selected node
+  const selectedDN = getPrimarySelectedNode();
+
+  // Check if the selected node is a container (has children loaded or has children flag)
+  const isContainer = selectedDN && childNodes[selectedDN] !== undefined;
+
+  if (activeProfileId && selectedDN && isContainer) {
+    return <ContainerListView profileId={activeProfileId} containerDN={selectedDN} />;
+  }
+
+  return <WelcomeScreen />;
 }
 
 function WelcomeScreen() {
@@ -247,6 +363,23 @@ function WelcomeScreen() {
                   <div className="text-[10px] text-muted-foreground">Find entries</div>
                 </div>
               </button>
+              <button
+                onClick={() => {
+                  const store = useEditorStore.getState();
+                  const existing = store.tabs.find(t => t.id === '__server-info__');
+                  if (!existing) {
+                    store.addSpecialTab('__server-info__', 'Server Info');
+                  }
+                  store.setActiveTab('__server-info__');
+                }}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-card border border-border hover:bg-accent/50 transition-colors col-span-2"
+              >
+                <Server size={16} className="text-purple-400" />
+                <div className="text-left">
+                  <div className="text-xs font-medium">Server Info</div>
+                  <div className="text-[10px] text-muted-foreground">RootDSE & capabilities</div>
+                </div>
+              </button>
             </>
           )}
         </div>
@@ -280,6 +413,38 @@ function WelcomeScreen() {
             </div>
           </div>
         )}
+
+        {/* Recent Entries */}
+        {isConnected && activeProfileId && (() => {
+          try {
+            const recent: { profileId: string; dn: string; label: string; timestamp: number }[] =
+              JSON.parse(localStorage.getItem('ldapilot-recent-entries') || '[]');
+            const profileRecent = recent
+              .filter(r => r.profileId === activeProfileId)
+              .slice(0, 5);
+            if (profileRecent.length === 0) return null;
+            return (
+              <div className="w-full">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1.5">
+                  <Clock size={11} className="text-blue-400" />
+                  Recent
+                </div>
+                <div className="space-y-0.5">
+                  {profileRecent.map(r => (
+                    <button
+                      key={r.dn}
+                      onClick={() => openEntry(activeProfileId!, r.dn)}
+                      className="w-full text-left px-2 py-1 rounded hover:bg-accent/50 text-xs font-mono truncate text-muted-foreground hover:text-foreground"
+                      title={r.dn}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          } catch { return null; }
+        })()}
 
         {/* Keyboard shortcuts hint */}
         <div className="flex flex-col items-center gap-1.5 text-[10px] text-muted-foreground mt-4">

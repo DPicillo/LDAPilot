@@ -31,6 +31,18 @@ export function ConnectionManager() {
     setDialogOpen(true);
   }
 
+  function handleClone(profile: ConnectionProfile) {
+    const cloned: ConnectionProfile = {
+      ...profile,
+      id: '',
+      name: `Copy of ${profile.name}`,
+      password: '',
+      hasPassword: false,
+    };
+    setEditingProfile(cloned);
+    setDialogOpen(true);
+  }
+
   async function handleSave(profile: ConnectionProfile) {
     try {
       await saveProfile(profile);
@@ -114,6 +126,7 @@ export function ConnectionManager() {
               onDisconnect={() => disconnect(profile.id)}
               onEdit={() => handleEdit(profile)}
               onDelete={() => handleDelete(profile.id)}
+              onClone={() => handleClone(profile)}
               onSelect={() => setActiveProfile(profile.id)}
             />
           ))

@@ -53,12 +53,13 @@ export function PasswordDialog({ dn, onClose, onChanged }: PasswordDialogProps) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pwdLength, setPwdLength] = useState(16);
 
   const passwordsMatch = newPassword === confirmPassword;
   const isValid = newPassword.length >= 1 && passwordsMatch;
 
   function handleGenerate() {
-    const pwd = generatePassword(16);
+    const pwd = generatePassword(pwdLength);
     setNewPassword(pwd);
     setConfirmPassword(pwd);
     setShowPassword(true);
@@ -135,6 +136,16 @@ export function PasswordDialog({ dn, onClose, onChanged }: PasswordDialogProps) 
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs text-muted-foreground">New Password</label>
               <div className="flex items-center gap-2">
+                <select
+                  value={pwdLength}
+                  onChange={e => setPwdLength(parseInt(e.target.value))}
+                  className="text-[10px] bg-transparent border border-border rounded px-1 py-0.5 text-muted-foreground"
+                  title="Password length"
+                >
+                  {[8, 12, 16, 20, 24, 32].map(l => (
+                    <option key={l} value={l}>{l} chars</option>
+                  ))}
+                </select>
                 <button
                   onClick={handleGenerate}
                   className="text-[10px] text-primary hover:text-primary/80"

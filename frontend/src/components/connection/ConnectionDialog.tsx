@@ -113,7 +113,7 @@ export function ConnectionDialog({ profile, onSave, onCancel, onTest }: Connecti
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-card border border-border rounded-md shadow-2xl w-[520px] max-h-[90vh] flex flex-col">
+      <div className="bg-card border border-border rounded-md shadow-2xl w-[520px] max-h-[90%] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold">
@@ -216,15 +216,25 @@ export function ConnectionDialog({ profile, onSave, onCancel, onTest }: Connecti
           </Field>
 
           {form.tlsMode !== 'none' && (
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={form.tlsSkipVerify}
-                onChange={(e) => updateField('tlsSkipVerify', e.target.checked)}
-                className="rounded border-border"
-              />
-              Skip certificate verification (insecure)
-            </label>
+            <div>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={form.tlsSkipVerify}
+                  onChange={(e) => updateField('tlsSkipVerify', e.target.checked)}
+                  className="rounded border-border"
+                />
+                Skip certificate verification (insecure)
+              </label>
+              {form.tlsSkipVerify && (
+                <div className="flex items-center gap-1.5 mt-1 text-yellow-500 text-xs">
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                  </svg>
+                  <span>Certificate validation disabled - connection vulnerable to MITM attacks</span>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Authentication */}
@@ -299,6 +309,15 @@ export function ConnectionDialog({ profile, onSave, onCancel, onTest }: Connecti
                 className="rounded border-border"
               />
               Read-only mode (prevents accidental modifications)
+            </label>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+              <input
+                type="checkbox"
+                checked={form.disableReferrals}
+                onChange={(e) => updateField('disableReferrals', e.target.checked)}
+                className="rounded border-border"
+              />
+              Disable referral chasing (avoids cross-domain lookups in AD forests)
             </label>
           </details>
 

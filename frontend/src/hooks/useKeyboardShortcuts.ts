@@ -8,6 +8,9 @@ export function useKeyboardShortcuts() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const toggleBottomPanel = useUIStore((s) => s.toggleBottomPanel);
+  const zoomIn = useUIStore((s) => s.zoomIn);
+  const zoomOut = useUIStore((s) => s.zoomOut);
+  const zoomReset = useUIStore((s) => s.zoomReset);
   const closeTab = useEditorStore((s) => s.closeTab);
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
@@ -119,6 +122,27 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Ctrl+Plus / Ctrl+=: Zoom in
+      if (ctrl && !shift && (e.key === '+' || e.key === '=')) {
+        e.preventDefault();
+        zoomIn();
+        return;
+      }
+
+      // Ctrl+Minus: Zoom out
+      if (ctrl && !shift && e.key === '-') {
+        e.preventDefault();
+        zoomOut();
+        return;
+      }
+
+      // Ctrl+0: Reset zoom
+      if (ctrl && !shift && e.key === '0') {
+        e.preventDefault();
+        zoomReset();
+        return;
+      }
+
       // Ctrl+Tab / Ctrl+Shift+Tab: Cycle through tabs
       if (ctrl && e.key === 'Tab') {
         e.preventDefault();
@@ -147,7 +171,7 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setActivity, toggleSidebar, sidebarVisible, toggleBottomPanel, closeTab, activeTabId, tabs, setActiveTab, goBack, goForward, showShortcuts, activeProfileId, refreshEntry]);
+  }, [setActivity, toggleSidebar, sidebarVisible, toggleBottomPanel, closeTab, activeTabId, tabs, setActiveTab, goBack, goForward, showShortcuts, activeProfileId, refreshEntry, zoomIn, zoomOut, zoomReset]);
 
   return {
     showShortcuts,

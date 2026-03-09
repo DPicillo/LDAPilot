@@ -26,6 +26,7 @@ export interface ConnectionProfile {
   pageSize: number;
   timeout: number;
   readOnly: boolean;
+  disableReferrals: boolean;
 }
 
 /** Tree node representing a DN in the directory tree - mirrors Go TreeNode */
@@ -35,6 +36,7 @@ export interface TreeNode {
   hasChildren: boolean;
   objectClass: string[];
   icon: string;
+  children?: TreeNode[];
 }
 
 /** Single LDAP attribute with name and values - mirrors Go LDAPAttribute */
@@ -100,6 +102,24 @@ export interface SchemaInfo {
   attributes: SchemaAttribute[];
 }
 
+/** ObjectClass details with inheritance info - mirrors Go ObjectClassInfo */
+export interface ObjectClassInfo {
+  name: string;
+  oid: string;
+  description: string;
+  superior: string[];
+  must: string[];
+  may: string[];
+  type: string;
+}
+
+/** Schema validation error - mirrors Go ValidationError */
+export interface ValidationError {
+  attribute: string;
+  message: string;
+  type: string;
+}
+
 /** LDIF import result - mirrors Go ldif.ImportResult */
 export interface ImportResult {
   entries: LDAPEntry[];
@@ -107,6 +127,27 @@ export interface ImportResult {
   succeeded: number;
   failed: number;
   errors: string[];
+}
+
+/** Result of a batch operation - mirrors Go BatchResult */
+export interface BatchResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  errors: BatchError[];
+}
+
+/** Single error from a batch operation - mirrors Go BatchError */
+export interface BatchError {
+  dn: string;
+  message: string;
+}
+
+/** Attribute change for batch modify - mirrors Go BatchModifyChange */
+export interface BatchModifyChange {
+  operation: 'add' | 'replace' | 'delete';
+  attribute: string;
+  values: string[];
 }
 
 /** Default empty connection profile */
@@ -126,5 +167,6 @@ export function newConnectionProfile(): ConnectionProfile {
     pageSize: 500,
     timeout: 10,
     readOnly: false,
+    disableReferrals: false,
   };
 }

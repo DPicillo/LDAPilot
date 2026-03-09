@@ -1,10 +1,18 @@
-import { useState } from 'react'
-import { Download, Copy, Check, Loader2, X } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Download, Copy, Check, Loader2, X, Plus, Columns3 } from 'lucide-react'
 import { useConnectionStore } from '../../stores/connectionStore'
 import * as wails from '../../lib/wails'
 import { toast } from '../ui/Toast'
 
 type ExportFormat = 'ldif' | 'csv';
+
+const COMMON_CSV_COLUMNS = [
+  'cn', 'sn', 'givenName', 'displayName', 'mail', 'telephoneNumber',
+  'sAMAccountName', 'userPrincipalName', 'description', 'title',
+  'department', 'company', 'physicalDeliveryOfficeName', 'l', 'st',
+  'memberOf', 'member', 'ou', 'uid', 'objectClass',
+  'whenCreated', 'whenChanged', 'userAccountControl',
+];
 
 interface ExportDialogProps {
   dn?: string;
@@ -24,6 +32,37 @@ export function ExportDialog({ dn, onClose }: ExportDialogProps) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // CSV column selection
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(['cn', 'mail', 'description', 'objectClass']);
+  const [columnFilter, setColumnFilter] = useState('');
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+
+  const filteredColumnOptions = useMemo(() => {
+    const available = COMMON_CSV_COLUMNS.filter(c => !selectedColumns.includes(c));
+    if (!columnFilter) return available;
+    const lf = columnFilter.toLowerCase();
+    return available.filter(c => c.toLowerCase().includes(lf));
+  }, [columnFilter, selectedColumns]);
+
+  function addColumn(col: string) {
+    if (!selectedColumns.includes(col)) {
+      setSelectedColumns([...selectedColumns, col]);
+    }
+    setColumnFilter('');
+  }
+
+  function removeColumn(col: string) {
+    setSelectedColumns(selectedColumns.filter(c => c !== col));
+  }
+
+  function addCustomColumn() {
+    const col = columnFilter.trim();
+    if (col && !selectedColumns.includes(col)) {
+      setSelectedColumns([...selectedColumns, col]);
+      setColumnFilter('');
+    }
+  }
+
   async function handleExport() {
     if (!activeProfileId || !baseDN.trim()) return;
     setLoading(true);
@@ -31,7 +70,7 @@ export function ExportDialog({ dn, onClose }: ExportDialogProps) {
     try {
       let content: string;
       if (format === 'csv') {
-        content = await wails.ExportCSV(activeProfileId, baseDN, []);
+        content = await wails.ExportCSV(activeProfileId, baseDN, selectedColumns);
         toast.success('CSV generated');
       } else if (exportType === 'subtree') {
         content = await wails.ExportSubtree(activeProfileId, baseDN);
@@ -60,7 +99,7 @@ export function ExportDialog({ dn, onClose }: ExportDialogProps) {
     if (!activeProfileId) return;
     try {
       if (format === 'csv') {
-        await wails.ExportCSVToFile(activeProfileId, baseDN, []);
+        await wails.ExportCSVToFile(activeProfileId, baseDN, selectedColumns);
       } else {
         await wails.ExportToFile(activeProfileId, [baseDN]);
       }
@@ -73,7 +112,7 @@ export function ExportDialog({ dn, onClose }: ExportDialogProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-card border border-border rounded-md shadow-2xl w-[600px] max-h-[80vh] flex flex-col">
+      <div className="bg-card border border-border rounded-md shadow-2xl w-[640px] max-h-[80%] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold">Export</h2>
@@ -119,6 +158,81 @@ export function ExportDialog({ dn, onClose }: ExportDialogProps) {
               </div>
             )}
           </div>
+
+          {/* CSV Column Selection */}
+          {format === 'csv' && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-muted-foreground">CSV Columns</label>
+                <button
+                  onClick={() => setShowColumnSelector(!showColumnSelector)}
+                  className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80"
+                >
+                  <Columns3 size={10} />
+                  {showColumnSelector ? 'Hide' : 'Edit'}
+                </button>
+              </div>
+              {/* Active columns */}
+              <div className="flex flex-wrap gap-1 mb-1">
+                {selectedColumns.map(col => (
+                  <span
+                    key={col}
+                    className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-primary/15 text-primary rounded-sm font-mono"
+                  >
+                    {col}
+                    <button onClick={() => removeColumn(col)} className="hover:text-destructive ml-0.5">
+                      <X size={9} />
+                    </button>
+                  </span>
+                ))}
+                {selectedColumns.length === 0 && (
+                  <span className="text-[10px] text-muted-foreground italic">All attributes (default)</span>
+                )}
+              </div>
+
+              {showColumnSelector && (
+                <div className="space-y-1 mt-1 p-2 border border-border rounded bg-background/50">
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      value={columnFilter}
+                      onChange={(e) => setColumnFilter(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addCustomColumn();
+                        }
+                      }}
+                      placeholder="Type to filter or add custom..."
+                      className="input-field text-xs flex-1 font-mono"
+                      autoFocus
+                    />
+                    {columnFilter.trim() && !COMMON_CSV_COLUMNS.includes(columnFilter.trim()) && (
+                      <button
+                        onClick={addCustomColumn}
+                        className="text-[10px] px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        Add
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-0.5 max-h-24 overflow-auto">
+                    {filteredColumnOptions.map(col => (
+                      <button
+                        key={col}
+                        onClick={() => addColumn(col)}
+                        className="text-[10px] px-1.5 py-0.5 rounded-sm bg-accent/50 hover:bg-accent text-muted-foreground hover:text-foreground font-mono transition-colors"
+                      >
+                        <Plus size={8} className="inline mr-0.5" />
+                        {col}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2">
             <button
               onClick={handleExport}

@@ -1,0 +1,225 @@
+dn: cn=svc-monitoring,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-monitoring
+description: Nagios/Prometheus monitoring service account
+
+dn: cn=svc-backup,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-backup
+description: Backup system service account
+
+dn: cn=svc-ci-runner,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-ci-runner
+description: CI/CD pipeline runner service account
+
+dn: cn=svc-deploy-bot,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-deploy-bot
+description: Automated deployment service
+
+dn: cn=svc-ldap-sync,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-ldap-sync
+description: LDAP directory synchronization service
+
+dn: cn=svc-mail-relay,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-mail-relay
+description: SMTP mail relay service account
+
+dn: cn=svc-sso-gateway,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-sso-gateway
+description: Single Sign-On gateway service
+
+dn: cn=svc-log-collector,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-log-collector
+description: Centralized log collection service
+
+dn: cn=svc-cert-manager,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-cert-manager
+description: TLS certificate management service
+
+dn: cn=svc-dns-updater,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-dns-updater
+description: Dynamic DNS update service
+
+dn: cn=svc-inventory,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-inventory
+description: IT asset inventory scanner
+
+dn: cn=svc-audit-logger,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-audit-logger
+description: Security audit logging service
+
+dn: cn=svc-api-gateway,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-api-gateway
+description: API gateway proxy service
+
+dn: cn=svc-redis-cache,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-redis-cache
+description: Redis cache connector service
+
+dn: cn=svc-kafka-consumer,ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: applicationProcess
+objectClass: top
+cn: svc-kafka-consumer
+description: Kafka message consumer service
+
+dn: cn=srv-web-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: srv-web-01
+description: Primary web server
+serialNumber: Dell PowerEdge R740
+
+dn: cn=srv-web-02,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: srv-web-02
+description: Secondary web server
+serialNumber: Dell PowerEdge R740
+
+dn: cn=srv-db-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: srv-db-01
+description: Primary database server
+serialNumber: Dell PowerEdge R940
+
+dn: cn=srv-db-02,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: srv-db-02
+description: Database replica server
+serialNumber: Dell PowerEdge R940
+
+dn: cn=srv-app-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: srv-app-01
+description: Application server node 1
+serialNumber: HPE ProLiant DL380
+
+dn: cn=srv-app-02,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: srv-app-02
+description: Application server node 2
+serialNumber: HPE ProLiant DL380
+
+dn: cn=srv-mail-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: srv-mail-01
+description: Mail server
+serialNumber: HPE ProLiant DL360
+
+dn: cn=srv-ldap-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: srv-ldap-01
+description: LDAP directory server
+serialNumber: Dell PowerEdge R640
+
+dn: cn=srv-backup-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: srv-backup-01
+description: Backup storage server
+serialNumber: Synology RS4021xs+
+
+dn: cn=fw-edge-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: fw-edge-01
+description: Edge firewall
+serialNumber: Palo Alto PA-3260
+
+dn: cn=sw-core-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: sw-core-01
+description: Core network switch
+serialNumber: Cisco Catalyst 9500
+
+dn: cn=sw-access-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: sw-access-01
+description: Access layer switch floor 1
+serialNumber: Cisco Catalyst 9300
+
+dn: cn=sw-access-02,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: sw-access-02
+description: Access layer switch floor 2
+serialNumber: Cisco Catalyst 9300
+
+dn: cn=ap-wifi-01,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: ap-wifi-01
+description: Wireless access point lobby
+serialNumber: Cisco Meraki MR56
+
+dn: cn=ap-wifi-02,ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: device
+objectClass: top
+cn: ap-wifi-02
+description: Wireless access point floor 2
+serialNumber: Cisco Meraki MR56
+
+dn: cn=policy-password,ou=Policies,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalRole
+objectClass: top
+cn: policy-password
+description: Password policy: min 12 chars, complexity required, 90-day rotation
+
+dn: cn=policy-access-review,ou=Policies,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalRole
+objectClass: top
+cn: policy-access-review
+description: Quarterly access review policy for all systems
+
+dn: cn=policy-data-retention,ou=Policies,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalRole
+objectClass: top
+cn: policy-data-retention
+description: Data retention policy: 7 years financial, 3 years operational
+
+dn: cn=policy-incident-response,ou=Policies,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalRole
+objectClass: top
+cn: policy-incident-response
+description: Security incident response procedure
+
+dn: cn=policy-acceptable-use,ou=Policies,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalRole
+objectClass: top
+cn: policy-acceptable-use
+description: IT acceptable use policy for all employees
+

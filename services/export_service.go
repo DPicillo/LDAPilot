@@ -182,7 +182,7 @@ func (s *ExportService) ExportCSVToFile(profileID string, baseDN string, columns
 		return nil
 	}
 
-	return os.WriteFile(filePath, []byte(csvContent), 0644)
+	return os.WriteFile(filePath, []byte(csvContent), 0600)
 }
 
 // ExportToFile prompts the user to choose a file location and writes the LDIF export there.
@@ -216,7 +216,7 @@ func (s *ExportService) ExportToFile(profileID string, dns []string) error {
 		return nil
 	}
 
-	if err := os.WriteFile(filePath, []byte(ldifContent), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(ldifContent), 0600); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 

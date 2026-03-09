@@ -121,12 +121,109 @@ func (c *Client) IsConnected() bool {
 	return c.conn != nil
 }
 
-// GetChildren performs a one-level search under parentDN and returns tree nodes.
-func (c *Client) GetChildren(parentDN string) ([]models.TreeNode, error) {
+// GetRootDSE reads the RootDSE entry and returns selected operational attributes.
+// This provides AD forest information such as naming contexts.
+func (c *Client) GetRootDSE() (*models.LDAPEntry, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {
 		return nil, ErrNotConnected
+	}
+
+	searchReq := goldap.NewSearchRequest(
+		"",
+		goldap.ScopeBaseObject,
+		goldap.NeverDerefAliases,
+		0, 0, false,
+		"(objectClass=*)",
+		[]string{
+			"namingContexts",
+			"defaultNamingContext",
+			"rootDomainNamingContext",
+			"configurationNamingContext",
+			"schemaNamingContext",
+			"dnsHostName",
+			"forestFunctionality",
+			"domainFunctionality",
+			"domainControllerFunctionality",
+			"serverName",
+		},
+		nil,
+	)
+
+	result, err := c.conn.Search(searchReq)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
+	}
+	if len(result.Entries) == 0 {
+		return nil, fmt.Errorf("%w: RootDSE", ErrNotFound)
+	}
+
+	return convertEntry(result.Entries[0]), nil
+}
+
+// GetForestPartitions queries CN=Partitions,CN=Configuration,... to discover all
+// domains and partitions in the AD forest, including child domains hosted on other DCs.
+// Returns a list of nCName values (the DN of each partition).
+func (c *Client) GetForestPartitions(configNC string) ([]string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return nil, ErrNotConnected
+	}
+
+	partitionsDN := "CN=Partitions," + configNC
+
+	searchReq := goldap.NewSearchRequest(
+		partitionsDN,
+		goldap.ScopeSingleLevel,
+		goldap.NeverDerefAliases,
+		0, 0, false,
+		"(objectClass=crossRef)",
+		[]string{"nCName", "dnsRoot", "systemFlags"},
+		nil,
+	)
+
+	result, err := c.conn.Search(searchReq)
+	if err != nil {
+		// If referrals are disabled, still try to use partial results
+		if c.profile.DisableReferrals && goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
+			if result == nil {
+				return nil, nil
+			}
+		} else {
+			return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
+		}
+	}
+
+	var partitions []string
+	for _, entry := range result.Entries {
+		ncName := entry.GetAttributeValue("nCName")
+		if ncName != "" {
+			partitions = append(partitions, ncName)
+		}
+	}
+
+	return partitions, nil
+}
+
+// GetChildren performs a one-level search under parentDN and returns tree nodes.
+// Uses paged results to handle containers with large numbers of children.
+// If the server returns a referral and referral following is enabled,
+// it connects to the referred server to fetch the children.
+func (c *Client) GetChildren(parentDN string) ([]models.TreeNode, error) {
+	c.mu.Lock()
+
+	if c.conn == nil {
+		c.mu.Unlock()
+		return nil, ErrNotConnected
+	}
+
+	childAttrs := []string{"dn", "objectClass", "hasSubordinates", "msDS-Approx-Immed-Subordinates"}
+
+	pageSize := c.profile.PageSize
+	if pageSize <= 0 {
+		pageSize = 500
 	}
 
 	searchReq := goldap.NewSearchRequest(
@@ -135,17 +232,73 @@ func (c *Client) GetChildren(parentDN string) ([]models.TreeNode, error) {
 		goldap.NeverDerefAliases,
 		0, 0, false,
 		"(objectClass=*)",
-		[]string{"dn", "objectClass", "hasSubordinates", "msDS-Approx-Immed-Subordinates"},
-		nil,
+		childAttrs,
+		[]goldap.Control{goldap.NewControlPaging(uint32(pageSize))},
 	)
 
-	result, err := c.conn.Search(searchReq)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
+	var allEntries []*goldap.Entry
+
+	for {
+		result, err := c.conn.Search(searchReq)
+		if err != nil {
+			if goldap.IsErrorWithCode(err, goldap.LDAPResultSizeLimitExceeded) {
+				// Partial results are still useful
+				if result != nil {
+					allEntries = append(allEntries, result.Entries...)
+				}
+				break
+			}
+			if goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
+				if c.profile.DisableReferrals {
+					c.mu.Unlock()
+					if result != nil {
+						allEntries = append(allEntries, result.Entries...)
+					}
+					return c.entriesToTreeNodes(allEntries), nil
+				}
+				refs := extractReferralURLs(err)
+				c.mu.Unlock()
+				if len(refs) > 0 {
+					return c.followReferralGetChildren(refs[0])
+				}
+				return nil, fmt.Errorf("%w: %s (referral with no URL)", ErrSearchFailed, parentDN)
+			}
+			c.mu.Unlock()
+			return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
+		}
+
+		allEntries = append(allEntries, result.Entries...)
+
+		// Check for paging control in response
+		pagingControl := goldap.FindControl(result.Controls, goldap.ControlTypePaging)
+		if pagingCtrl, ok := pagingControl.(*goldap.ControlPaging); ok && len(pagingCtrl.Cookie) > 0 {
+			searchReq.Controls = []goldap.Control{goldap.NewControlPaging(uint32(pageSize))}
+			if ctrl := goldap.FindControl(searchReq.Controls, goldap.ControlTypePaging); ctrl != nil {
+				ctrl.(*goldap.ControlPaging).SetCookie(pagingCtrl.Cookie)
+			}
+			continue
+		}
+		break
 	}
 
-	nodes := make([]models.TreeNode, 0, len(result.Entries))
-	for _, entry := range result.Entries {
+	c.mu.Unlock()
+	return c.entriesToTreeNodes(allEntries), nil
+}
+
+// followReferralGetChildren follows a referral URL to fetch children from a remote server.
+func (c *Client) followReferralGetChildren(referralURL string) ([]models.TreeNode, error) {
+	childAttrs := []string{"dn", "objectClass", "hasSubordinates", "msDS-Approx-Immed-Subordinates"}
+	entries, err := c.followReferralSearch(referralURL, goldap.ScopeSingleLevel, "(objectClass=*)", childAttrs, 0)
+	if err != nil {
+		return nil, err
+	}
+	return c.entriesToTreeNodes(entries), nil
+}
+
+// entriesToTreeNodes converts raw LDAP entries to TreeNode slice.
+func (c *Client) entriesToTreeNodes(entries []*goldap.Entry) []models.TreeNode {
+	nodes := make([]models.TreeNode, 0, len(entries))
+	for _, entry := range entries {
 		objectClasses := entry.GetAttributeValues("objectClass")
 		hasSubStr := entry.GetAttributeValue("hasSubordinates")
 		approxChildren := entry.GetAttributeValue("msDS-Approx-Immed-Subordinates")
@@ -154,10 +307,8 @@ func (c *Client) GetChildren(parentDN string) ([]models.TreeNode, error) {
 		if strings.EqualFold(hasSubStr, "TRUE") {
 			hasChildren = true
 		} else if approxChildren != "" && approxChildren != "0" {
-			// AD-specific: use approximate child count when hasSubordinates is unavailable
 			hasChildren = true
 		} else if hasSubStr == "" && approxChildren == "" {
-			// Fallback: probe for children
 			hasChildren = c.probeHasChildren(entry.DN)
 		}
 
@@ -172,12 +323,16 @@ func (c *Client) GetChildren(parentDN string) ([]models.TreeNode, error) {
 			Icon:        icon,
 		})
 	}
-
-	return nodes, nil
+	return nodes
 }
 
 // probeHasChildren checks whether a DN has any children by doing a size-limited one-level search.
 func (c *Client) probeHasChildren(dn string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return false
+	}
 	searchReq := goldap.NewSearchRequest(
 		dn,
 		goldap.ScopeSingleLevel,
@@ -195,10 +350,13 @@ func (c *Client) probeHasChildren(dn string) bool {
 }
 
 // GetEntry retrieves a single entry by DN with all its attributes.
+// If the server returns a referral and referral following is enabled,
+// it connects to the referred server to fetch the entry.
 func (c *Client) GetEntry(dn string) (*models.LDAPEntry, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+
 	if c.conn == nil {
+		c.mu.Unlock()
 		return nil, ErrNotConnected
 	}
 
@@ -214,15 +372,27 @@ func (c *Client) GetEntry(dn string) (*models.LDAPEntry, error) {
 
 	result, err := c.conn.Search(searchReq)
 	if err != nil {
+		// Try to follow referral if not disabled
+		if !c.profile.DisableReferrals && goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
+			refs := extractReferralURLs(err)
+			c.mu.Unlock()
+			if len(refs) > 0 {
+				return c.followReferralGetEntry(refs[0])
+			}
+			return nil, fmt.Errorf("%w: %s (referral with no URL)", ErrSearchFailed, dn)
+		}
+		c.mu.Unlock()
 		return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
 	}
 
 	if len(result.Entries) == 0 {
+		c.mu.Unlock()
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, dn)
 	}
 
 	entry := result.Entries[0]
 	c.resolveRangedAttributes(dn, entry)
+	c.mu.Unlock()
 	return convertEntry(entry), nil
 }
 
@@ -329,10 +499,13 @@ func parseRangeAttr(name string) (baseName string, start int, end int, isFinal b
 }
 
 // Search performs a full LDAP search with the given parameters.
+// If the server returns a referral and referral following is enabled,
+// it connects to the referred server to perform the search there.
 func (c *Client) Search(params models.SearchParams) (*models.SearchResult, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+
 	if c.conn == nil {
+		c.mu.Unlock()
 		return nil, ErrNotConnected
 	}
 	searchStart := time.Now()
@@ -377,6 +550,27 @@ func (c *Client) Search(params models.SearchParams) (*models.SearchResult, error
 				}
 				break
 			}
+			if goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
+				if c.profile.DisableReferrals {
+					if result != nil {
+						allEntries = append(allEntries, result.Entries...)
+					}
+					break
+				}
+				// Follow referral
+				refs := extractReferralURLs(err)
+				c.mu.Unlock()
+				if len(refs) > 0 {
+					refEntries, refErr := c.followReferralSearch(
+						refs[0], int(params.Scope), params.Filter, attrs, params.SizeLimit,
+					)
+					if refErr == nil {
+						allEntries = append(allEntries, refEntries...)
+					}
+				}
+				goto buildResult
+			}
+			c.mu.Unlock()
 			return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
 		}
 
@@ -394,6 +588,9 @@ func (c *Client) Search(params models.SearchParams) (*models.SearchResult, error
 		}
 		break
 	}
+	c.mu.Unlock()
+
+buildResult:
 
 	entries := make([]models.LDAPEntry, 0, len(allEntries))
 	for _, e := range allEntries {

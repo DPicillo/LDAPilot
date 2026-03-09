@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Loader2, X, Trash2 } from 'lucide-react'
 import { useConnectionStore } from '../../stores/connectionStore'
-import { SchemaObjectClass, LDAPAttribute } from '../../types/ldap'
+import { SchemaObjectClass, LDAPAttribute, ValidationError } from '../../types/ldap'
 import * as wails from '../../lib/wails'
 import { toast } from '../ui/Toast'
 
@@ -30,6 +30,7 @@ export function NewEntryDialog({ parentDN, onClose, onCreated }: NewEntryDialogP
   const [attributes, setAttributes] = useState<{ name: string; value: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [schemaOCs, setSchemaOCs] = useState<SchemaObjectClass[]>([]);
 
   useEffect(() => {
@@ -76,11 +77,37 @@ export function NewEntryDialog({ parentDN, onClose, onCreated }: NewEntryDialogP
     setAttributes(attributes.map((a, i) => i === index ? { ...a, [field]: val } : a));
   }
 
+  // Clear validation errors when form changes
+  useEffect(() => {
+    setValidationErrors([]);
+  }, [selectedTemplate, rdnAttr, rdnValue, attributes]);
+
   async function handleCreate() {
     if (!activeProfileId || !rdnValue.trim()) return;
 
     const tpl = TEMPLATES[selectedTemplate];
     const dn = `${rdnAttr}=${rdnValue},${parentDN}`;
+
+    // Build attributes map for validation
+    const attrMap: Record<string, string[]> = {};
+    attrMap[rdnAttr] = [rdnValue];
+    for (const attr of attributes) {
+      if (attr.name.trim()) {
+        attrMap[attr.name] = [attr.value];
+      }
+    }
+
+    // Validate against schema before creating
+    try {
+      const valErrors = await wails.ValidateEntry(activeProfileId, tpl.objectClasses, attrMap);
+      if (valErrors && valErrors.length > 0) {
+        setValidationErrors(valErrors);
+        return;
+      }
+    } catch {
+      // Validation service unavailable — proceed without validation
+    }
+    setValidationErrors([]);
 
     const ldapAttrs: LDAPAttribute[] = [
       { name: 'objectClass', values: tpl.objectClasses, binary: false },
@@ -110,7 +137,7 @@ export function NewEntryDialog({ parentDN, onClose, onCreated }: NewEntryDialogP
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-card border border-border rounded-md shadow-2xl w-[500px] max-h-[80vh] flex flex-col">
+      <div className="bg-card border border-border rounded-md shadow-2xl w-[500px] max-h-[80%] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold">New Entry</h2>
@@ -223,6 +250,16 @@ export function NewEntryDialog({ parentDN, onClose, onCreated }: NewEntryDialogP
               ))}
             </div>
           </div>
+
+          {validationErrors.length > 0 && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded p-2 text-xs text-red-400 space-y-1">
+              {validationErrors.map((e, i) => (
+                <div key={i}>
+                  <span className="font-medium">{e.attribute}:</span> {e.message}
+                </div>
+              ))}
+            </div>
+          )}
 
           {error && (
             <div className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded">{error}</div>

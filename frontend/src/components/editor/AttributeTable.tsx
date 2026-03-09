@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { ArrowUpDown, Plus, Trash2, Pencil, Check, X, Eye, EyeOff, Image, Calendar, Hash, Link2, Copy } from 'lucide-react'
-import { LDAPAttribute } from '../../types/ldap'
+import { LDAPAttribute, SchemaAttribute } from '../../types/ldap'
 import { cn } from '../../lib/utils'
 import { DN_REFERENCE_ATTRS, PASSWORD_ATTRS } from '../../lib/ad-constants'
 
@@ -11,6 +11,11 @@ interface AttributeTableProps {
   onDelete?: (attrName: string) => void;
   onNavigateDN?: (dn: string) => void;
   readOnly?: boolean;
+  schemaAttributes?: SchemaAttribute[];
+  filter?: string;
+  onFilterChange?: (filter: string) => void;
+  filterMode?: 'name' | 'all';
+  onFilterModeChange?: (mode: 'name' | 'all') => void;
 }
 
 type SortKey = 'name' | 'value';
@@ -99,15 +104,37 @@ export function AttributeTable({
   onDelete,
   onNavigateDN,
   readOnly = false,
+  schemaAttributes,
+  filter: externalFilter,
+  onFilterChange: externalOnFilterChange,
+  filterMode: externalFilterMode,
+  onFilterModeChange: externalOnFilterModeChange,
 }: AttributeTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [editingAttr, setEditingAttr] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [filter, setFilter] = useState('');
+  const [internalFilter, setInternalFilter] = useState('');
+  const [internalFilterMode, setInternalFilterMode] = useState<'name' | 'all'>('all');
   const [showAddRow, setShowAddRow] = useState(false);
   const [newAttrName, setNewAttrName] = useState('');
   const [newAttrValue, setNewAttrValue] = useState('');
+  const [hoveredAttr, setHoveredAttr] = useState<string | null>(null);
+
+  const filter = externalFilter !== undefined ? externalFilter : internalFilter;
+  const setFilter = externalOnFilterChange || setInternalFilter;
+  const filterMode = externalFilterMode !== undefined ? externalFilterMode : internalFilterMode;
+  const setFilterMode = externalOnFilterModeChange || setInternalFilterMode;
+
+  // Build schema lookup map
+  const schemaMap = useMemo(() => {
+    if (!schemaAttributes) return null;
+    const map = new Map<string, SchemaAttribute>();
+    for (const sa of schemaAttributes) {
+      map.set(sa.name.toLowerCase(), sa);
+    }
+    return map;
+  }, [schemaAttributes]);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -122,6 +149,9 @@ export function AttributeTable({
     .filter(attr => {
       if (!filter) return true;
       const f = filter.toLowerCase();
+      if (filterMode === 'name') {
+        return attr.name.toLowerCase().includes(f);
+      }
       return attr.name.toLowerCase().includes(f) ||
         attr.values.some(v => v.toLowerCase().includes(f));
     })
@@ -167,6 +197,18 @@ export function AttributeTable({
           placeholder="Filter attributes..."
           className="flex-1 px-2 py-1 text-xs bg-input border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
         />
+        <button
+          onClick={() => setFilterMode(filterMode === 'name' ? 'all' : 'name')}
+          className={cn(
+            'text-[10px] px-1.5 py-0.5 rounded border shrink-0',
+            filterMode === 'name'
+              ? 'border-primary/50 bg-primary/10 text-primary'
+              : 'border-border text-muted-foreground hover:text-foreground'
+          )}
+          title={filterMode === 'name' ? 'Filtering by name only - click for name + value' : 'Filtering by name + value - click for name only'}
+        >
+          {filterMode === 'name' ? 'Name' : 'All'}
+        </button>
         {!readOnly && (
           <button
             onClick={() => setShowAddRow(true)}
@@ -176,8 +218,8 @@ export function AttributeTable({
             <Plus size={12} />
           </button>
         )}
-        <span className="text-xs text-muted-foreground">
-          {sorted.length} attr{sorted.length !== 1 ? 's' : ''}
+        <span className="text-xs text-muted-foreground shrink-0">
+          {filter ? `${sorted.length} of ${attributes.length}` : sorted.length} attr{(filter ? sorted.length : sorted.length) !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -255,14 +297,23 @@ export function AttributeTable({
                 )}
               >
                 <td className="px-3 py-1 font-mono text-primary/80 align-top group/name">
-                  <div className="flex items-center gap-1">
+                  <div
+                    className="flex items-center gap-1 relative"
+                    onMouseEnter={() => setHoveredAttr(attr.name)}
+                    onMouseLeave={() => setHoveredAttr(null)}
+                  >
                     <AttrIcon type={getAttrType(attr.name)} />
-                    <span className="truncate">{attr.name}</span>
+                    <span className="truncate">
+                      <HighlightText text={attr.name} highlight={filter} />
+                    </span>
                     <CopyBtn
                       text={attr.values.join('\n')}
                       className="opacity-0 group-hover/name:opacity-100"
                       title="Copy value"
                     />
+                    {hoveredAttr === attr.name && schemaMap && schemaMap.has(attr.name.toLowerCase()) && (
+                      <SchemaTooltip schema={schemaMap.get(attr.name.toLowerCase())!} />
+                    )}
                   </div>
                 </td>
                 <td className="px-3 py-1 align-top">
@@ -279,7 +330,7 @@ export function AttributeTable({
                       }}
                     />
                   ) : (
-                    <AttrValueRenderer attr={attr} onNavigateDN={onNavigateDN} />
+                    <AttrValueRenderer attr={attr} onNavigateDN={onNavigateDN} highlight={filter} />
                   )}
                 </td>
                 {!readOnly && (
@@ -334,7 +385,7 @@ function AttrIcon({ type }: { type: AttrType }) {
   }
 }
 
-function AttrValueRenderer({ attr, onNavigateDN }: { attr: LDAPAttribute; onNavigateDN?: (dn: string) => void }) {
+function AttrValueRenderer({ attr, onNavigateDN, highlight }: { attr: LDAPAttribute; onNavigateDN?: (dn: string) => void; highlight?: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const type = getAttrType(attr.name);
 
@@ -358,6 +409,26 @@ function AttrValueRenderer({ attr, onNavigateDN }: { attr: LDAPAttribute; onNavi
             {v}
           </span>
         ))}
+      </div>
+    );
+  }
+
+  if (type === 'image' && attr.values.length > 0 && attr.values[0]) {
+    // Render photo attributes as inline images
+    const imgData = attr.binary
+      ? `data:image/jpeg;base64,${attr.values[0]}`
+      : attr.values[0].startsWith('data:')
+        ? attr.values[0]
+        : `data:image/jpeg;base64,${attr.values[0]}`;
+    return (
+      <div className="flex items-start gap-2">
+        <img
+          src={imgData}
+          alt={attr.name}
+          className="rounded border border-border max-w-[120px] max-h-[120px] object-contain bg-black/20"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+        <span className="text-[10px] text-muted-foreground">{attr.values[0].length} bytes</span>
       </div>
     );
   }
@@ -497,7 +568,7 @@ function AttrValueRenderer({ attr, onNavigateDN }: { attr: LDAPAttribute; onNavi
           <div className="flex flex-wrap gap-0.5 font-mono">
             {attr.values.slice(0, 20).map((v, i) => (
               <span key={i} className="px-1.5 py-0 bg-accent/50 rounded text-[10px] break-all max-w-[300px] truncate" title={v}>
-                {v}
+                <HighlightText text={v} highlight={highlight || ''} />
               </span>
             ))}
             {attr.values.length > 20 && (
@@ -509,7 +580,7 @@ function AttrValueRenderer({ attr, onNavigateDN }: { attr: LDAPAttribute; onNavi
       return (
         <div className="font-mono">
           {attr.values.map((v, i) => (
-            <div key={i} className="break-all">{v}</div>
+            <div key={i} className="break-all"><HighlightText text={v} highlight={highlight || ''} /></div>
           ))}
         </div>
       );
@@ -542,6 +613,53 @@ function formatLDAPTime(value: string, attrName?: string): string {
   }
 
   return '';
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function HighlightText({ text, highlight }: { text: string; highlight: string }) {
+  if (!highlight) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${escapeRegex(highlight)})`, 'gi'));
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === highlight.toLowerCase()
+          ? <mark key={i} className="bg-yellow-500/30 text-yellow-200 rounded px-0.5">{part}</mark>
+          : part
+      )}
+    </>
+  );
+}
+
+function SchemaTooltip({ schema }: { schema: SchemaAttribute }) {
+  return (
+    <div className="absolute left-0 top-full mt-1 z-50 w-72 bg-popover border border-border rounded-md shadow-lg p-2 text-xs space-y-1">
+      <div className="font-semibold text-foreground">{schema.name}</div>
+      {schema.description && (
+        <div className="text-muted-foreground">{schema.description}</div>
+      )}
+      <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10px]">
+        <span className="text-muted-foreground">OID:</span>
+        <span className="font-mono text-foreground">{schema.oid}</span>
+        {schema.syntaxName && (
+          <>
+            <span className="text-muted-foreground">Syntax:</span>
+            <span className="text-foreground">{schema.syntaxName}</span>
+          </>
+        )}
+        <span className="text-muted-foreground">Values:</span>
+        <span className="text-foreground">{schema.singleValue ? 'Single-value' : 'Multi-value'}</span>
+        {schema.noUserMod && (
+          <>
+            <span className="text-muted-foreground">Access:</span>
+            <span className="text-yellow-400">Read-only (noUserMod)</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function CopyBtn({ text, className, title }: { text: string; className?: string; title?: string }) {

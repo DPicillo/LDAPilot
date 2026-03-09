@@ -1,0 +1,79 @@
+dn: ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: People
+description: All user accounts
+
+dn: ou=Groups,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Groups
+description: All groups
+
+dn: ou=Services,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Services
+description: Service and application accounts
+
+dn: ou=Devices,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Devices
+description: Network devices and printers
+
+dn: ou=Policies,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Policies
+description: Directory policies
+
+dn: ou=Engineering,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Engineering
+description: Software Engineering department
+
+dn: ou=Sales,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Sales
+description: Sales department
+
+dn: ou=Management,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Management
+description: Executive management
+
+dn: ou=HR,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: HR
+description: Human Resources
+
+dn: ou=IT,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: IT
+description: IT Operations and Support
+
+dn: ou=Finance,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Finance
+description: Finance and Accounting
+
+dn: ou=Contractors,ou=People,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Contractors
+description: External contractors and consultants
+
+dn: ou=Teams,ou=Groups,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Teams
+description: Project and department teams
+
+dn: ou=Roles,ou=Groups,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Roles
+description: Role-based access groups
+
+dn: ou=Distribution,ou=Groups,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Distribution
+description: Email distribution lists
+
+dn: ou=Security,ou=Groups,dc=demo,dc=ldapilot,dc=local
+objectClass: organizationalUnit
+ou: Security
+description: Security and access control groups

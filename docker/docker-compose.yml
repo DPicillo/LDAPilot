@@ -1,0 +1,49 @@
+services:
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: ldapilot-openldap
+    hostname: ldap.demo.ldapilot.local
+    environment:
+      LDAP_ORGANISATION: "LDAPilot Demo"
+      LDAP_DOMAIN: "demo.ldapilot.local"
+      LDAP_BASE_DN: "dc=demo,dc=ldapilot,dc=local"
+      LDAP_ADMIN_PASSWORD: "admin"
+      LDAP_READONLY_USER: "true"
+      LDAP_READONLY_USER_USERNAME: "readonly"
+      LDAP_READONLY_USER_PASSWORD: "readonly"
+      LDAP_TLS: "false"
+    command: --copy-service
+    ports:
+      - "389:389"
+    volumes:
+      - ldap-data:/var/lib/ldap
+      - ldap-config:/etc/ldap/slapd.d
+      #- ./seed:/seed:ro  # Use import-seed.sh instead
+    restart: unless-stopped
+    networks:
+      - ldapilot-net
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: ldapilot-phpldapadmin
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: "openldap"
+      PHPLDAPADMIN_HTTPS: "false"
+    ports:
+      - "8080:80"
+    depends_on:
+      - openldap
+    profiles:
+      - admin
+    networks:
+      - ldapilot-net
+
+volumes:
+  ldap-data:
+    name: ldapilot-ldap-data
+  ldap-config:
+    name: ldapilot-ldap-config
+
+networks:
+  ldapilot-net:
+    name: ldapilot-net

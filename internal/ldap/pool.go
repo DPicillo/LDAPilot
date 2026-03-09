@@ -75,6 +75,20 @@ func (p *Pool) DisconnectAll() {
 	}
 }
 
+// GetConnected returns a snapshot of all currently connected clients keyed by profile ID.
+func (p *Pool) GetConnected() map[string]*Client {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	result := make(map[string]*Client, len(p.clients))
+	for id, client := range p.clients {
+		if client.IsConnected() {
+			result[id] = client
+		}
+	}
+	return result
+}
+
 // IsConnected returns whether a connection exists for the given profile ID.
 func (p *Pool) IsConnected(profileID string) bool {
 	p.mu.RLock()

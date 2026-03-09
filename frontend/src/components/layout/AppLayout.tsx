@@ -14,7 +14,7 @@ export function AppLayout() {
   const bottomPanelVisible = useUIStore((s) => s.bottomPanelVisible);
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-full flex flex-col">
       <TitleBar />
       <div className="flex-1 flex overflow-hidden">
         <ActivityBar />

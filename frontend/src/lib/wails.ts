@@ -3,7 +3,7 @@
  * These functions wrap the auto-generated Wails bindings.
  * During development without wails dev, they fall back to stubs.
  */
-import type { ConnectionProfile, SearchParams, SearchResult, TreeNode, LDAPEntry, LDAPAttribute, SchemaInfo, SchemaObjectClass, ImportResult } from '../types/ldap';
+import type { ConnectionProfile, SearchParams, SearchResult, TreeNode, LDAPEntry, LDAPAttribute, SchemaInfo, SchemaObjectClass, ObjectClassInfo, ValidationError, ImportResult, BatchResult, BatchModifyChange } from '../types/ldap';
 
 // Dynamic import helpers - the wailsjs directory is auto-generated
 // We use dynamic access to avoid build errors when bindings aren't generated yet
@@ -69,6 +69,28 @@ export async function GetConnectionStatus(profileID: string): Promise<boolean> {
   return false;
 }
 
+export async function Reconnect(profileID: string): Promise<void> {
+  const svc = getBinding('ConnectionService');
+  if (svc?.Reconnect) return svc.Reconnect(profileID);
+}
+
+export async function PingConnection(profileID: string): Promise<boolean> {
+  const svc = getBinding('ConnectionService');
+  if (svc?.PingConnection) return svc.PingConnection(profileID);
+  return false;
+}
+
+export async function ExportConnections(): Promise<void> {
+  const svc = getBinding('ConnectionService');
+  if (svc?.ExportConnections) return svc.ExportConnections();
+}
+
+export async function ImportConnections(): Promise<number> {
+  const svc = getBinding('ConnectionService');
+  if (svc?.ImportConnections) return svc.ImportConnections();
+  return 0;
+}
+
 // --- BrowserService ---
 
 export async function GetRootEntries(profileID: string): Promise<TreeNode[]> {
@@ -86,6 +108,24 @@ export async function GetChildren(profileID: string, parentDN: string): Promise<
 export async function GetEntry(profileID: string, dn: string): Promise<LDAPEntry | null> {
   const svc = getBinding('BrowserService');
   if (svc?.GetEntry) return svc.GetEntry(profileID, dn);
+  return null;
+}
+
+export async function GetRootDSE(profileID: string): Promise<LDAPEntry | null> {
+  const svc = getBinding('BrowserService');
+  if (svc?.GetRootDSE) return svc.GetRootDSE(profileID);
+  return null;
+}
+
+export interface ObjectStats {
+  baseDN: string;
+  totalCount: number;
+  byType: Record<string, number>;
+}
+
+export async function GetStatistics(profileID: string, baseDN: string): Promise<ObjectStats | null> {
+  const svc = getBinding('BrowserService');
+  if (svc?.GetStatistics) return svc.GetStatistics(profileID, baseDN);
   return null;
 }
 
@@ -202,6 +242,24 @@ export async function GetObjectClass(profileID: string, name: string): Promise<S
   return null;
 }
 
+export async function GetObjectClassDetails(profileID: string, name: string): Promise<ObjectClassInfo | null> {
+  const svc = getBinding('SchemaService');
+  if (svc?.GetObjectClassDetails) return svc.GetObjectClassDetails(profileID, name);
+  return null;
+}
+
+export async function GetRequiredAttributes(profileID: string, objectClasses: string[]): Promise<string[]> {
+  const svc = getBinding('SchemaService');
+  if (svc?.GetRequiredAttributes) return svc.GetRequiredAttributes(profileID, objectClasses);
+  return [];
+}
+
+export async function ValidateEntry(profileID: string, objectClasses: string[], attributes: Record<string, string[]>): Promise<ValidationError[]> {
+  const svc = getBinding('SchemaService');
+  if (svc?.ValidateEntry) return svc.ValidateEntry(profileID, objectClasses, attributes);
+  return [];
+}
+
 // --- LogService ---
 
 export interface LogEntry {
@@ -248,4 +306,105 @@ export async function GetAuditLog(profileID: string, limit: number = 500): Promi
 export async function ClearAuditLog(profileID: string): Promise<void> {
   const svc = getBinding('AuditService');
   if (svc?.ClearAuditLog) return svc.ClearAuditLog(profileID);
+}
+
+// --- AIService ---
+
+export interface ChatConversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages?: ChatMsg[];
+}
+
+export interface ChatMsg {
+  role: string;
+  content: string;
+  toolCalls?: string;
+  toolCallId?: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export async function ListChats(): Promise<ChatConversation[]> {
+  const svc = getBinding('AIService');
+  if (svc?.ListChats) return svc.ListChats();
+  return [];
+}
+
+export async function GetChat(id: string): Promise<ChatConversation | null> {
+  const svc = getBinding('AIService');
+  if (svc?.GetChat) return svc.GetChat(id);
+  return null;
+}
+
+export async function CreateChat(title: string): Promise<ChatConversation> {
+  const svc = getBinding('AIService');
+  if (svc?.CreateChat) return svc.CreateChat(title);
+  throw new Error('AI service not available');
+}
+
+export async function DeleteChat(id: string): Promise<void> {
+  const svc = getBinding('AIService');
+  if (svc?.DeleteChat) return svc.DeleteChat(id);
+}
+
+export async function RenameChat(id: string, title: string): Promise<void> {
+  const svc = getBinding('AIService');
+  if (svc?.RenameChat) return svc.RenameChat(id, title);
+}
+
+export async function AIChat(chatID: string, message: string): Promise<string> {
+  const svc = getBinding('AIService');
+  if (svc?.Chat) return svc.Chat(chatID, message);
+  return 'AI service not available';
+}
+
+export interface AIConfig {
+  provider: string;
+  url: string;
+  apiKey: string;
+  model: string;
+  hasKey: boolean;
+}
+
+export async function GetAIConfig(): Promise<AIConfig> {
+  const svc = getBinding('AIService');
+  if (svc?.GetAIConfig) return svc.GetAIConfig();
+  return { provider: '', url: '', apiKey: '', model: '', hasKey: false };
+}
+
+export async function SaveAIConfig(config: AIConfig): Promise<void> {
+  const svc = getBinding('AIService');
+  if (svc?.SaveAIConfig) return svc.SaveAIConfig(config);
+}
+
+export async function ListAIModels(): Promise<string[]> {
+  const svc = getBinding('AIService');
+  if (svc?.ListModels) return svc.ListModels();
+  return [];
+}
+
+// --- BatchService ---
+
+export async function BatchDelete(profileID: string, dns: string[]): Promise<BatchResult> {
+  const svc = getBinding('BatchService');
+  if (svc?.BatchDelete) return svc.BatchDelete(profileID, dns);
+  return { total: 0, succeeded: 0, failed: 0, errors: [] };
+}
+
+export async function BatchModify(profileID: string, dns: string[], changes: BatchModifyChange[]): Promise<BatchResult> {
+  const svc = getBinding('BatchService');
+  if (svc?.BatchModify) return svc.BatchModify(profileID, dns, changes);
+  return { total: 0, succeeded: 0, failed: 0, errors: [] };
+}
+
+export async function BatchMove(profileID: string, dns: string[], newParentDN: string): Promise<BatchResult> {
+  const svc = getBinding('BatchService');
+  if (svc?.BatchMove) return svc.BatchMove(profileID, dns, newParentDN);
+  return { total: 0, succeeded: 0, failed: 0, errors: [] };
 }
