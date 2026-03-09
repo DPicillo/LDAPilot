@@ -94,17 +94,6 @@ If you are looking for an open-source alternative to legacy LDAP clients (Apache
 
 LDAPilot was built to fill the gap for a **Modern LDAP Client** and **Active Directory Explorer**. Traditional tools like Apache Directory Studio or LDAP Admin are powerful but can feel archaic or resource-intensive. LDAPilot combines the familiarity of a classic **Directory Services Management Tool** with modern UI paradigms.
 
-| Feature | LDAPilot | Apache DS | LDAP Admin | AD Explorer |
-|---------|----------|-----------|------------|-------------|
-| Modern UI | ✅ | ❌ | ❌ | ❌ |
-| AI Assistant | ✅ | ❌ | ❌ | ❌ |
-| Cross-platform | ✅ | ✅ | ❌ Windows only | ❌ Windows only |
-| Multi-directory | ✅ | ✅ | ❌ | ❌ |
-| Batch operations | ✅ | ⚠️ Limited | ❌ | ❌ |
-| Dark mode | ✅ | ❌ | ❌ | ❌ |
-| Drag & drop | ✅ | ❌ | ❌ | ❌ |
-| Lightweight | ✅ ~30MB | ❌ ~500MB | ✅ | ✅ |
-
 *Keywords:* `LDAP Browser`, `Active Directory User Management`, `Modern LDAP Client`, `Open Source LDAP GUI`, `Cross-platform LDAP Tool`, `LDAP Schema Viewer`, `AD Explorer Alternative`, `React LDAP Client`, `Go LDAP Tool`, `AI LDAP Assistant`, `Active Directory Management Tool`.
 
 ## 💻 Installation
