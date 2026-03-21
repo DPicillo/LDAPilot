@@ -212,27 +212,29 @@ func (s *BrowserService) buildForestTree(client *ldap.Client, rootDSE *models.LD
 // Returns "" if no parent is found (it's a forest root).
 func getParentDomainDN(dn string, allDomainNCs []string) string {
 	dnLower := strings.ToLower(dn)
-	// Walk up the DN components looking for a matching domain NC
-	parts := strings.SplitN(dnLower, ",", 2)
-	if len(parts) < 2 {
-		return ""
-	}
-	remainder := parts[1] // everything after first DC= component
 
-	for _, candidate := range allDomainNCs {
-		candidateLower := strings.ToLower(candidate)
-		if candidateLower == dnLower {
-			continue // skip self
+	// Walk up the DN suffix, stripping one component at a time,
+	// looking for the nearest matching domain NC.
+	// e.g. for "DC=sub,DC=example,DC=com" we check:
+	//   "dc=example,dc=com", then "dc=com"
+	remainder := dnLower
+	for {
+		parts := strings.SplitN(remainder, ",", 2)
+		if len(parts) < 2 {
+			return ""
 		}
-		if candidateLower == remainder {
-			return candidate
+		remainder = parts[1]
+
+		for _, candidate := range allDomainNCs {
+			candidateLower := strings.ToLower(candidate)
+			if candidateLower == dnLower {
+				continue // skip self
+			}
+			if candidateLower == remainder {
+				return candidate
+			}
 		}
 	}
-	// Try further up (for deeper nesting like DC=a,DC=b,DC=c,DC=net)
-	if strings.Contains(remainder, ",") {
-		return getParentDomainDN("DC=dummy,"+remainder, allDomainNCs)
-	}
-	return ""
 }
 
 // mergeNamingContexts merges two lists of naming contexts, deduplicating by case-insensitive DN.

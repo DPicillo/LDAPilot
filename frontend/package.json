@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tanstack/react-virtual": "^3.13.21",
+    "@tanstack/react-virtual": "^3.13.23",
     "allotment": "^1.20.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
