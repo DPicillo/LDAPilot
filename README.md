@@ -5,6 +5,7 @@
 
 <p align="center">
   <a href="#key-features">Key Features</a> •
+  <a href="#screenshots">Screenshots</a> •
   <a href="#ai-assistant">AI Assistant</a> •
   <a href="#why-ldapilot">Why LDAPilot?</a> •
   <a href="#installation">Installation</a> •
@@ -22,9 +23,45 @@ Whether you are managing **Active Directory**, **OpenLDAP**, **FreeIPA**, or any
 
 If you are looking for an open-source alternative to legacy LDAP clients (Apache Directory Studio, LDAP Admin, Softerra) with a sleek dark-mode interface, AI-powered queries, comprehensive schema browsing, and cross-platform support, **LDAPilot** is the tool for you.
 
+<p align="center">
+  <img src="assets/Home.png" alt="LDAPilot Home" width="800">
+</p>
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td align="center"><strong>🌳 Directory Browser</strong></td>
+    <td align="center"><strong>🔍 Advanced Search</strong></td>
+  </tr>
+  <tr>
+    <td><img src="assets/Browser.png" alt="Directory Browser" width="400"></td>
+    <td><img src="assets/search.png" alt="Advanced Search" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>🤖 AI Chat Assistant</strong></td>
+    <td align="center"><strong>📖 Schema Browser</strong></td>
+  </tr>
+  <tr>
+    <td><img src="assets/AI_Chat.png" alt="AI Chat Assistant" width="400"></td>
+    <td><img src="assets/schema.png" alt="Schema Browser" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>📊 Reports & Analytics</strong></td>
+    <td align="center"><strong>🔗 New Connection</strong></td>
+  </tr>
+  <tr>
+    <td><img src="assets/reports.png" alt="Reports" width="400"></td>
+    <td><img src="assets/new_connection.png" alt="New Connection" width="400"></td>
+  </tr>
+</table>
+
 ## ✨ Key Features
 
 ### 🌳 Directory Tree Explorer
+
+<img src="assets/Browser.png" alt="Directory Tree Explorer" width="700">
+
 - **Virtualized tree rendering** — Handles directories with thousands of entries smoothly
 - **Smart AD forest support** — Automatically discovers naming contexts, DNS zones, and domain partitions
 - **Drag & drop** — Move entries between containers by dragging
@@ -34,6 +71,9 @@ If you are looking for an open-source alternative to legacy LDAP clients (Apache
 - **Object statistics** — Count objects by type (users, groups, OUs, computers) under any container
 
 ### 🔍 Advanced Search
+
+<img src="assets/search.png" alt="Advanced Search" width="700">
+
 - **LDAP filter builder** with syntax validation
 - **Configurable result columns** — Choose which attributes to display (cn, mail, department, etc.)
 - **Search history** — Access previous searches quickly
@@ -52,6 +92,9 @@ If you are looking for an open-source alternative to legacy LDAP clients (Apache
 - **Compare entries** — Side-by-side comparison of two entries
 
 ### 🤖 AI Assistant
+
+<img src="assets/AI_Chat.png" alt="AI Assistant" width="700">
+
 - **Natural language queries** — Ask questions like "Find all locked users" or "Who is John's manager?"
 - **Tool-calling** — AI can search LDAP, read entries, and browse trees autonomously
 - **Multi-directory aware** — AI can search across all connected directories
@@ -61,12 +104,18 @@ If you are looking for an open-source alternative to legacy LDAP clients (Apache
 - **Provider agnostic** — Works with OpenAI, Anthropic (via LiteLLM), Ollama, or any OpenAI-compatible API
 
 ### 📊 Reports & Analytics
+
+<img src="assets/reports.png" alt="Reports & Analytics" width="700">
+
 - **Locked accounts** — Find accounts locked out due to failed login attempts
 - **Disabled accounts** — List all disabled user accounts
 - **Expiring passwords** — Identify users whose passwords will expire soon
 - **Object statistics** — Breakdown of objects by type under any container
 
 ### 🔐 Security & Connections
+
+<img src="assets/new_connection.png" alt="Connection Setup" width="700">
+
 - **TLS/SSL & StartTLS** — Secure connections with certificate validation or skip-verify
 - **Multiple connections** — Connect to multiple directories simultaneously
 - **Connection profiles** — Save and organize connection settings
@@ -75,6 +124,9 @@ If you are looking for an open-source alternative to legacy LDAP clients (Apache
 - **Connection import/export** — Share connection profiles as JSON
 
 ### 📖 Schema Browser
+
+<img src="assets/schema.png" alt="Schema Browser" width="700">
+
 - Browse **object classes**, **attributes**, and their relationships
 - View attribute syntax, constraints, and usage
 - Cached schema for fast repeated access
@@ -199,3 +251,4 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ---
 *Developed with ❤️ by [David Picillo](https://www.picillo.de)*
+
