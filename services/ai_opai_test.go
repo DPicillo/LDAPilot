@@ -90,12 +90,30 @@ func TestCancelProviderCheckWhileDiscoveryBusy(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	defer close(release)
+	// The background discovery still writes the model cache into the test's
+	// config directory once released: wait for it before t.TempDir is removed.
+	discovered := make(chan struct{})
+	started := false
+	defer func() {
+		close(release)
+		if !started {
+			return
+		}
+		select {
+		case <-discovered:
+		case <-time.After(5 * time.Second):
+			t.Error("the background discovery did not finish")
+		}
+	}()
 
 	s, store := newTestAIService(t)
 	cfg := store.GetMasked()
 	cfg.Provider, cfg.Flavor, cfg.URL, cfg.Model = "openai", "custom", srv.URL+"/v1", "model-a"
-	go func() { _, _ = s.DiscoverModels(cfg, true) }() // background discovery holding the slot
+	started = true
+	go func() { // background discovery holding the slot
+		defer close(discovered)
+		_, _ = s.DiscoverModels(cfg, true)
+	}()
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):
