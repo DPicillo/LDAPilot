@@ -190,9 +190,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Not "assets": that is the repository's screenshot folder.
       - uses: actions/download-artifact@v8
         with:
-          path: assets
+          path: release-files
           merge-multiple: true
 
       - name: Create the release if needed (notes from CHANGELOG.md)
@@ -222,8 +223,8 @@ jobs:
           gh release create "$TAG" --verify-tag --title "LDAPilot $TAG" --notes-file notes.md
 
       - name: Upload the builds and SHA256SUMS.txt
-        working-directory: assets
+        working-directory: release-files
         run: |
-          sha256sum * > SHA256SUMS.txt
+          sha256sum LDAPilot-* > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          gh release upload "$TAG" * --clobber
+          gh release upload "$TAG" LDAPilot-* SHA256SUMS.txt --clobber
