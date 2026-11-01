@@ -14,7 +14,7 @@ import { useConnectionStore } from '../../stores/connectionStore'
 import { Badge } from '../ui/Badge'
 import { Kbd } from '../ui/Kbd'
 import { Spinner } from '../ui/Spinner'
-import { domId } from '../ui/dn'
+import { domId } from '../ui/dnParse'
 import { connectProfile, useShellState } from './shellState'
 import { preselectedProfileId, typeAheadKey, typeAheadMatch } from '../connection/profileLogic'
 

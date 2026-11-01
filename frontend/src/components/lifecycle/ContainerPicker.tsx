@@ -23,7 +23,7 @@ import { Spinner } from '../ui/Spinner'
 import {
   containerName, isContainerNode, targetProblemText, loadRecentTargets, looksLikeDN, matchesContainerFilter, offeredRecentTargets,
   pathFromRoot, targetProblem,
-} from './containerPicker'
+} from './containerPickerModel'
 
 export type TargetState = 'empty' | 'checking' | 'ok' | 'missing' | 'problem' | 'error'
 

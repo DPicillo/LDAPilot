@@ -93,7 +93,7 @@ import { usePaletteStore } from './paletteStore'
 import { panelDomId, tabDomId } from './Tabs'
 import { THEME_OPTIONS, DENSITY_OPTIONS } from './theme'
 import { isContainerKind, type ObjectKind } from './objectKind'
-import { parentDn, rdnValue } from './dn'
+import { parentDn, rdnValue } from './dnParse'
 import { allKinds, foreignDn, hasStatus, isKind, kindOf, many, notifyCommandsChanged, one, registerCommands, type Command, type CommandContext } from './commands'
 import { latestUndo, registerUndo, runUndo, subscribeUndo, undoButton } from './undo'
 

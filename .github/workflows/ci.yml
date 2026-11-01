@@ -55,6 +55,21 @@ jobs:
           (cd frontend && npm ci --no-audit --no-fund)
           wails generate module
 
+      - name: No file names that differ only in letter case (macOS / Windows)
+        run: |
+          git ls-files | python3 -c '
+          import os, sys, collections
+          seen = collections.defaultdict(set)
+          for f in sys.stdin.read().split():
+              d, b = os.path.split(f)
+              stem = os.path.splitext(b)[0]
+              seen[(d.lower(), stem.lower())].add(os.path.join(d, stem))
+          bad = [sorted(v) for v in seen.values() if len(v) > 1]
+          for v in bad:
+              print("Differ only in case:", ", ".join(v))
+          sys.exit(1 if bad else 0)
+          '
+
       - name: gofmt
         run: |
           unformatted="$(gofmt -l $(git ls-files '*.go'))"
