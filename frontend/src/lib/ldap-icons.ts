@@ -2,7 +2,7 @@ import {
   User, Users, Folder, Building, Globe, Monitor, Box, FileText,
   Shield, Key, Network, Mail, Printer, Server, Settings, HardDrive,
   Database, Lock, Landmark, Contact, UserCheck, UserCog, Share2,
-  Cpu, Waypoints
+  Cpu, Waypoints, BookOpen, Shapes, Tag
 } from 'lucide-react'
 
 /** Map an icon hint (from Go backend) to a lucide-react icon component */
@@ -32,15 +32,25 @@ export function getIconForHint(hint: string) {
     case 'share': return Share2;
     case 'cpu': return Cpu;
     case 'waypoints': return Waypoints;
+    case 'schema': return BookOpen;        // AD schema partition (dMD)
+    case 'schemaclass': return Shapes;     // classSchema
+    case 'schemaattr': return Tag;         // attributeSchema
     default: return FileText;
   }
 }
 
-/** Map objectClass values to an icon component (fallback when no hint) */
+/**
+ * Map objectClass values to an icon component (fallback when no hint).
+ * Icon colour is not decided here: use `OBJECT_KIND_COLOR[resolveObjectKind(oc)]`
+ * (components/ui/objectKind.ts, text-oc-* tokens), the one resolver of SPEC 6.4.
+ */
 export function getIconForObjectClass(objectClasses: string[]) {
   const ocs = new Set(objectClasses.map(oc => oc.toLowerCase()));
 
   // AD-specific
+  if (ocs.has('classschema')) return Shapes;
+  if (ocs.has('attributeschema')) return Tag;
+  if (ocs.has('dmd')) return BookOpen;
   if (ocs.has('grouppolicycontainer')) return Settings;
   if (ocs.has('msmq-configuration') || ocs.has('msmq-queue')) return Waypoints;
   if (ocs.has('foreignsecurityprincipal')) return Shield;
@@ -61,26 +71,8 @@ export function getIconForObjectClass(objectClasses: string[]) {
   if (ocs.has('organizationalunit')) return Folder;
   if (ocs.has('organization')) return Building;
   if (ocs.has('domain') || ocs.has('domaindns') || ocs.has('dcobject')) return Globe;
-  if (ocs.has('container') || ocs.has('builtindomain') || ocs.has('lostandfound')) return Box;
+  // organizationalRole: the LDAP "Container" template (a container kind, M-08).
+  if (ocs.has('container') || ocs.has('builtindomain') || ocs.has('lostandfound') || ocs.has('organizationalrole')) return Box;
 
   return FileText;
-}
-
-/** Get a color class for the icon based on objectClass for visual distinction */
-export function getIconColor(objectClasses: string[]): string {
-  const ocs = new Set(objectClasses.map(oc => oc.toLowerCase()));
-
-  if (ocs.has('person') || ocs.has('inetorgperson') || ocs.has('user') || ocs.has('posixaccount') || ocs.has('organizationalperson')) return 'text-blue-400';
-  if (ocs.has('computer')) return 'text-orange-400';
-  if (ocs.has('group') || ocs.has('groupofnames') || ocs.has('groupofuniquenames') || ocs.has('posixgroup')) return 'text-green-400';
-  if (ocs.has('organizationalunit')) return 'text-yellow-400';
-  if (ocs.has('organization')) return 'text-purple-400';
-  if (ocs.has('domain') || ocs.has('domaindns') || ocs.has('dcobject')) return 'text-cyan-400';
-  if (ocs.has('container') || ocs.has('builtindomain')) return 'text-muted-foreground';
-  if (ocs.has('grouppolicycontainer')) return 'text-amber-400';
-  if (ocs.has('foreignsecurityprincipal') || ocs.has('trustedDomain') || ocs.has('trusteddomain')) return 'text-red-400';
-  if (ocs.has('contact')) return 'text-teal-400';
-  if (ocs.has('printqueue')) return 'text-indigo-400';
-
-  return 'text-muted-foreground';
 }

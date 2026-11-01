@@ -75,19 +75,16 @@ func (s *SchemaService) ClearCache(profileID string) {
 	s.mu.Unlock()
 }
 
-// GetObjectClass retrieves a single objectClass by name.
+// GetObjectClass retrieves a single objectClass by name, alias or OID.
 func (s *SchemaService) GetObjectClass(profileID string, name string) (*models.SchemaObjectClass, error) {
 	schema, err := s.GetSchema(profileID)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, oc := range schema.ObjectClasses {
-		if oc.Name == name {
-			return &oc, nil
-		}
+	if oc := schema.FindObjectClass(name); oc != nil {
+		cp := *oc
+		return &cp, nil
 	}
-
 	return nil, fmt.Errorf("objectClass %q not found", name)
 }
 
@@ -99,20 +96,17 @@ func (s *SchemaService) GetObjectClassDetails(profileID string, name string) (*m
 		return nil, err
 	}
 
-	for _, oc := range schema.ObjectClasses {
-		if strings.EqualFold(oc.Name, name) {
-			return &models.ObjectClassInfo{
-				Name:        oc.Name,
-				OID:         oc.OID,
-				Description: oc.Description,
-				Superior:    oc.SuperClass,
-				Must:        oc.Must,
-				May:         oc.May,
-				Type:        oc.Kind,
-			}, nil
-		}
+	if oc := schema.FindObjectClass(name); oc != nil {
+		return &models.ObjectClassInfo{
+			Name:        oc.Name,
+			OID:         oc.OID,
+			Description: oc.Description,
+			Superior:    oc.SuperClass,
+			Must:        oc.Must,
+			May:         oc.May,
+			Type:        oc.Kind,
+		}, nil
 	}
-
 	return nil, fmt.Errorf("objectClass %q not found", name)
 }
 
@@ -136,20 +130,24 @@ func (s *SchemaService) GetRequiredAttributes(profileID string, objectClasses []
 	return result, nil
 }
 
-// collectMustAttrs recursively walks the SUP chain of an objectClass and adds
-// all MUST attributes to the provided set (case-insensitive key).
+// collectMustAttrs walks the SUP chain of an objectClass (found by name,
+// alias or OID; cycles ignored) and adds all MUST attributes to the
+// provided set under their primary names.
 func collectMustAttrs(schema *models.SchemaInfo, ocName string, mustSet map[string]bool) {
-	for _, oc := range schema.ObjectClasses {
-		if strings.EqualFold(oc.Name, ocName) {
-			for _, attr := range oc.Must {
-				mustSet[attr] = true
-			}
-			// Walk the superclass chain
-			for _, sup := range oc.SuperClass {
-				collectMustAttrs(schema, sup, mustSet)
-			}
-			return
-		}
+	collectMustAttrsSeen(schema, ocName, mustSet, map[string]bool{})
+}
+
+func collectMustAttrsSeen(schema *models.SchemaInfo, ocName string, mustSet, seen map[string]bool) {
+	oc := schema.FindObjectClass(ocName)
+	if oc == nil || seen[strings.ToLower(oc.Name)] {
+		return
+	}
+	seen[strings.ToLower(oc.Name)] = true
+	for _, attr := range oc.Must {
+		mustSet[schema.AttributeName(attr)] = true
+	}
+	for _, sup := range oc.SuperClass {
+		collectMustAttrsSeen(schema, sup, mustSet, seen)
 	}
 }
 
@@ -173,13 +171,8 @@ func (s *SchemaService) ValidateEntry(profileID string, objectClasses []string, 
 	// Check for at least one structural objectClass
 	hasStructural := false
 	for _, ocName := range objectClasses {
-		for _, oc := range schema.ObjectClasses {
-			if strings.EqualFold(oc.Name, ocName) && oc.Kind == "structural" {
-				hasStructural = true
-				break
-			}
-		}
-		if hasStructural {
+		if oc := schema.FindObjectClass(ocName); oc != nil && oc.Kind == "structural" {
+			hasStructural = true
 			break
 		}
 	}
@@ -197,10 +190,12 @@ func (s *SchemaService) ValidateEntry(profileID string, objectClasses []string, 
 		collectMustAttrs(schema, ocName, mustSet)
 	}
 
-	// Build a case-insensitive lookup of provided attributes
+	// A case-insensitive lookup of the provided attributes by primary name:
+	// a value given under an alias (surname, userid) satisfies sn / uid.
 	attrLower := make(map[string][]string)
 	for name, values := range attributes {
-		attrLower[strings.ToLower(name)] = values
+		key := strings.ToLower(schema.AttributeName(name))
+		attrLower[key] = append(attrLower[key], values...)
 	}
 
 	// Check each required attribute is present and non-empty

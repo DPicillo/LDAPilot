@@ -20,6 +20,16 @@ type SearchParams struct {
 	Attributes []string    `json:"attributes"`
 	SizeLimit  int         `json:"sizeLimit"`
 	TimeLimit  int         `json:"timeLimit"`
+
+	// ShowDeleted sends the AD Show Deleted control (1.2.840.113556.1.4.417)
+	// so that deleted objects (tombstones) are returned.
+	ShowDeleted bool `json:"showDeleted,omitempty"`
+	// ShowRecycled sends the AD Show Recycled control (1.2.840.113556.1.4.2064)
+	// so that recycled objects are returned as well.
+	ShowRecycled bool `json:"showRecycled,omitempty"`
+	// ManageDsaIT sends the ManageDsaIT control (2.16.840.1.113730.3.4.2) so
+	// that referral objects are returned as entries instead of referrals.
+	ManageDsaIT bool `json:"manageDsaIT,omitempty"`
 }
 
 // SearchResult holds the results of an LDAP search operation.

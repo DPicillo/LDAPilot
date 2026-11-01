@@ -25,33 +25,32 @@ func (s *LogService) SetContext(ctx context.Context) {
 	s.ctx = ctx
 }
 
-// GetLogs returns all log entries for a connection.
+// GetLogs returns all log entries for a connection. The pool keeps one log
+// per profile across clients, so this also works while the profile is not
+// connected: failed connects and re-dials stay visible (RW1-C-02).
 func (s *LogService) GetLogs(profileID string) ([]ldap.LogEntry, error) {
-	client, err := s.pool.Get(profileID)
-	if err != nil {
-		return nil, err
+	if profileID == "" {
+		return nil, nil
 	}
-	return client.Logger().GetEntries(), nil
+	return s.pool.Logger(profileID).GetEntries(), nil
 }
 
 // ClearLogs clears all log entries for a connection.
 func (s *LogService) ClearLogs(profileID string) error {
-	client, err := s.pool.Get(profileID)
-	if err != nil {
-		return err
+	if profileID == "" {
+		return nil
 	}
-	client.Logger().Clear()
+	s.pool.Logger(profileID).Clear()
 	return nil
 }
 
-// StartLogStream starts forwarding log entries as Wails events.
+// StartLogStream starts forwarding log entries as Wails events (entries
+// carry their ProfileID). Works for a disconnected profile too.
 func (s *LogService) StartLogStream(profileID string) error {
-	client, err := s.pool.Get(profileID)
-	if err != nil {
-		return err
+	if profileID == "" {
+		return nil
 	}
-
-	client.Logger().SetListener(func(entry ldap.LogEntry) {
+	s.pool.Logger(profileID).SetListener(func(entry ldap.LogEntry) {
 		if s.ctx != nil {
 			wailsRuntime.EventsEmit(s.ctx, "operation:log", entry)
 		}

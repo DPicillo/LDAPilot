@@ -1,450 +1,759 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { ChevronDown, Search, Terminal, Trash2, Filter, Clock, AlertCircle, CheckCircle2, XCircle, ScrollText, RefreshCw } from 'lucide-react'
+/**
+ * Bottom panel (SPEC 7.6). 32px header with panel Tabs (Results N /
+ * Operations / Audit Log) and actions (Open as Tab = a results tab with a
+ * snapshot of the rows, DEF-16; Maximize, Hide).
+ * Results: context strip of the search that produced the rows (source,
+ * filter, base DN, "12 entries · 84 ms", "Size limit reached · Load all");
+ * a failed or cancelled search keeps it and says "Showing previous results —
+ * …" (the only error surface of a search).
+ * Logs: DataTable (virtualized, sticky header, sortable), op colours from
+ * text-op-*, Error-only SegmentedControl, Export CSV. Operations: double-click
+ * / Enter opens the row's DN, row menu (Copy Line, Copy DN, Show in Tree,
+ * Filter by This DN), Clear also resets the status bar's last operation.
+ * Audit log: date range, live updates (audit:entry), RENAME/MOVE rows link to
+ * the new DN, the "ldapilot:audit-filter" event shows it filtered to a DN,
+ * Clear needs the connection name typed (or Export, then Clear) and leaves an
+ * AUDIT_CLEARED record. Tabs mount on first visit and then stay mounted.
+ */
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import {
+  ArrowRight,
+  Ban,
+  ChevronDown,
+  CircleCheck,
+  CircleX,
+  ClipboardCopy,
+  Copy,
+  Crosshair,
+  Download,
+  ExternalLink,
+  Filter,
+  Maximize2,
+  Minimize2,
+  RefreshCw,
+  ScrollText,
+  Search,
+  Terminal,
+  Trash2,
+  WifiOff,
+} from 'lucide-react'
+import { create } from 'zustand'
 import { cn } from '../../lib/utils'
-import { useUIStore } from '../../stores/uiStore'
+import { useUIStore, type BottomTab } from '../../stores/uiStore'
 import { useConnectionStore } from '../../stores/connectionStore'
-import { SearchResults } from '../search/SearchResults'
+import { useEditorStore } from '../../stores/editorStore'
+import { useTreeStore } from '../../stores/treeStore'
+import { useSearchStore } from '../../stores/searchStore'
+import { SearchResults, SearchResultsActions } from '../search/SearchResults'
+import { ResultsStrip } from '../search/ResultsStrip'
+import { openResultsSnapshot } from '../search/resultsSnapshots'
 import * as wails from '../../lib/wails'
 import type { LogEntry, AuditEntry } from '../../lib/wails'
+import { GetAuditLogRange, SaveExportFile, savedMessage } from '../../lib/wails-export'
+import { toCSV } from '../../lib/bulk'
+import { Tabs, TabPanel, type TabItem } from '../ui/Tabs'
+import { IconButton, Button } from '../ui/Button'
+import { DataTable, type DataTableColumn } from '../ui/DataTable'
+import { Input, SearchInput } from '../ui/Input'
+import { SegmentedControl } from '../ui/SegmentedControl'
+import { EmptyState } from '../ui/EmptyState'
+import { ErrorBoundary } from '../ui/ErrorBoundary'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { TruncatedText } from '../ui/TruncatedText'
+import { Spinner } from '../ui/Spinner'
+import { Tooltip } from '../ui/Tooltip'
+import { ContextMenu, MenuHeader, MenuItem, MenuSeparator } from '../ui/Menu'
+import { toast } from '../ui/Toast'
+import { firstRDN, normalizeDN, parseRDN } from '../../lib/dn'
+import { auditNewDN, forwardDN, historyDNs, logEntryDN, logResult, opTone, profileSlot, withProfileSlot } from './opTone'
+import { entryForProfile, fileNamePart, mergeLogEntries } from './opLog'
+import { clearLastOp, onWailsEvent, useShellState } from './shellState'
 
-import type { BottomTab } from '../../stores/uiStore'
+/** The results strip moved to components/search/ResultsStrip (it also heads results tabs). */
+export { ResultsStrip }
 
-interface BottomTabItem {
-  id: BottomTab;
-  label: string;
-  icon: React.ElementType;
+const TABS_ID = 'bottom'
+
+/** Operation name -> text-op-* token (operations and audit log). */
+export { opTone }
+
+function ResultCell({ result }: { result: 'ok' | 'error' | 'cancelled' }) {
+  if (result === 'error') {
+    return (
+      <span className="inline-flex items-center gap-1 text-destructive">
+        <CircleX size={12} strokeWidth={1.75} aria-hidden />
+        Error
+      </span>
+    )
+  }
+  if (result === 'cancelled') {
+    return (
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <Ban size={12} strokeWidth={1.75} aria-hidden />
+        Cancelled
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-success">
+      <CircleCheck size={12} strokeWidth={1.75} aria-hidden />
+      OK
+    </span>
+  )
 }
 
-const bottomTabs: BottomTabItem[] = [
-  { id: 'search-results', label: 'Search Results', icon: Search },
-  { id: 'output', label: 'Operations', icon: Terminal },
-  { id: 'audit', label: 'Audit Log', icon: ScrollText },
-];
+function copy(text: string, what: string) {
+  navigator.clipboard
+    .writeText(text)
+    .then(() => toast.success(`${what} copied`))
+    .catch((err) => toast.error(`Could not copy the ${what.toLowerCase()}`, err instanceof Error ? err.message : String(err)))
+}
+
+/** Opens a DN of the active connection (a pinned tab). */
+function openDN(dn: string) {
+  const id = useConnectionStore.getState().activeProfileId
+  if (id && dn) useEditorStore.getState().openEntry(id, dn)
+}
+
+/** Show in Tree for a DN of the active connection. */
+function showInTree(dn: string) {
+  const id = useConnectionStore.getState().activeProfileId
+  if (!id || !dn) return
+  const ui = useUIStore.getState()
+  ui.setActivity('explorer')
+  if (!ui.sidebarVisible) ui.toggleSidebar()
+  void useTreeStore.getState().locateInTree(id, dn)
+}
+
+/** Saves a log as CSV through the export save dialog. */
+async function saveLogCSV(name: string, header: string[], rows: (string | number)[][]) {
+  try {
+    const path = await SaveExportFile(name, 'csv', toCSV(header, rows))
+    if (path && path !== 'download') toast.success(savedMessage(rows.length, path))
+    return path
+  } catch (err) {
+    toast.error('Export failed', err instanceof Error ? err.message : String(err))
+    return ''
+  }
+}
+
+// --- Results strip binding -----------------------------------------------------
+
+/**
+ * The run the results strip describes: the latest shell SearchRun that
+ * produced results. A failed or cancelled search also updates lastSearch
+ * (its timing), but the strip keeps the previous run, so filter and base
+ * always belong to the rows below it.
+ */
+// --- Audit filter requests ("Show History", TRIAGE §0.1) ------------------------
+
+/** A request to show the audit log filtered to a DN; the AuditLog applies it when mounted. */
+const useAuditRequest = create<{ request: { profileId: string; dn: string; seq: number } | null }>(() => ({ request: null }))
+let auditRequestSeq = 0
+if (typeof window !== 'undefined') {
+  window.addEventListener('ldapilot:audit-filter', (e) => {
+    const detail = (e as CustomEvent).detail as { profileId?: string; dn?: string } | undefined
+    if (!detail?.dn) return
+    const cs = useConnectionStore.getState()
+    const profileId = detail.profileId || cs.activeProfileId
+    if (!profileId) return
+    // The audit view shows the active connection's log.
+    if (profileId !== cs.activeProfileId && cs.connectionStatuses[profileId] === true) cs.setActiveProfile(profileId)
+    useAuditRequest.setState({ request: { profileId, dn: detail.dn, seq: ++auditRequestSeq } })
+    useUIStore.getState().showBottomTab('audit')
+  })
+}
+
+function useActiveConnection() {
+  const activeProfileId = useConnectionStore((s) => s.activeProfileId)
+  const connected = useConnectionStore((s) => (s.activeProfileId ? s.connectionStatuses[s.activeProfileId] === true : false))
+  return { activeProfileId, connected }
+}
+
+// --- Panel ---------------------------------------------------------------------
 
 export function BottomPanel() {
-  const activeTab = useUIStore((s) => s.bottomPanelTab);
-  const showBottomTab = useUIStore((s) => s.showBottomTab);
-  const toggleBottomPanel = useUIStore((s) => s.toggleBottomPanel);
+  const activeTab = useUIStore((s) => s.bottomPanelTab)
+  const showBottomTab = useUIStore((s) => s.showBottomTab)
+  const toggleBottomPanel = useUIStore((s) => s.toggleBottomPanel)
+  const panelVisible = useUIStore((s) => s.bottomPanelVisible)
+  const maximized = useShellState((s) => s.bottomMaximized)
+  const toggleMaximized = useShellState((s) => s.toggleBottomMaximized)
+  const results = useSearchStore((s) => s.results)
+  const [visited, setVisited] = useState<BottomTab[]>(() => [activeTab])
+  if (!visited.includes(activeTab)) setVisited([...visited, activeTab])
+
+  const items: TabItem[] = [
+    { id: 'search-results', label: 'Results', icon: Search, count: results ? results.totalCount || results.entries?.length || 0 : undefined },
+    { id: 'output', label: 'Operations', icon: Terminal },
+    { id: 'audit', label: 'Audit Log', icon: ScrollText },
+  ]
 
   return (
-    <div className="h-full flex flex-col bg-background border-t border-border">
-      {/* Panel Header */}
-      <div className="flex items-center justify-between px-2 h-[35px] border-b border-border shrink-0">
-        <div className="flex items-center gap-1">
-          {bottomTabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => showBottomTab(tab.id)}
-                className={cn(
-                  'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm',
-                  'transition-colors duration-100',
-                  activeTab === tab.id
-                    ? 'text-foreground border-b-2 border-primary'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <Icon size={14} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          onClick={toggleBottomPanel}
-          className="p-1 text-muted-foreground hover:text-foreground rounded-sm hover:bg-accent"
-          title="Hide Panel"
-        >
-          <ChevronDown size={16} />
-        </button>
-      </div>
-
-      {/* Panel Content */}
-      <div className="flex-1 overflow-hidden">
-        {activeTab === 'search-results' && <SearchResults />}
-        {activeTab === 'output' && <OutputLog />}
-        {activeTab === 'audit' && <AuditLog />}
-      </div>
+    <div className="h-full flex flex-col bg-background border-t border-border min-w-0" role="region" aria-label="Panel">
+      <Tabs
+        variant="panel"
+        idPrefix={TABS_ID}
+        aria-label="Panel views"
+        items={items}
+        value={activeTab}
+        onValueChange={(id) => showBottomTab(id as BottomTab)}
+        className="shrink-0 border-b border-border"
+        end={
+          <>
+            {activeTab === 'search-results' && (
+              <>
+                {/* Selection + bulk, Show in Tree, attribute columns, export (SPEC 7.6 panel actions). */}
+                <SearchResultsActions />
+                {/* A snapshot tab of these rows next to the panel (DEF-16): the next search changes only the panel. */}
+                <IconButton label="Open Results as Tab" icon={ExternalLink} size="md" disabled={!results} onClick={() => void openResultsSnapshot()} />
+              </>
+            )}
+            <IconButton label={maximized ? 'Restore Panel' : 'Maximize Panel'} icon={maximized ? Minimize2 : Maximize2} size="md" pressed={maximized} onClick={toggleMaximized} />
+            <IconButton label="Hide Panel" icon={ChevronDown} size="md" shortcut="Mod+J" onClick={toggleBottomPanel} />
+          </>
+        }
+      />
+      {visited.map((t) => (
+        <TabPanel key={t} idPrefix={TABS_ID} value={t} selected={activeTab} className="flex-1 min-h-0 overflow-hidden">
+          <ErrorBoundary variant="region" name={t === 'search-results' ? 'Results' : t === 'output' ? 'Operations' : 'Audit Log'}>
+            {t === 'search-results' ? <ResultsView /> : t === 'output' ? <OutputLog /> : <AuditLog active={panelVisible && activeTab === 'audit'} />}
+          </ErrorBoundary>
+        </TabPanel>
+      ))}
     </div>
-  );
+  )
 }
 
-// Operation type color mapping
-const OP_COLORS: Record<string, string> = {
-  SEARCH: 'text-blue-400',
-  BIND: 'text-purple-400',
-  ADD: 'text-green-400',
-  MODIFY: 'text-yellow-400',
-  DELETE: 'text-red-400',
-  RENAME: 'text-orange-400',
-  COMPARE: 'text-cyan-400',
-};
+// --- Results -------------------------------------------------------------------
 
-function getOpColor(op: string): string {
-  const upper = op.toUpperCase();
-  for (const [key, color] of Object.entries(OP_COLORS)) {
-    if (upper.includes(key)) return color;
-  }
-  return 'text-muted-foreground';
+function ResultsView() {
+  const results = useSearchStore((s) => s.results)
+  const loading = useSearchStore((s) => s.loading)
+  const failure = useSearchStore((s) => s.lastFailure)
+  return (
+    <div className="h-full flex flex-col min-w-0">
+      {(results || loading || failure) && <ResultsStrip />}
+      <div className="flex-1 min-h-0">
+        <SearchResults toolbar="none" />
+      </div>
+    </div>
+  )
+}
+
+// --- Shared log toolbar --------------------------------------------------------
+
+type ErrorFilter = 'all' | 'errors'
+
+function LogToolbar({
+  filter,
+  onFilter,
+  errorFilter,
+  onErrorFilter,
+  total,
+  errors,
+  shown,
+  placeholder,
+  filterRef,
+  children,
+}: {
+  filterRef?: RefObject<HTMLInputElement | null>
+  filter: string
+  onFilter: (v: string) => void
+  errorFilter: ErrorFilter
+  onErrorFilter: (v: ErrorFilter) => void
+  total: number
+  errors: number
+  shown: number
+  placeholder: string
+  children?: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1 border-b border-border shrink-0 min-w-0">
+      <SearchInput ref={filterRef} value={filter} onValueChange={onFilter} placeholder={placeholder} aria-label={placeholder} size="sm" className="min-w-0" wrapperClassName="flex-1 min-w-[120px] max-w-[360px]" />
+      <SegmentedControl<ErrorFilter>
+        aria-label="Show"
+        size="sm"
+        value={errorFilter}
+        onValueChange={onErrorFilter}
+        options={[
+          { value: 'all', label: 'All', count: total },
+          { value: 'errors', label: 'Errors', count: errors },
+        ]}
+      />
+      <span className="ml-auto text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+        {shown === total ? `${total} ${total === 1 ? 'entry' : 'entries'}` : `${shown} of ${total}`}
+      </span>
+      {children}
+    </div>
+  )
+}
+
+// --- Operations log ------------------------------------------------------------
+
+type LogRow = LogEntry & { seq: number }
+
+const opsColumns: DataTableColumn<LogRow>[] = [
+  { id: 'timestamp', header: 'Time', width: 104, mono: true, sortable: true, value: (r) => r.timestamp },
+  { id: 'result', header: 'Result', width: 88, sortable: true, value: (r) => logResult(r), cell: (r) => <ResultCell result={logResult(r)} /> },
+  {
+    id: 'operation',
+    header: 'Operation',
+    width: 112,
+    sortable: true,
+    value: (r) => r.operation,
+    cell: (r) => <span className={cn('font-semibold', opTone(r.operation))}>{r.operation}</span>,
+  },
+  {
+    id: 'details',
+    header: 'Details',
+    minWidth: 200,
+    value: (r) => r.details,
+    cell: (r) => (
+      <span className="flex min-w-0 gap-2">
+        <TruncatedText text={r.details} className="min-w-0 text-foreground" />
+        {r.error && <TruncatedText text={r.error} className="min-w-0 text-destructive" />}
+      </span>
+    ),
+  },
+  { id: 'duration', header: 'Duration', width: 88, align: 'right', sortable: true, value: (r) => parseFloat(r.duration) || 0, cell: (r) => <span className="tabular-nums">{r.duration}</span> },
+]
+
+function logLine(r: LogEntry): string {
+  return [r.timestamp, logResult(r).toUpperCase(), r.operation, r.details, r.error ?? '', r.duration].filter(Boolean).join('  ')
+}
+
+/**
+ * State of a log view kept per connection (FIN-W-01): switching the
+ * connection shows that connection's filter, never the one typed or set by
+ * Show History for another connection.
+ */
+function usePerProfileState<T>(profileId: string | null, initial: T): [T, (value: T) => void] {
+  const [slots, setSlots] = useState<Record<string, T>>({})
+  const value = profileSlot(slots, profileId, initial)
+  const set = (v: T) => setSlots((m) => withProfileSlot(m, profileId, v))
+  return [value, set]
 }
 
 function OutputLog() {
-  const activeProfileId = useConnectionStore((s) => s.activeProfileId);
-  const connectionStatuses = useConnectionStore((s) => s.connectionStatuses);
-  const isConnected = activeProfileId ? connectionStatuses[activeProfileId] : false;
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [filter, setFilter] = useState('');
-  const [showErrors, setShowErrors] = useState(false);
-  const logRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  // The active profile's log; with none active, the profile of the last failed connect or
+  // the last used one, so failed connects and re-dials stay visible (RW1-C-02).
+  const activeProfileId = useConnectionStore((s) => {
+    if (s.activeProfileId) return s.activeProfileId
+    const lastUsed = useShellState.getState().lastUsedProfileId
+    return [s.errorProfileId, lastUsed].find((id) => !!id && s.profiles.some((p) => p.id === id)) ?? null
+  })
+  const connected = useConnectionStore((s) => (activeProfileId ? s.connectionStatuses[activeProfileId] === true : false))
+  const connecting = useShellState((s) => !!activeProfileId && s.connectingId === activeProfileId)
+  const profileName = useConnectionStore((s) => s.profiles.find((p) => p.id === activeProfileId)?.name ?? 'connection')
+  const [logs, setLogs] = useState<LogRow[]>([])
+  const [filter, setFilter] = usePerProfileState(activeProfileId, '')
+  const [errorFilter, setErrorFilter] = useState<ErrorFilter>('all')
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [menu, setMenu] = useState<{ point: { clientX: number; clientY: number }; row: LogRow } | null>(null)
+  // Clear disables its own button (empty log): focus goes to the filter instead.
+  const filterRef = useRef<HTMLInputElement>(null)
 
+  // The profile's log also while it is not connected (RW1-C-02: failed connects and
+  // re-dials are history there); the shared stream is filtered on the entry's profile
+  // and merged by sequence number, so nothing is listed twice (RW1-C-03).
   useEffect(() => {
-    if (!activeProfileId || !isConnected) {
-      setLogs([]);
-      return;
+    if (!activeProfileId) {
+      setLogs([])
+      return
     }
-
-    // Load existing logs
-    wails.GetLogs(activeProfileId).then(setLogs);
-
-    // Start streaming
-    wails.StartLogStream(activeProfileId);
-
-    // Listen for new log entries via Wails events
-    const w = (window as any);
-    if (w.runtime?.EventsOn) {
-      const cancel = w.runtime.EventsOn('operation:log', (entry: LogEntry) => {
-        setLogs(prev => [...prev, entry]);
-      });
-      return () => {
-        if (typeof cancel === 'function') cancel();
-      };
+    const id = activeProfileId
+    let alive = true
+    let local = 0
+    setLogs([])
+    // An entry of an older backend without seq: after everything else, in arrival order.
+    const toRow = (e: LogEntry): LogRow => (typeof e.seq === 'number' && e.seq > 0 ? (e as LogRow) : { ...e, seq: 1e12 + local++ })
+    wails
+      .GetLogs(id)
+      .then((l) => {
+        if (alive) setLogs((prev) => mergeLogEntries((l || []).map(toRow), prev))
+      })
+      .catch(() => {})
+    wails.StartLogStream(id).catch(() => {})
+    const off = onWailsEvent('operation:log', (...data: unknown[]) => {
+      const entry = data[0] as LogEntry | undefined
+      if (entry && typeof entry.operation === 'string' && entryForProfile(entry, id)) setLogs((prev) => mergeLogEntries(prev, [toRow(entry)]))
+    })
+    return () => {
+      alive = false
+      off()
     }
-  }, [activeProfileId, isConnected]);
+  }, [activeProfileId, connected])
 
-  useEffect(() => {
-    if (autoScroll && logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
-  }, [logs, autoScroll]);
+  const errorCount = useMemo(() => logs.filter((l) => l.error).length, [logs])
+  const rows = useMemo(() => {
+    const f = filter.trim().toLowerCase()
+    return logs
+      .filter((l) => (errorFilter === 'errors' ? !!l.error : true))
+      .filter((l) => !f || l.operation.toLowerCase().includes(f) || l.details.toLowerCase().includes(f) || (l.error ?? '').toLowerCase().includes(f))
+      .slice()
+      .reverse() // newest first
+  }, [logs, filter, errorFilter])
 
-  const filteredLogs = useMemo(() => {
-    let result = logs;
-    if (showErrors) {
-      result = result.filter(l => l.error);
-    }
-    if (filter) {
-      const f = filter.toLowerCase();
-      result = result.filter(l =>
-        l.operation.toLowerCase().includes(f) ||
-        l.details.toLowerCase().includes(f) ||
-        (l.error && l.error.toLowerCase().includes(f))
-      );
-    }
-    return result;
-  }, [logs, filter, showErrors]);
-
-  const errorCount = logs.filter(l => l.error).length;
-
-  function handleClear() {
-    if (activeProfileId) {
-      wails.ClearLogs(activeProfileId);
-      setLogs([]);
-    }
+  if (!activeProfileId) {
+    return <EmptyState icon={Terminal} title="No connection" hint="Connect to a server to see its LDAP operations." />
   }
 
-  function handleScroll() {
-    if (logRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = logRef.current;
-      setAutoScroll(scrollHeight - scrollTop - clientHeight < 30);
-    }
-  }
+  // ISO date + time per row (RW1-R-09), a file-system friendly default name.
+  const exportCSV = () =>
+    void saveLogCSV(
+      `operations-${fileNamePart(profileName) || 'connection'}`,
+      ['time', 'result', 'operation', 'details', 'error', 'duration'],
+      rows.map((r) => [r.at || r.timestamp, logResult(r), r.operation, r.details, r.error ?? '', r.duration]),
+    )
 
-  if (!isConnected) {
-    return (
-      <div className="h-full flex items-center justify-center text-muted-foreground text-xs">
-        <Terminal size={16} className="mr-2 opacity-40" />
-        Connect to a server to see operations
-      </div>
-    );
-  }
+  const menuDN = menu ? logEntryDN(menu.row.details) : ''
 
   return (
-    <div className="h-full flex flex-col relative">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 px-2 py-1 border-b border-border shrink-0">
-        <div className="flex items-center gap-1 flex-1">
-          <Filter size={11} className="text-muted-foreground shrink-0" />
-          <input
-            type="text"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            placeholder="Filter operations..."
-            className="flex-1 text-xs bg-transparent border-none outline-none placeholder:text-muted-foreground/50"
-          />
-        </div>
-        <button
-          onClick={() => setShowErrors(!showErrors)}
-          className={cn(
-            'flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded',
-            showErrors ? 'bg-red-500/15 text-red-400' : 'text-muted-foreground hover:text-foreground'
-          )}
-          title="Show errors only"
-        >
-          <AlertCircle size={10} />
-          {errorCount > 0 && errorCount}
-        </button>
-        <span className="text-[10px] text-muted-foreground">
-          {filteredLogs.length}/{logs.length}
-        </span>
-        <button
-          onClick={handleClear}
-          className="p-0.5 text-muted-foreground hover:text-foreground rounded hover:bg-accent"
-          title="Clear"
-        >
-          <Trash2 size={11} />
-        </button>
-      </div>
-
-      {/* Log entries */}
-      <div
-        ref={logRef}
-        className="flex-1 overflow-auto font-mono text-[11px]"
-        onScroll={handleScroll}
+    <div className="h-full flex flex-col min-w-0">
+      <LogToolbar
+        filter={filter}
+        onFilter={setFilter}
+        errorFilter={errorFilter}
+        onErrorFilter={setErrorFilter}
+        total={logs.length}
+        errors={errorCount}
+        shown={rows.length}
+        placeholder="Filter operations"
+        filterRef={filterRef}
       >
-        {filteredLogs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-            {logs.length === 0 ? 'Waiting for operations...' : 'No matching operations'}
-          </div>
-        ) : (
-          <table className="w-full">
-            <tbody>
-              {filteredLogs.map((log, i) => (
-                <tr key={i} className="hover:bg-accent/30 border-b border-border/20">
-                  <td className="px-2 py-0.5 text-muted-foreground shrink-0 whitespace-nowrap w-[1%]">
-                    <div className="flex items-center gap-1">
-                      <Clock size={9} className="opacity-50" />
-                      {log.timestamp}
-                    </div>
-                  </td>
-                  <td className="px-2 py-0.5 whitespace-nowrap w-[1%]">
-                    {log.error ? (
-                      <XCircle size={10} className="text-red-400" />
-                    ) : (
-                      <CheckCircle2 size={10} className="text-green-400/60" />
-                    )}
-                  </td>
-                  <td className={cn('px-2 py-0.5 font-semibold whitespace-nowrap w-[1%]', getOpColor(log.operation))}>
-                    {log.operation}
-                  </td>
-                  <td className="px-2 py-0.5 text-foreground truncate max-w-0">
-                    <span className="truncate block">
-                      {log.details}
-                      {log.error && (
-                        <span className="text-red-400 ml-2" title={log.error}>{log.error}</span>
-                      )}
-                    </span>
-                  </td>
-                  <td className="px-2 py-0.5 text-muted-foreground whitespace-nowrap w-[1%] text-right">
-                    {log.duration}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Auto-scroll indicator */}
-      {!autoScroll && logs.length > 0 && (
-        <button
-          onClick={() => {
-            setAutoScroll(true);
-            if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-          }}
-          className="absolute bottom-1 right-2 text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground shadow"
-        >
-          Scroll to latest
-        </button>
+        <IconButton label="Export Operations as CSV" icon={Download} size="md" disabled={!rows.length} onClick={exportCSV} />
+        <IconButton label="Clear operations log" icon={Trash2} size="md" disabled={!logs.length} onClick={() => setConfirmClear(true)} />
+      </LogToolbar>
+      {!connected && (
+        <div role="status" className="flex items-center gap-1.5 px-2 py-1 border-b border-border text-xs text-muted-foreground shrink-0 min-w-0">
+          <WifiOff size={12} className="shrink-0" aria-hidden />
+          <span className="truncate">
+            {connecting ? `Connecting to ${profileName}…` : `${profileName} is not connected`} — operations logged so far, incl. failed connects
+          </span>
+        </div>
       )}
+      <DataTable<LogRow>
+        aria-label="Operations log, newest first"
+        columns={opsColumns}
+        rows={rows}
+        rowKey={(r) => String(r.seq)}
+        selection="single"
+        virtualized
+        persistKey="ops-log"
+        className="flex-1"
+        getRowDn={(r) => logEntryDN(r.details)}
+        onOpen={(r) => openDN(logEntryDN(r.details))}
+        onContextMenu={(point, sel) => sel[0] && setMenu({ point, row: sel[0] })}
+        empty={<EmptyState variant="inline" icon={Terminal} title={logs.length ? 'No matching operations' : connected ? 'Waiting for operations…' : 'No operations logged for this connection yet'} />}
+      />
+      <ContextMenu point={menu?.point ?? null} onClose={() => setMenu(null)} label="Operation actions">
+        {() =>
+          menu && (
+            <>
+              {menuDN && <MenuHeader mono>{menuDN}</MenuHeader>}
+              <MenuItem icon={ExternalLink} label="Open Entry" default disabled={!menuDN} onSelect={() => openDN(menuDN)} />
+              <MenuItem icon={Crosshair} label="Show in Tree" disabled={!menuDN} onSelect={() => showInTree(menuDN)} />
+              <MenuSeparator />
+              <MenuItem icon={ClipboardCopy} label="Copy Line" onSelect={() => copy(logLine(menu.row), 'Line')} />
+              <MenuItem icon={Copy} label="Copy DN" disabled={!menuDN} onSelect={() => copy(menuDN, 'DN')} />
+              <MenuItem icon={Filter} label="Filter by This DN" disabled={!menuDN} onSelect={() => setFilter(menuDN)} />
+            </>
+          )
+        }
+      </ContextMenu>
+      <ConfirmDialog
+        open={confirmClear}
+        tone="danger"
+        title="Clear the operations log?"
+        message="All logged operations of this connection are removed. The audit log is not affected."
+        confirmLabel="Clear Log"
+        returnFocus={filterRef}
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={() => {
+          setConfirmClear(false)
+          if (activeProfileId) wails.ClearLogs(activeProfileId).catch(() => {})
+          setLogs([])
+          // The status bar's "last operation" was one of the cleared ones.
+          if (activeProfileId) clearLastOp(activeProfileId)
+        }}
+      />
     </div>
-  );
+  )
 }
 
-// Audit operation color mapping
-const AUDIT_OP_COLORS: Record<string, string> = {
-  CREATE: 'text-green-400',
-  MODIFY: 'text-yellow-400',
-  DELETE: 'text-red-400',
-  RENAME: 'text-orange-400',
-  ADD_ATTR: 'text-cyan-400',
-  DEL_ATTR: 'text-pink-400',
-  MOVE: 'text-purple-400',
-};
+// --- Audit log -----------------------------------------------------------------
 
-function getAuditOpColor(op: string): string {
-  return AUDIT_OP_COLORS[op.toUpperCase()] || 'text-muted-foreground';
+interface AuditRow extends AuditEntry {
+  seq: number
 }
 
-function AuditLog() {
-  const activeProfileId = useConnectionStore((s) => s.activeProfileId);
-  const connectionStatuses = useConnectionStore((s) => s.connectionStatuses);
-  const isConnected = activeProfileId ? connectionStatuses[activeProfileId] : false;
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
-  const [filter, setFilter] = useState('');
-  const [showErrors, setShowErrors] = useState(false);
-  const [loading, setLoading] = useState(false);
+/** Rows loaded at most (the date range narrows older ones). */
+const AUDIT_LIMIT = 2000
+
+function inRange(ts: string, from: string, to: string): boolean {
+  return (!from || ts >= from) && (!to || ts <= to || ts.startsWith(to))
+}
+
+/**
+ * The audit log stays mounted (keep-alive tabs, hidden panel): it reloads
+ * every time it is shown (`active`) and adds new entries live (audit:entry)
+ * while it is visible.
+ */
+function AuditLog({ active }: { active: boolean }) {
+  const { activeProfileId, connected } = useActiveConnection()
+  const profileName = useConnectionStore((s) => s.profiles.find((p) => p.id === s.activeProfileId)?.name ?? '')
+  const openEntry = useEditorStore((s) => s.openEntry)
+  const request = useAuditRequest((s) => s.request)
+  const [entries, setEntries] = useState<AuditRow[]>([])
+  const [filter, setFilter] = usePerProfileState(activeProfileId, '')
+  const [historyDN, setHistoryDN] = usePerProfileState<string | null>(activeProfileId, null)
+  const [errorFilter, setErrorFilter] = useState<ErrorFilter>('all')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const filterRef = useRef<HTMLInputElement>(null)
+  const seqRef = useRef(0)
 
   const loadEntries = async () => {
-    if (!activeProfileId) return;
-    setLoading(true);
+    if (!activeProfileId) return
+    setLoading(true)
     try {
-      const result = await wails.GetAuditLog(activeProfileId, 500);
-      setEntries(result || []);
+      const result = await GetAuditLogRange(activeProfileId, from, to, AUDIT_LIMIT)
+      setEntries(result.map((e) => ({ ...e, seq: seqRef.current++ })))
     } catch {
-      setEntries([]);
+      setEntries([])
     } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!activeProfileId || !isConnected) {
-      setEntries([]);
-      return;
-    }
-    loadEntries();
-  }, [activeProfileId, isConnected]);
-
-  const filteredEntries = useMemo(() => {
-    let result = entries;
-    if (showErrors) {
-      result = result.filter(e => e.error);
-    }
-    if (filter) {
-      const f = filter.toLowerCase();
-      result = result.filter(e =>
-        e.operation.toLowerCase().includes(f) ||
-        e.dn.toLowerCase().includes(f) ||
-        (e.details && e.details.toLowerCase().includes(f)) ||
-        (e.error && e.error.toLowerCase().includes(f))
-      );
-    }
-    return result;
-  }, [entries, filter, showErrors]);
-
-  const errorCount = entries.filter(e => e.error).length;
-
-  function handleClear() {
-    if (activeProfileId) {
-      wails.ClearAuditLog(activeProfileId);
-      setEntries([]);
+      setLoading(false)
     }
   }
 
-  if (!isConnected) {
-    return (
-      <div className="h-full flex items-center justify-center text-muted-foreground text-xs">
-        <ScrollText size={16} className="mr-2 opacity-40" />
-        Connect to a server to see audit log
-      </div>
-    );
+  useEffect(() => {
+    if (!activeProfileId || !connected) {
+      setEntries([])
+      return
+    }
+    if (!active) return
+    void loadEntries()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProfileId, connected, active, from, to])
+
+  // Live: entries written while the log is shown (this connection, within the range).
+  useEffect(() => {
+    if (!active || !activeProfileId || !connected) return
+    return onWailsEvent('audit:entry', (...data: unknown[]) => {
+      const [profileId, entry] = data as [string, AuditEntry | undefined]
+      if (profileId !== activeProfileId || !entry || !inRange(entry.timestamp, from, to)) return
+      // A clear (possibly from another view) leaves only its own record.
+      setEntries((prev) => [{ ...entry, seq: seqRef.current++ }, ...(entry.operation === 'AUDIT_CLEARED' ? [] : prev)])
+    })
+  }, [active, activeProfileId, connected, from, to])
+
+  // "Show History" of an entry: filter to its DN.
+  useEffect(() => {
+    if (!request || request.profileId !== activeProfileId) return
+    setFilter(request.dn)
+    setHistoryDN(request.dn)
+    setErrorFilter('all')
+    useAuditRequest.setState({ request: null })
+  }, [request, activeProfileId])
+  // While the filter is the Show History DN: also the rows logged under the entry's earlier names.
+  const historyChain = useMemo(
+    () => (historyDN && filter === historyDN ? historyDNs(entries, historyDN) : null),
+    [historyDN, filter, entries],
+  )
+
+  const columns = useMemo<DataTableColumn<AuditRow>[]>(
+    () => [
+      { id: 'timestamp', header: 'Time', width: 176, minWidth: 160, mono: true, sortable: true, value: (r) => r.timestamp },
+      { id: 'result', header: 'Result', width: 72, sortable: true, value: (r) => (r.error ? 'error' : 'ok'), cell: (r) => <ResultCell result={r.error ? 'error' : 'ok'} /> },
+      {
+        id: 'operation',
+        header: 'Operation',
+        width: 112,
+        sortable: true,
+        value: (r) => r.operation,
+        cell: (r) => <span className={cn('font-semibold', opTone(r.operation))}>{r.operation}</span>,
+      },
+      { id: 'dn', header: 'DN', minWidth: 200, sortable: true, renderer: 'dn', value: (r) => r.dn },
+      {
+        id: 'details',
+        header: 'Details',
+        minWidth: 200,
+        value: (r) => r.details ?? '',
+        cell: (r) => {
+          const newDN = auditNewDN(r)
+          return (
+            <span className="flex min-w-0 gap-2 items-center">
+              {newDN && (
+                <button type="button"
+                  onClick={() => openDN(newDN)}
+                  className="shrink-0 inline-flex items-center gap-0.5 text-primary hover:underline max-w-[45%] min-w-0 rounded-xs focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-focus"
+                  title={`Open the entry under its new DN: ${newDN}`}
+                >
+                  <ArrowRight size={12} strokeWidth={1.75} aria-hidden className="shrink-0" />
+                  <span className="truncate font-mono">{parseRDN(firstRDN(newDN)).value || newDN}</span>
+                </button>
+              )}
+              <TruncatedText text={r.details ?? ''} className="min-w-0 text-muted-foreground" />
+              {r.error && <TruncatedText text={r.error} className="min-w-0 text-destructive" />}
+            </span>
+          )
+        },
+      },
+      {
+        // Bind DN: show its RDN value (escape-aware: "CN=Schmidt\, Anna,..." -> "Schmidt, Anna"), full DN on hover.
+        id: 'user',
+        header: 'User',
+        width: 140,
+        sortable: true,
+        value: (r) => r.user ?? '',
+        cell: (r) =>
+          r.user ? (
+            <Tooltip content={<span className="font-mono">{r.user}</span>} placement="bottom-start">
+              <span className="block min-w-0 truncate">{parseRDN(firstRDN(r.user)).value || r.user}</span>
+            </Tooltip>
+          ) : null,
+      },
+    ],
+    [],
+  )
+
+  const errorCount = useMemo(() => entries.filter((e) => e.error).length, [entries])
+  const rows = useMemo(() => {
+    const f = filter.trim().toLowerCase()
+    const chain = historyChain && historyChain.size > 1 ? [...historyChain] : null
+    return entries
+      .filter((e) => (errorFilter === 'errors' ? !!e.error : true))
+      .filter(
+        (e) =>
+          !f ||
+          (chain && ((n) => chain.some((d) => n === d || n.endsWith(`,${d}`)))(normalizeDN(e.dn))) ||
+          e.operation.toLowerCase().includes(f) ||
+          e.dn.toLowerCase().includes(f) ||
+          (e.details ?? '').toLowerCase().includes(f) ||
+          (e.error ?? '').toLowerCase().includes(f),
+      )
+  }, [entries, filter, errorFilter, historyChain])
+
+  if (!connected) {
+    return <EmptyState icon={ScrollText} title="No connection" hint="Connect to a server to see its audit log." />
+  }
+
+  /** CSV of the whole range (not only the loaded rows). Returns the saved path ('' when cancelled). */
+  async function exportAudit(): Promise<string> {
+    if (!activeProfileId) return ''
+    let all: AuditEntry[]
+    try {
+      all = await GetAuditLogRange(activeProfileId, from, to, 0)
+    } catch (err) {
+      toast.error('Export failed', err instanceof Error ? err.message : String(err))
+      return ''
+    }
+    return saveLogCSV(
+      `audit ${profileName || 'connection'}`,
+      ['time', 'result', 'operation', 'dn', 'details', 'error', 'user'],
+      all.map((e) => [e.timestamp, e.error ? 'error' : 'ok', e.operation, e.dn, e.details ?? '', e.error ?? '', e.user ?? '']),
+    )
+  }
+
+  async function clearLog(exportFirst: boolean) {
+    if (!activeProfileId) return
+    if (exportFirst) {
+      const path = await exportAudit()
+      // Cancelled or failed export: nothing is cleared.
+      if (!path) return
+    }
+    setClearing(true)
+    try {
+      await wails.ClearAuditLog(activeProfileId)
+      setConfirmClear(false)
+      toast.success('Audit log cleared (an AUDIT_CLEARED entry records who and when)')
+      await loadEntries()
+    } catch (err) {
+      toast.error('Could not clear the audit log', err instanceof Error ? err.message : String(err))
+    } finally {
+      setClearing(false)
+    }
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 px-2 py-1 border-b border-border shrink-0">
-        <div className="flex items-center gap-1 flex-1">
-          <Filter size={11} className="text-muted-foreground shrink-0" />
-          <input
-            type="text"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            placeholder="Filter audit entries..."
-            className="flex-1 text-xs bg-transparent border-none outline-none placeholder:text-muted-foreground/50"
-          />
-        </div>
-        <button
-          onClick={() => setShowErrors(!showErrors)}
-          className={cn(
-            'flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded',
-            showErrors ? 'bg-red-500/15 text-red-400' : 'text-muted-foreground hover:text-foreground'
-          )}
-          title="Show errors only"
-        >
-          <AlertCircle size={10} />
-          {errorCount > 0 && errorCount}
-        </button>
-        <span className="text-[10px] text-muted-foreground">
-          {filteredEntries.length}/{entries.length}
-        </span>
-        <button
-          onClick={loadEntries}
-          className="p-0.5 text-muted-foreground hover:text-foreground rounded hover:bg-accent"
-          title="Refresh"
-        >
-          <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
-        </button>
-        <button
-          onClick={handleClear}
-          className="p-0.5 text-muted-foreground hover:text-foreground rounded hover:bg-accent"
-          title="Clear audit log"
-        >
-          <Trash2 size={11} />
-        </button>
-      </div>
-
-      {/* Entries */}
-      <div className="flex-1 overflow-auto font-mono text-[11px]">
-        {filteredEntries.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-            {entries.length === 0 ? 'No audit entries yet — changes will be logged here' : 'No matching entries'}
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead className="sticky top-0 bg-card z-10">
-              <tr className="border-b border-border text-[10px] text-muted-foreground">
-                <th className="px-2 py-0.5 text-left font-medium">Time</th>
-                <th className="px-2 py-0.5 text-left font-medium w-[1%]"></th>
-                <th className="px-2 py-0.5 text-left font-medium">Operation</th>
-                <th className="px-2 py-0.5 text-left font-medium">DN</th>
-                <th className="px-2 py-0.5 text-left font-medium">Details</th>
-                <th className="px-2 py-0.5 text-left font-medium">User</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEntries.map((entry, i) => (
-                <tr key={i} className="hover:bg-accent/30 border-b border-border/20">
-                  <td className="px-2 py-0.5 text-muted-foreground whitespace-nowrap w-[1%]">
-                    {entry.timestamp}
-                  </td>
-                  <td className="px-2 py-0.5 whitespace-nowrap w-[1%]">
-                    {entry.error ? (
-                      <XCircle size={10} className="text-red-400" />
-                    ) : (
-                      <CheckCircle2 size={10} className="text-green-400/60" />
-                    )}
-                  </td>
-                  <td className={cn('px-2 py-0.5 font-semibold whitespace-nowrap w-[1%]', getAuditOpColor(entry.operation))}>
-                    {entry.operation}
-                  </td>
-                  <td className="px-2 py-0.5 text-foreground truncate max-w-0" title={entry.dn}>
-                    <span className="truncate block">{entry.dn}</span>
-                  </td>
-                  <td className="px-2 py-0.5 text-muted-foreground truncate max-w-0" title={entry.details || ''}>
-                    <span className="truncate block">{entry.details}</span>
-                  </td>
-                  <td className="px-2 py-0.5 text-muted-foreground truncate max-w-[120px]" title={entry.user || ''}>
-                    {entry.user && entry.user.split(',')[0]}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div className="h-full flex flex-col min-w-0">
+      <LogToolbar
+        filter={filter}
+        onFilter={setFilter}
+        errorFilter={errorFilter}
+        onErrorFilter={setErrorFilter}
+        total={entries.length}
+        errors={errorCount}
+        shown={rows.length}
+        placeholder="Filter audit entries"
+        filterRef={filterRef}
+      >
+        {historyChain && historyChain.size > 1 && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap" title={[...historyChain].join('\n')}>
+            incl. {historyChain.size - 1} earlier name{historyChain.size > 2 ? 's' : ''}
+          </span>
         )}
-      </div>
+        <span className="inline-flex items-center gap-1 shrink-0">
+          <Input type="date" size="sm" aria-label="From date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="w-[128px]" />
+          <span className="text-xs text-muted-foreground">–</span>
+          <Input type="date" size="sm" aria-label="To date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="w-[128px]" />
+          {(from || to) && (
+            <Button size="sm" variant="ghost" onClick={() => { setFrom(''); setTo('') }}>
+              All dates
+            </Button>
+          )}
+        </span>
+        <IconButton label="Refresh audit log" icon={loading ? <Spinner size="sm" decorative /> : RefreshCw} size="md" onClick={() => void loadEntries()} />
+        <IconButton label="Export Audit Log as CSV" icon={Download} size="md" disabled={!entries.length} onClick={() => void exportAudit()} />
+        <IconButton label="Clear audit log" icon={Trash2} size="md" disabled={!entries.length} onClick={() => setConfirmClear(true)} />
+      </LogToolbar>
+      <DataTable<AuditRow>
+        aria-label="Audit log"
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => String(r.seq)}
+        virtualized
+        persistKey="audit-log"
+        className="flex-1"
+        loading={loading && !entries.length}
+        getRowDn={(r) => r.dn}
+        // An old DN opens the entry under its current name (RW1-R-04).
+        onOpenDn={(dn) => activeProfileId && openEntry(activeProfileId, forwardDN(entries, dn))}
+        onOpen={(r) => activeProfileId && r.dn && openEntry(activeProfileId, forwardDN(entries, auditNewDN(r) || r.dn, r.timestamp))}
+        empty={
+          <EmptyState
+            variant="inline"
+            icon={ScrollText}
+            title={entries.length ? 'No matching entries' : from || to ? 'No audit entries in this period' : 'No audit entries yet'}
+            hint={entries.length || from || to ? undefined : 'Changes made through LDAPilot are logged here.'}
+          />
+        }
+      />
+      <ConfirmDialog
+        open={confirmClear}
+        tone="danger"
+        title="Clear the audit log?"
+        message={
+          <span className="space-y-2 block">
+            <span className="block">
+              The persistent audit log of “{profileName}” is deleted from disk; only an AUDIT_CLEARED entry (who, when) remains. This cannot be undone.
+            </span>
+            <Button size="sm" leftIcon={Download} disabled={clearing} onClick={() => void clearLog(true)}>
+              Export, then Clear…
+            </Button>
+          </span>
+        }
+        requireTyping={profileName || undefined}
+        confirmLabel="Clear Audit Log"
+        busy={clearing}
+        returnFocus={filterRef}
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={() => void clearLog(false)}
+      />
     </div>
-  );
+  )
 }

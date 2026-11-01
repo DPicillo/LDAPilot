@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/dpicillo/LDAPilot/internal/config"
 	"github.com/dpicillo/LDAPilot/internal/ldap"
 	"github.com/dpicillo/LDAPilot/internal/ldif"
 	"github.com/dpicillo/LDAPilot/internal/models"
@@ -13,8 +16,9 @@ import (
 
 // ExportService provides LDIF export capabilities.
 type ExportService struct {
-	ctx  context.Context
-	pool *ldap.Pool
+	ctx        context.Context
+	pool       *ldap.Pool
+	auditStore *config.AuditStore
 }
 
 // NewExportService creates a new ExportService.
@@ -29,6 +33,11 @@ func (s *ExportService) SetContext(ctx context.Context) {
 	s.ctx = ctx
 }
 
+// SetAuditStore sets the audit store for logging entries created by LDIF import.
+func (s *ExportService) SetAuditStore(store *config.AuditStore) {
+	s.auditStore = store
+}
+
 // ExportEntries fetches the specified entries by DN and returns them as an LDIF string.
 func (s *ExportService) ExportEntries(profileID string, dns []string) (string, error) {
 	client, err := s.pool.Get(profileID)
@@ -36,16 +45,26 @@ func (s *ExportService) ExportEntries(profileID string, dns []string) (string, e
 		return "", err
 	}
 
+	entries, err := exportReadEntries(client, dns)
+	if err != nil {
+		return "", err
+	}
+	return ldif.Export(entries)
+}
+
+// exportReadEntries reads the entries of a multi-entry export, parents
+// first (an LDIF import needs every parent before its children).
+func exportReadEntries(client *ldap.Client, dns []string) ([]models.LDAPEntry, error) {
 	entries := make([]models.LDAPEntry, 0, len(dns))
 	for _, dn := range dns {
 		entry, err := client.GetEntry(dn)
 		if err != nil {
-			return "", fmt.Errorf("failed to fetch entry %q: %w", dn, err)
+			return nil, fmt.Errorf("failed to fetch entry %q: %w", dn, err)
 		}
 		entries = append(entries, *entry)
 	}
-
-	return ldif.Export(entries)
+	ldif.SortParentFirst(entries)
+	return entries, nil
 }
 
 // ExportSubtree fetches all entries under the given base DN and returns them as an LDIF string.
@@ -66,67 +85,145 @@ func (s *ExportService) ExportSubtree(profileID string, baseDN string) (string, 
 		return "", fmt.Errorf("failed to search subtree %q: %w", baseDN, err)
 	}
 
+	ldif.SortParentFirst(result.Entries)
 	return ldif.Export(result.Entries)
 }
 
-// ImportLDIF parses an LDIF string and adds each entry to the server.
-func (s *ExportService) ImportLDIF(profileID string, ldifContent string) (*ldif.ImportResult, error) {
+// exportSearchAttributes are the attributes requested for an export search:
+// all user attributes plus the operational ones a full LDIF shows.
+var exportSearchAttributes = []string{"*", "+"}
+
+// Export runs an export of the Export dialog (see models.ExportRequest) and
+// returns its text: LDIF (parents first, AD values as raw bytes, optionally
+// importable and restricted to attributes) or CSV (formula-safe). Nothing is
+// written; SaveExportFile saves the text.
+func (s *ExportService) Export(profileID string, req models.ExportRequest) (*models.ExportResult, error) {
 	client, err := s.pool.Get(profileID)
 	if err != nil {
 		return nil, err
 	}
-
-	entries, err := ldif.Parse(ldifContent)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse LDIF: %w", err)
-	}
-
-	result := &ldif.ImportResult{
-		Entries: entries,
-		Total:   len(entries),
-	}
-
-	for _, entry := range entries {
-		if addErr := client.AddEntry(entry.DN, entry.Attributes); addErr != nil {
-			result.Failed++
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", entry.DN, addErr))
-		} else {
-			result.Succeeded++
+	var entries []models.LDAPEntry
+	truncated := false
+	if len(req.DNs) > 0 {
+		if entries, err = exportReadEntries(client, req.DNs); err != nil {
+			return nil, err
 		}
+	} else {
+		if strings.TrimSpace(req.BaseDN) == "" {
+			return nil, fmt.Errorf("no base DN")
+		}
+		filter := strings.TrimSpace(req.Filter)
+		if filter == "" {
+			filter = "(objectClass=*)"
+		}
+		if err := ldap.ValidateFilter(filter); err != nil {
+			return nil, err
+		}
+		attrs := exportSearchAttributes
+		if req.Format == "csv" && len(req.Attributes) > 0 {
+			attrs = req.Attributes
+		}
+		res, err := client.Search(models.SearchParams{BaseDN: req.BaseDN, Scope: req.Scope, Filter: filter, Attributes: attrs})
+		if err != nil {
+			return nil, fmt.Errorf("export search below %q failed: %w", req.BaseDN, err)
+		}
+		entries, truncated = res.Entries, res.Truncated
+		ldif.SortParentFirst(entries)
 	}
 
-	return result, nil
+	if req.Format == "csv" {
+		content, err := ldif.ExportCSV(entries, req.Attributes)
+		if err != nil {
+			return nil, err
+		}
+		return &models.ExportResult{Content: content, Count: len(entries), Truncated: truncated}, nil
+	}
+	if req.Importable {
+		entries = ldif.StripNonImportable(entries, schemaNonImportable(client))
+	}
+	entries = ldif.KeepAttributes(entries, req.Attributes, req.Importable)
+	content, err := ldif.Export(entries)
+	if err != nil {
+		return nil, err
+	}
+	return &models.ExportResult{Content: content, Count: len(entries), Truncated: truncated}, nil
 }
 
-// ImportLDIFFromFile opens a file dialog, reads the LDIF file, and imports entries.
-func (s *ExportService) ImportLDIFFromFile(profileID string) (*ldif.ImportResult, error) {
-	filePath, err := runtime.OpenFileDialog(s.ctx, runtime.OpenDialogOptions{
-		Title: "Import LDIF",
-		Filters: []runtime.FileFilter{
-			{
-				DisplayName: "LDIF Files (*.ldif)",
-				Pattern:     "*.ldif",
-			},
-			{
-				DisplayName: "All Files (*.*)",
-				Pattern:     "*.*",
-			},
-		},
-	})
+// schemaNonImportable lists (lower case) the attribute types of the server's
+// schema that an add record must not contain: NO-USER-MODIFICATION and
+// operational usage. Without a readable schema the static list of
+// internal/ldif applies alone.
+func schemaNonImportable(client *ldap.Client) map[string]bool {
+	out := map[string]bool{}
+	schema, err := client.GetSchema()
+	if err != nil || schema == nil {
+		return out
+	}
+	for _, a := range schema.Attributes {
+		if a.NoUserMod || (a.Usage != "" && !strings.EqualFold(a.Usage, "userApplications")) {
+			out[strings.ToLower(a.Name)] = true
+		}
+	}
+	return out
+}
+
+// SaveExportFile shows a save dialog titled "Export LDIF" / "Export CSV"
+// (format "ldif" or "csv") in directory (the last export folder; empty =
+// the dialog's default) with defaultName and writes content there. Returns
+// the path, or "" when the dialog was cancelled.
+func (s *ExportService) SaveExportFile(defaultName, format, content, directory string) (string, error) {
+	format = strings.ToLower(format)
+	title, filters := "Export LDIF", []runtime.FileFilter{{DisplayName: "LDIF Files (*.ldif)", Pattern: "*.ldif"}}
+	if format == "csv" {
+		title, filters = "Export CSV", []runtime.FileFilter{{DisplayName: "CSV Files (*.csv)", Pattern: "*.csv"}}
+	}
+	filters = append(filters, runtime.FileFilter{DisplayName: "All Files (*.*)", Pattern: "*.*"})
+	opts := runtime.SaveDialogOptions{
+		Title:                title,
+		DefaultFilename:      exportFileName(defaultName, format),
+		CanCreateDirectories: true,
+		Filters:              filters,
+	}
+	opts.DefaultDirectory = exportStartDirectory(directory)
+	path, err := runtime.SaveFileDialog(s.ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("open dialog failed: %w", err)
+		return "", fmt.Errorf("save dialog failed: %w", err)
 	}
-
-	if filePath == "" {
-		return nil, nil // User cancelled
+	if path == "" {
+		return "", nil
 	}
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		return "", fmt.Errorf("failed to write %s: %w", path, err)
 	}
+	return path, nil
+}
 
-	return s.ImportLDIF(profileID, string(data))
+// exportFileName turns a suggested name (usually an RDN value) into a safe
+// file name with the format's extension.
+func exportFileName(name, format string) string {
+	ext := "." + format
+	if format != "csv" {
+		ext = ".ldif"
+	}
+	name = strings.TrimSpace(name)
+	name = strings.TrimSuffix(name, ext)
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r < 0x20 || strings.ContainsRune(`/\:*?"<>|`, r):
+			b.WriteRune('_')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	safe := strings.Trim(b.String(), " .")
+	if safe == "" {
+		safe = "export"
+	}
+	if r := []rune(safe); len(r) > 120 {
+		safe = string(r[:120])
+	}
+	return safe + ext
 }
 
 // PreviewLDIF parses an LDIF string and returns the parsed entries without importing them.
@@ -159,11 +256,12 @@ func (s *ExportService) ExportCSV(profileID string, baseDN string, columns []str
 	return ldif.ExportCSV(result.Entries, columns)
 }
 
-// ExportCSVToFile prompts the user to save CSV export.
-func (s *ExportService) ExportCSVToFile(profileID string, baseDN string, columns []string) error {
+// ExportCSVToFile prompts the user to save CSV export. It returns the path
+// written, or "" when the user cancelled the save dialog.
+func (s *ExportService) ExportCSVToFile(profileID string, baseDN string, columns []string) (string, error) {
 	csvContent, err := s.ExportCSV(profileID, baseDN, columns)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	filePath, err := runtime.SaveFileDialog(s.ctx, runtime.SaveDialogOptions{
@@ -176,20 +274,25 @@ func (s *ExportService) ExportCSVToFile(profileID string, baseDN string, columns
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("save dialog failed: %w", err)
+		return "", fmt.Errorf("save dialog failed: %w", err)
 	}
 	if filePath == "" {
-		return nil
+		return "", nil
 	}
 
-	return os.WriteFile(filePath, []byte(csvContent), 0600)
+	if err := os.WriteFile(filePath, []byte(csvContent), 0600); err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+	return filePath, nil
 }
 
-// ExportToFile prompts the user to choose a file location and writes the LDIF export there.
-func (s *ExportService) ExportToFile(profileID string, dns []string) error {
+// ExportToFile prompts the user to choose a file location and writes the
+// LDIF export there. It returns the path written, or "" when the user
+// cancelled the save dialog (callers report success only for a path).
+func (s *ExportService) ExportToFile(profileID string, dns []string) (string, error) {
 	ldifContent, err := s.ExportEntries(profileID, dns)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	filePath, err := runtime.SaveFileDialog(s.ctx, runtime.SaveDialogOptions{
@@ -208,17 +311,77 @@ func (s *ExportService) ExportToFile(profileID string, dns []string) error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("save dialog failed: %w", err)
+		return "", fmt.Errorf("save dialog failed: %w", err)
 	}
 
 	if filePath == "" {
 		// User cancelled
-		return nil
+		return "", nil
 	}
 
 	if err := os.WriteFile(filePath, []byte(ldifContent), 0600); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
+		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 
-	return nil
+	return filePath, nil
+}
+
+// exportStartDirectory is where the save dialog opens: the last export
+// folder when it still exists, else the user's Documents folder, else the
+// home directory — never the process working directory (the install
+// directory or "/" for a desktop launch, RW2-S-10). "" lets the dialog decide.
+func exportStartDirectory(last string) string {
+	isDir := func(p string) bool {
+		info, err := os.Stat(p)
+		return err == nil && info.IsDir()
+	}
+	if last != "" && isDir(last) {
+		return last
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	// Linux desktops name it per language (XDG user dirs: "Dokumente", …).
+	if docs := xdgDocumentsDir(home); docs != "" && isDir(docs) {
+		return docs
+	}
+	if docs := filepath.Join(home, "Documents"); isDir(docs) {
+		return docs
+	}
+	if isDir(home) {
+		return home
+	}
+	return ""
+}
+
+// xdgDocumentsDir reads XDG_DOCUMENTS_DIR from user-dirs.dirs ("" when unset).
+func xdgDocumentsDir(home string) string {
+	cfg := os.Getenv("XDG_CONFIG_HOME")
+	if cfg == "" {
+		cfg = filepath.Join(home, ".config")
+	}
+	data, err := os.ReadFile(filepath.Join(cfg, "user-dirs.dirs"))
+	if err != nil {
+		return ""
+	}
+	return parseXDGDocumentsDir(string(data), home)
+}
+
+// parseXDGDocumentsDir extracts XDG_DOCUMENTS_DIR="$HOME/…" from a user-dirs.dirs file.
+func parseXDGDocumentsDir(content, home string) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		v, ok := strings.CutPrefix(line, "XDG_DOCUMENTS_DIR=")
+		if !ok {
+			continue
+		}
+		v = strings.Trim(v, `"`)
+		v = strings.Replace(v, "$HOME", home, 1)
+		if !filepath.IsAbs(v) || filepath.Clean(v) == filepath.Clean(home) {
+			return "" // unset docs dir points at $HOME itself
+		}
+		return v
+	}
+	return ""
 }

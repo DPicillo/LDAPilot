@@ -1,22 +1,49 @@
 package ldap
 
 import (
-	"crypto/tls"
+	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 
 	"github.com/dpicillo/LDAPilot/internal/models"
 	goldap "github.com/go-ldap/ldap/v3"
 )
 
 // Client wraps an LDAP connection with convenience methods.
+//
+// Operations run concurrently on the underlying go-ldap connection: mu only
+// guards the connection pointer and lifecycle state and is never held during
+// network I/O. A connection that died (idle timeout, network blip, server
+// restart) is re-established transparently, see run.
 type Client struct {
-	mu      sync.Mutex
+	logger *Logger
+
+	// profMu guards profile. Its connection identity (host, port, TLS, bind
+	// credentials) is fixed after NewClient; the settings applied by
+	// applySettings (read-only, page size, timeout, referrals, name, base DN,
+	// password storage policy) can change while connected. Read it through
+	// Profile.
+	profMu  sync.RWMutex
 	profile models.ConnectionProfile
-	conn    *goldap.Conn
-	logger  *Logger
+
+	mu           sync.Mutex
+	conn         *goldap.Conn
+	closed       bool                   // set by Close; disables auto-reconnect
+	reconnecting *reconnectCall         // reconnect in progress, shared by concurrent callers
+	serverInfo   *models.ServerInfo     // RootDSE capabilities of conn, see ServerInfo
+	pwHashing    *serverPasswordHashing // cleartext password hashing of the server, see passwordHashing
+
+	searchMu  sync.Mutex
+	searches  map[uint64]context.CancelFunc
+	searchSeq uint64
+
+	// paging limits the concurrent paged searches, see pagedSearch.
+	paging *pagingSlots
 }
 
 // NewClient creates a new Client for the given connection profile.
@@ -24,6 +51,7 @@ func NewClient(profile models.ConnectionProfile) *Client {
 	return &Client{
 		profile: profile,
 		logger:  NewLogger(),
+		paging:  newPagingSlots(maxPagedSearches),
 	}
 }
 
@@ -32,104 +60,115 @@ func (c *Client) Logger() *Logger {
 	return c.logger
 }
 
-// Profile returns the connection profile associated with this client.
+// Profile returns a snapshot of the connection profile associated with this client.
 func (c *Client) Profile() models.ConnectionProfile {
+	c.profMu.RLock()
+	defer c.profMu.RUnlock()
 	return c.profile
 }
 
-// Connect establishes a connection to the LDAP server, handles TLS, and performs bind.
-func (c *Client) Connect() error {
+// applySettings takes over the settings of profile that can change on a live
+// connection: read-only flag, page size, timeout, referral following, name,
+// base DN and the password storage policy. Connection identity fields (host,
+// port, TLS, bind) are kept; they take effect with the next Pool.Connect.
+func (c *Client) applySettings(profile models.ConnectionProfile) {
+	c.profMu.Lock()
+	c.profile.Name = profile.Name
+	c.profile.BaseDN = profile.BaseDN
+	c.profile.ReadOnly = profile.ReadOnly
+	c.profile.PageSize = profile.PageSize
+	c.profile.Timeout = profile.Timeout
+	c.profile.DisableReferrals = profile.DisableReferrals
+	c.profile.PasswordPolicy = profile.PasswordPolicy
+	c.profile.PasswordScheme = profile.PasswordScheme
+	timeout := profileTimeout(c.profile)
+	c.profMu.Unlock()
+
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	start := time.Now()
-	timeout := time.Duration(c.profile.Timeout) * time.Second
-	if timeout == 0 {
-		timeout = 10 * time.Second
+	conn := c.conn
+	c.mu.Unlock()
+	if conn != nil {
+		conn.SetTimeout(timeout)
 	}
+}
 
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: c.profile.TLSSkipVerify,
-		ServerName:         c.profile.Host,
+// pageSize returns the configured page size for paged searches.
+func (c *Client) pageSize() int {
+	if ps := c.Profile().PageSize; ps > 0 {
+		return ps
 	}
+	return 500
+}
 
-	address := fmt.Sprintf("%s:%d", c.profile.Host, c.profile.Port)
+// referralsDisabled reports whether referral following is turned off.
+func (c *Client) referralsDisabled() bool {
+	return c.Profile().DisableReferrals
+}
 
-	var conn *goldap.Conn
-	var err error
-
-	switch c.profile.TLSMode {
-	case models.TLSSSL:
-		conn, err = goldap.DialTLS("tcp", address, tlsConfig)
-	case models.TLSStartTLS:
-		conn, err = goldap.DialURL(fmt.Sprintf("ldap://%s", address))
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
-		}
-		if err = conn.StartTLS(tlsConfig); err != nil {
-			conn.Close()
-			return fmt.Errorf("%w: StartTLS failed: %v", ErrConnectionFailed, err)
-		}
-	default:
-		conn, err = goldap.DialURL(fmt.Sprintf("ldap://%s", address))
+// CheckWritable returns ErrReadOnly if the client's profile is read-only.
+// Every write operation of the client checks it; code issuing its own
+// modifying requests (e.g. extended operations) must call it first.
+func (c *Client) CheckWritable() error {
+	if c.Profile().ReadOnly {
+		return ErrReadOnly
 	}
-
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
-	}
-
-	conn.SetTimeout(timeout)
-	c.conn = conn
-
-	// Perform bind
-	switch c.profile.AuthMethod {
-	case models.AuthSimple:
-		if err := c.conn.Bind(c.profile.BindDN, c.profile.Password); err != nil {
-			c.conn.Close()
-			c.conn = nil
-			bindErr := fmt.Errorf("%w: %s (bind DN: %s)", ErrBindFailed, ldapErrorDetail(err), c.profile.BindDN)
-			c.logger.Log("BIND", fmt.Sprintf("Simple bind as %s to %s", c.profile.BindDN, address), time.Since(start), bindErr)
-			return bindErr
-		}
-	case models.AuthNone:
-		if err := c.conn.UnauthenticatedBind(""); err != nil {
-			c.conn.Close()
-			c.conn = nil
-			bindErr := fmt.Errorf("%w: %s", ErrBindFailed, ldapErrorDetail(err))
-			c.logger.Log("BIND", fmt.Sprintf("Anonymous bind to %s", address), time.Since(start), bindErr)
-			return bindErr
-		}
-	}
-
-	c.logger.Log("CONNECT", fmt.Sprintf("Connected to %s (TLS: %s, Auth: %s)", address, c.profile.TLSMode, c.profile.AuthMethod), time.Since(start), nil)
 	return nil
 }
 
-// Close closes the LDAP connection.
-func (c *Client) Close() {
+// Connect establishes a connection to the LDAP server, handles TLS, and performs bind.
+// The profile timeout (default 10s) bounds the TCP dial, the TLS handshake and the bind.
+func (c *Client) Connect() error {
+	start := time.Now()
+	conn, info, err := c.dialDetailed()
+	if err != nil {
+		return err
+	}
+
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn != nil {
-		c.conn.Close()
-		c.conn = nil
+	old := c.conn
+	c.conn = conn
+	c.closed = false
+	c.serverInfo = nil
+	c.pwHashing = nil
+	c.mu.Unlock()
+	if old != nil {
+		old.Close()
+	}
+
+	p := c.Profile()
+	conn.SetTimeout(profileTimeout(p))
+	c.logger.Log("CONNECT", fmt.Sprintf("Connected to %s (%s, %s)", c.address(), info.tlsDescription(p.TLSMode), info.authSummary), time.Since(start), nil)
+	return nil
+}
+
+// Close cancels running searches and closes the LDAP connection.
+// A closed client does not reconnect automatically.
+func (c *Client) Close() {
+	c.CancelSearches()
+
+	c.mu.Lock()
+	conn := c.conn
+	c.conn = nil
+	c.closed = true
+	c.mu.Unlock()
+
+	if conn != nil {
+		conn.Close()
 	}
 }
 
 // IsConnected returns true if the client has an active connection.
+// A connection that dropped is still reported as connected because the next
+// operation re-establishes it.
 func (c *Client) IsConnected() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.conn != nil
+	return c.conn != nil && !c.closed
 }
 
 // GetRootDSE reads the RootDSE entry and returns selected operational attributes.
 // This provides AD forest information such as naming contexts.
 func (c *Client) GetRootDSE() (*models.LDAPEntry, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return nil, ErrNotConnected
-	}
-
 	searchReq := goldap.NewSearchRequest(
 		"",
 		goldap.ScopeBaseObject,
@@ -151,9 +190,13 @@ func (c *Client) GetRootDSE() (*models.LDAPEntry, error) {
 		nil,
 	)
 
-	result, err := c.conn.Search(searchReq)
+	var result *goldap.SearchResult
+	err := c.read(func(conn *goldap.Conn) (err error) {
+		result, err = conn.Search(searchReq)
+		return err
+	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
+		return nil, searchError(err)
 	}
 	if len(result.Entries) == 0 {
 		return nil, fmt.Errorf("%w: RootDSE", ErrNotFound)
@@ -166,12 +209,6 @@ func (c *Client) GetRootDSE() (*models.LDAPEntry, error) {
 // domains and partitions in the AD forest, including child domains hosted on other DCs.
 // Returns a list of nCName values (the DN of each partition).
 func (c *Client) GetForestPartitions(configNC string) ([]string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return nil, ErrNotConnected
-	}
-
 	partitionsDN := "CN=Partitions," + configNC
 
 	searchReq := goldap.NewSearchRequest(
@@ -184,10 +221,17 @@ func (c *Client) GetForestPartitions(configNC string) ([]string, error) {
 		nil,
 	)
 
-	result, err := c.conn.Search(searchReq)
+	var result *goldap.SearchResult
+	err := c.read(func(conn *goldap.Conn) (err error) {
+		result, err = conn.Search(searchReq)
+		return err
+	})
 	if err != nil {
+		if errors.Is(err, ErrNotConnected) {
+			return nil, err
+		}
 		// If referrals are disabled, still try to use partial results
-		if c.profile.DisableReferrals && goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
+		if c.referralsDisabled() && goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
 			if result == nil {
 				return nil, nil
 			}
@@ -212,19 +256,13 @@ func (c *Client) GetForestPartitions(configNC string) ([]string, error) {
 // If the server returns a referral and referral following is enabled,
 // it connects to the referred server to fetch the children.
 func (c *Client) GetChildren(parentDN string) ([]models.TreeNode, error) {
-	c.mu.Lock()
+	start := time.Now()
+	childAttrs := treeChildAttrs()
+	pageSize := c.pageSize()
 
-	if c.conn == nil {
-		c.mu.Unlock()
-		return nil, ErrNotConnected
-	}
-
-	childAttrs := []string{"dn", "objectClass", "hasSubordinates", "msDS-Approx-Immed-Subordinates"}
-
-	pageSize := c.profile.PageSize
-	if pageSize <= 0 {
-		pageSize = 500
-	}
+	var allEntries []*goldap.Entry
+	var referral string
+	var referralNoURL bool
 
 	searchReq := goldap.NewSearchRequest(
 		parentDN,
@@ -233,62 +271,57 @@ func (c *Client) GetChildren(parentDN string) ([]models.TreeNode, error) {
 		0, 0, false,
 		"(objectClass=*)",
 		childAttrs,
-		[]goldap.Control{goldap.NewControlPaging(uint32(pageSize))},
+		nil,
 	)
 
-	var allEntries []*goldap.Entry
+	err := c.read(func(conn *goldap.Conn) error {
+		allEntries, referral, referralNoURL = nil, "", false
 
-	for {
-		result, err := c.conn.Search(searchReq)
+		entries, err := c.pagedSearch(context.Background(), conn, searchReq, pageSize)
 		if err != nil {
 			if goldap.IsErrorWithCode(err, goldap.LDAPResultSizeLimitExceeded) {
 				// Partial results are still useful
-				if result != nil {
-					allEntries = append(allEntries, result.Entries...)
-				}
-				break
+				allEntries = entries
+				return nil
 			}
 			if goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
-				if c.profile.DisableReferrals {
-					c.mu.Unlock()
-					if result != nil {
-						allEntries = append(allEntries, result.Entries...)
-					}
-					return c.entriesToTreeNodes(allEntries), nil
+				if c.referralsDisabled() {
+					allEntries = entries
+					return nil
 				}
-				refs := extractReferralURLs(err)
-				c.mu.Unlock()
-				if len(refs) > 0 {
-					return c.followReferralGetChildren(refs[0])
+				if refs := extractReferralURLs(err); len(refs) > 0 {
+					referral = refs[0]
+				} else {
+					referralNoURL = true
 				}
-				return nil, fmt.Errorf("%w: %s (referral with no URL)", ErrSearchFailed, parentDN)
+				return nil
 			}
-			c.mu.Unlock()
-			return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
+			return err
 		}
-
-		allEntries = append(allEntries, result.Entries...)
-
-		// Check for paging control in response
-		pagingControl := goldap.FindControl(result.Controls, goldap.ControlTypePaging)
-		if pagingCtrl, ok := pagingControl.(*goldap.ControlPaging); ok && len(pagingCtrl.Cookie) > 0 {
-			searchReq.Controls = []goldap.Control{goldap.NewControlPaging(uint32(pageSize))}
-			if ctrl := goldap.FindControl(searchReq.Controls, goldap.ControlTypePaging); ctrl != nil {
-				ctrl.(*goldap.ControlPaging).SetCookie(pagingCtrl.Cookie)
-			}
-			continue
-		}
-		break
+		allEntries = entries
+		return nil
+	})
+	if err != nil {
+		c.logFailedRead("SEARCH", searchLogDetails(parentDN, goldap.ScopeSingleLevel, "(objectClass=*)", nil), start, err)
+		return nil, searchError(err)
 	}
 
-	c.mu.Unlock()
-	return c.entriesToTreeNodes(allEntries), nil
+	if referral != "" {
+		return c.followReferralGetChildren(referral, parentDN)
+	}
+	if referralNoURL {
+		return nil, fmt.Errorf("%w: %s (referral with no URL)", ErrSearchFailed, parentDN)
+	}
+	nodes := c.entriesToTreeNodes(allEntries)
+	c.fillLoginAttributes(parentDN, nodes)
+	return nodes, nil
 }
 
 // followReferralGetChildren follows a referral URL to fetch children from a remote server.
-func (c *Client) followReferralGetChildren(referralURL string) ([]models.TreeNode, error) {
-	childAttrs := []string{"dn", "objectClass", "hasSubordinates", "msDS-Approx-Immed-Subordinates"}
-	entries, err := c.followReferralSearch(referralURL, goldap.ScopeSingleLevel, "(objectClass=*)", childAttrs, 0)
+// parentDN is used when the referral URL names no DN.
+func (c *Client) followReferralGetChildren(referralURL, parentDN string) ([]models.TreeNode, error) {
+	childAttrs := treeChildAttrs()
+	entries, err := c.followReferralSearch(context.Background(), referralURL, parentDN, goldap.ScopeSingleLevel, "(objectClass=*)", childAttrs, 0, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -298,6 +331,12 @@ func (c *Client) followReferralGetChildren(referralURL string) ([]models.TreeNod
 // entriesToTreeNodes converts raw LDAP entries to TreeNode slice.
 func (c *Client) entriesToTreeNodes(entries []*goldap.Entry) []models.TreeNode {
 	nodes := make([]models.TreeNode, 0, len(entries))
+	var probe []int // nodes whose HasChildren must be probed (see probeChildren)
+	now := time.Now()
+	// OpenLDAP timed locks are checked against the entry's policy, only for
+	// entries that have one (RW1-P-02); the evaluator is set up on first use.
+	var olLock func(dn string, a accountAttrs) bool
+	olLockReady := false
 	for _, entry := range entries {
 		objectClasses := entry.GetAttributeValues("objectClass")
 		hasSubStr := entry.GetAttributeValue("hasSubordinates")
@@ -308,8 +347,8 @@ func (c *Client) entriesToTreeNodes(entries []*goldap.Entry) []models.TreeNode {
 			hasChildren = true
 		} else if approxChildren != "" && approxChildren != "0" {
 			hasChildren = true
-		} else if hasSubStr == "" && approxChildren == "" {
-			hasChildren = c.probeHasChildren(entry.DN)
+		} else if hasSubStr == "" && approxChildren == "" && !isLeafObjectClass(objectClasses) {
+			probe = append(probe, len(nodes))
 		}
 
 		icon := determineIcon(objectClasses)
@@ -321,18 +360,32 @@ func (c *Client) entriesToTreeNodes(entries []*goldap.Entry) []models.TreeNode {
 			HasChildren: hasChildren,
 			ObjectClass: objectClasses,
 			Icon:        icon,
+			Status:      c.treeStatusOf(entry, objectClasses, now, &olLock, &olLockReady),
 		})
 	}
+	c.probeChildren(nodes, probe)
 	return nodes
+}
+
+// treeStatusOf derives a tree node's overlay states; an OpenLDAP entry with a
+// timed pwdAccountLockedTime sets up the policy-aware lock evaluation once
+// per listing (olLock / ready).
+func (c *Client) treeStatusOf(entry *goldap.Entry, objectClasses []string, now time.Time, olLock *func(dn string, a accountAttrs) bool, ready *bool) []string {
+	a := newAccountAttrs(entry)
+	if v := strings.TrimSpace(a.first("pwdAccountLockedTime")); v != "" && v != ppolicyPermanentLock && isGenericAccount(objectClasses) {
+		if !*ready {
+			*ready = true
+			*olLock = c.treeOpenLDAPLock()
+		}
+		if eval := *olLock; eval != nil {
+			return treeNodeStatus(objectClasses, a, now, func(x accountAttrs) bool { return eval(entry.DN, x) })
+		}
+	}
+	return treeNodeStatus(objectClasses, a, now)
 }
 
 // probeHasChildren checks whether a DN has any children by doing a size-limited one-level search.
 func (c *Client) probeHasChildren(dn string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return false
-	}
 	searchReq := goldap.NewSearchRequest(
 		dn,
 		goldap.ScopeSingleLevel,
@@ -342,24 +395,29 @@ func (c *Client) probeHasChildren(dn string) bool {
 		[]string{"dn"},
 		nil,
 	)
-	result, err := c.conn.Search(searchReq)
-	if err != nil {
-		return false
-	}
-	return len(result.Entries) > 0
+
+	found := false
+	err := c.read(func(conn *goldap.Conn) error {
+		found = false
+		result, err := conn.Search(searchReq)
+		if result != nil && len(result.Entries) > 0 {
+			found = true
+		}
+		// With more than one child the size limit of 1 is exceeded, which
+		// still proves that children exist.
+		if err != nil && !goldap.IsErrorWithCode(err, goldap.LDAPResultSizeLimitExceeded) {
+			return err
+		}
+		return nil
+	})
+	return err == nil && found
 }
 
 // GetEntry retrieves a single entry by DN with all its attributes.
 // If the server returns a referral and referral following is enabled,
 // it connects to the referred server to fetch the entry.
 func (c *Client) GetEntry(dn string) (*models.LDAPEntry, error) {
-	c.mu.Lock()
-
-	if c.conn == nil {
-		c.mu.Unlock()
-		return nil, ErrNotConnected
-	}
-
+	start := time.Now()
 	searchReq := goldap.NewSearchRequest(
 		dn,
 		goldap.ScopeBaseObject,
@@ -370,35 +428,105 @@ func (c *Client) GetEntry(dn string) (*models.LDAPEntry, error) {
 		nil,
 	)
 
-	result, err := c.conn.Search(searchReq)
-	if err != nil {
-		// Try to follow referral if not disabled
-		if !c.profile.DisableReferrals && goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
-			refs := extractReferralURLs(err)
-			c.mu.Unlock()
-			if len(refs) > 0 {
-				return c.followReferralGetEntry(refs[0])
+	var entry *goldap.Entry
+	var referral string
+	var referralNoURL bool
+
+	err := c.read(func(conn *goldap.Conn) error {
+		entry, referral, referralNoURL = nil, "", false
+
+		result, err := conn.Search(searchReq)
+		if err != nil {
+			// Try to follow referral if not disabled
+			if !c.referralsDisabled() && goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
+				if refs := extractReferralURLs(err); len(refs) > 0 {
+					referral = refs[0]
+				} else {
+					referralNoURL = true
+				}
+				return nil
 			}
-			return nil, fmt.Errorf("%w: %s (referral with no URL)", ErrSearchFailed, dn)
+			return err
 		}
-		c.mu.Unlock()
-		return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
+		if len(result.Entries) == 0 {
+			return nil
+		}
+		entry = result.Entries[0]
+		return resolveRangedAttributes(conn, dn, entry)
+	})
+	if err != nil {
+		c.logFailedRead("READ", "dn="+dn, start, err)
+		return nil, searchError(err)
 	}
 
-	if len(result.Entries) == 0 {
-		c.mu.Unlock()
-		return nil, fmt.Errorf("%w: %s", ErrNotFound, dn)
+	if referral != "" {
+		return c.followReferralGetEntry(referral, dn)
 	}
-
-	entry := result.Entries[0]
-	c.resolveRangedAttributes(dn, entry)
-	c.mu.Unlock()
+	if referralNoURL {
+		err := fmt.Errorf("%w: %s (referral with no URL)", ErrSearchFailed, dn)
+		c.logFailedRead("READ", "dn="+dn, start, err)
+		return nil, err
+	}
+	if entry == nil {
+		err := fmt.Errorf("%w: %s", ErrNotFound, dn)
+		c.logFailedRead("READ", "dn="+dn, start, err)
+		return nil, err
+	}
 	return convertEntry(entry), nil
 }
 
+// logFailedRead logs a failed read the user asked for (open an entry, expand
+// a container) as an error in the operation log. Successful reads are not
+// logged (they would replace the status bar's last operation on every
+// click); a lost connection is reported by the reconnect handling instead.
+func (c *Client) logFailedRead(op, details string, start time.Time, err error) {
+	if err == nil || errors.Is(err, ErrNotConnected) || errors.Is(err, ErrSearchCancelled) {
+		return
+	}
+	c.logger.Log(op, details+" -> failed", time.Since(start), err)
+}
+
+// ReadAttributes reads the named attributes of one entry (base search) and
+// returns them keyed by lower-case attribute name (options such as ;binary
+// or ;range=... stripped); attributes the entry lacks are missing from the
+// map. It is a background read (e.g. the values an audit entry shows before
+// a write): it is not logged, so it never becomes the status bar's last
+// operation, and ranged values are not followed.
+func (c *Client) ReadAttributes(dn string, names []string) (map[string]models.LDAPAttribute, error) {
+	if len(names) == 0 {
+		return map[string]models.LDAPAttribute{}, nil
+	}
+	req := goldap.NewSearchRequest(dn, goldap.ScopeBaseObject, goldap.NeverDerefAliases, 1, 0, false, "(objectClass=*)", names, nil)
+	var entry *goldap.Entry
+	err := c.read(func(conn *goldap.Conn) error {
+		entry = nil
+		res, err := conn.Search(req)
+		if err != nil {
+			return err
+		}
+		if len(res.Entries) > 0 {
+			entry = res.Entries[0]
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, searchError(err)
+	}
+	out := make(map[string]models.LDAPAttribute)
+	if entry == nil {
+		return out, nil
+	}
+	for _, a := range convertEntry(entry).Attributes {
+		out[strings.ToLower(attrBaseName(a.Name))] = a
+	}
+	return out, nil
+}
+
 // resolveRangedAttributes detects AD range-retrieved attributes (e.g. member;range=0-1499)
-// and fetches all remaining chunks, merging them into a single attribute.
-func (c *Client) resolveRangedAttributes(dn string, entry *goldap.Entry) {
+// and fetches all remaining chunks on conn, merging them into a single attribute.
+// Failed chunk requests are skipped; only an error that killed the connection
+// is returned so that the caller can retry on a fresh connection.
+func resolveRangedAttributes(conn *goldap.Conn, dn string, entry *goldap.Entry) error {
 	for i, attr := range entry.Attributes {
 		baseName, _, endVal, isFinal, ok := parseRangeAttr(attr.Name)
 		if !ok || isFinal {
@@ -427,7 +555,10 @@ func (c *Client) resolveRangedAttributes(dn string, entry *goldap.Entry) {
 				nil,
 			)
 
-			res, err := c.conn.Search(req)
+			res, err := conn.Search(req)
+			if err != nil && isConnDead(conn, err) {
+				return err
+			}
 			if err != nil || len(res.Entries) == 0 {
 				break
 			}
@@ -467,6 +598,7 @@ func (c *Client) resolveRangedAttributes(dn string, entry *goldap.Entry) {
 		entry.Attributes[i].Values = allValues
 		entry.Attributes[i].ByteValues = allByteValues
 	}
+	return nil
 }
 
 // parseRangeAttr parses "member;range=0-1499" into ("member", 0, 1499, false, true).
@@ -501,13 +633,19 @@ func parseRangeAttr(name string) (baseName string, start int, end int, isFinal b
 // Search performs a full LDAP search with the given parameters.
 // If the server returns a referral and referral following is enabled,
 // it connects to the referred server to perform the search there.
+// A running search can be stopped with CancelSearches, in which case
+// ErrSearchCancelled is returned.
 func (c *Client) Search(params models.SearchParams) (*models.SearchResult, error) {
-	c.mu.Lock()
+	return c.SearchContext(context.Background(), params)
+}
 
-	if c.conn == nil {
-		c.mu.Unlock()
-		return nil, ErrNotConnected
-	}
+// SearchContext is Search bound to ctx: the search also stops with
+// ErrSearchCancelled when ctx is done. Cancellation abandons the outstanding
+// request on the client side and requests no further pages, so the server
+// finishes at most the page it is working on.
+func (c *Client) SearchContext(ctx context.Context, params models.SearchParams) (*models.SearchResult, error) {
+	ctx, done := c.trackSearch(ctx)
+	defer done()
 	searchStart := time.Now()
 
 	if params.Filter == "" {
@@ -519,10 +657,12 @@ func (c *Client) Search(params models.SearchParams) (*models.SearchResult, error
 		attrs = []string{"*"}
 	}
 
-	pageSize := c.profile.PageSize
-	if pageSize <= 0 {
-		pageSize = 500
-	}
+	pageSize := c.pageSize()
+	controls := searchControls(params)
+
+	var allEntries []*goldap.Entry
+	var truncated bool
+	var referral string
 
 	searchReq := goldap.NewSearchRequest(
 		params.BaseDN,
@@ -533,71 +673,69 @@ func (c *Client) Search(params models.SearchParams) (*models.SearchResult, error
 		false,
 		params.Filter,
 		attrs,
-		[]goldap.Control{goldap.NewControlPaging(uint32(pageSize))},
+		controls,
 	)
 
-	var allEntries []*goldap.Entry
-	truncated := false
+	err := c.run(ctx, false, func(conn *goldap.Conn) error {
+		allEntries, truncated, referral = nil, false, ""
 
-	for {
-		result, err := c.conn.Search(searchReq)
+		entries, err := c.pagedSearch(ctx, conn, searchReq, pageSize)
+		allEntries = entries
 		if err != nil {
 			// Check for size limit exceeded - partial results are still useful
 			if goldap.IsErrorWithCode(err, goldap.LDAPResultSizeLimitExceeded) {
 				truncated = true
-				if result != nil {
-					allEntries = append(allEntries, result.Entries...)
-				}
-				break
+				return nil
 			}
 			if goldap.IsErrorWithCode(err, goldap.LDAPResultReferral) {
-				if c.profile.DisableReferrals {
-					if result != nil {
-						allEntries = append(allEntries, result.Entries...)
-					}
-					break
-				}
-				// Follow referral
-				refs := extractReferralURLs(err)
-				c.mu.Unlock()
-				if len(refs) > 0 {
-					refEntries, refErr := c.followReferralSearch(
-						refs[0], int(params.Scope), params.Filter, attrs, params.SizeLimit,
-					)
-					if refErr == nil {
-						allEntries = append(allEntries, refEntries...)
+				if !c.referralsDisabled() {
+					if refs := extractReferralURLs(err); len(refs) > 0 {
+						referral = refs[0]
 					}
 				}
-				goto buildResult
+				return nil
 			}
-			c.mu.Unlock()
-			return nil, fmt.Errorf("%w: %s", ErrSearchFailed, ldapErrorDetail(err))
+			return err
 		}
+		return nil
+	})
 
-		allEntries = append(allEntries, result.Entries...)
-
-		// Check for paging control in response
-		pagingControl := goldap.FindControl(result.Controls, goldap.ControlTypePaging)
-		if pagingCtrl, ok := pagingControl.(*goldap.ControlPaging); ok && len(pagingCtrl.Cookie) > 0 {
-			searchReq.Controls = []goldap.Control{goldap.NewControlPaging(uint32(pageSize))}
-			// Set the cookie for the next page
-			if ctrl := goldap.FindControl(searchReq.Controls, goldap.ControlTypePaging); ctrl != nil {
-				ctrl.(*goldap.ControlPaging).SetCookie(pagingCtrl.Cookie)
-			}
-			continue
+	if err == nil && referral != "" {
+		// Follow referral; entries collected so far are kept
+		refEntries, refErr := c.followReferralSearch(ctx, referral, params.BaseDN, int(params.Scope), params.Filter, attrs, params.SizeLimit, controls)
+		if refErr == nil {
+			allEntries = append(allEntries, refEntries...)
 		}
-		break
 	}
-	c.mu.Unlock()
+	// The size limit holds for the whole result (servers that ignore it in
+	// paged searches are capped in searchPages; referred entries count too).
+	if params.SizeLimit > 0 && len(allEntries) > params.SizeLimit {
+		allEntries, truncated = allEntries[:params.SizeLimit], true
+	}
 
-buildResult:
+	logDetails := searchLogDetails(params.BaseDN, int(params.Scope), params.Filter, controls)
+	if ctx.Err() != nil {
+		// Not an error: the user stopped it (the log shows "Cancelled").
+		c.logger.Log("SEARCH", fmt.Sprintf("%s -> cancelled after %s", logDetails, EntriesText(len(allEntries))), time.Since(searchStart), nil)
+		return nil, ErrSearchCancelled
+	}
+	if err != nil {
+		if !errors.Is(err, ErrNotConnected) {
+			c.logger.Log("SEARCH", logDetails+" -> failed", time.Since(searchStart), err)
+		}
+		return nil, c.searchBaseError(params.BaseDN, err)
+	}
 
 	entries := make([]models.LDAPEntry, 0, len(allEntries))
 	for _, e := range allEntries {
 		entries = append(entries, *convertEntry(e))
 	}
 
-	c.logger.Log("SEARCH", fmt.Sprintf("base=%s scope=%d filter=%s -> %d entries", params.BaseDN, params.Scope, params.Filter, len(entries)), time.Since(searchStart), nil)
+	result := fmt.Sprintf("%s -> %s", logDetails, EntriesText(len(entries)))
+	if truncated {
+		result += " (size limit reached)"
+	}
+	c.logger.Log("SEARCH", result, time.Since(searchStart), nil)
 
 	return &models.SearchResult{
 		Entries:    entries,
@@ -606,186 +744,295 @@ buildResult:
 	}, nil
 }
 
-// AddEntry creates a new LDAP entry with the given DN and attributes.
-func (c *Client) AddEntry(dn string, attrs []models.LDAPAttribute) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return ErrNotConnected
+// searchControls returns the request controls selected in params. They are
+// sent as critical, so a server that does not support one rejects the search
+// (unavailableCriticalExtension) instead of silently ignoring it; check
+// ServerInfo().SupportedControls before offering them.
+func searchControls(params models.SearchParams) []goldap.Control {
+	var controls []goldap.Control
+	if params.ShowDeleted {
+		controls = append(controls, goldap.NewControlString(goldap.ControlTypeMicrosoftShowDeleted, true, ""))
+	}
+	if params.ShowRecycled {
+		controls = append(controls, goldap.NewControlString(goldap.ControlTypeMicrosoftShowRecycled, true, ""))
+	}
+	if params.ManageDsaIT {
+		controls = append(controls, goldap.NewControlManageDsaIT(true))
+	}
+	return controls
+}
+
+// controlNames returns a short description of controls for the operation log.
+func controlNames(controls []goldap.Control) string {
+	names := make([]string, 0, len(controls))
+	for _, ctrl := range controls {
+		name := goldap.ControlTypeMap[ctrl.GetControlType()]
+		if name == "" {
+			name = ctrl.GetControlType()
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, ",")
+}
+
+// SearchWithControls runs req as is, including its controls, on the client's
+// connection with the usual reconnect handling and returns the raw entries.
+// With pageSize > 0 the search is paged; the paging control is added next to
+// req.Controls (req itself is not modified). Referrals are not followed. On
+// error the entries received so far are returned with it; the error unwraps
+// to ErrSearchFailed and to the go-ldap error, so goldap.IsErrorWithCode works
+// (e.g. LDAPResultSizeLimitExceeded, LDAPResultReferral). The search can be
+// stopped with CancelSearches (ErrSearchCancelled).
+func (c *Client) SearchWithControls(req *goldap.SearchRequest, pageSize uint32) ([]*goldap.Entry, error) {
+	ctx, done := c.trackSearch(context.Background())
+	defer done()
+	start := time.Now()
+
+	var entries []*goldap.Entry
+	err := c.run(ctx, false, func(conn *goldap.Conn) error {
+		var err error
+		if pageSize > 0 {
+			entries, err = c.pagedSearch(ctx, conn, req, int(pageSize))
+		} else {
+			entries, _, err = searchPage(ctx, conn, req)
+		}
+		return err
+	})
+	if ctx.Err() != nil {
+		err = ErrSearchCancelled
+	}
+	if errors.Is(err, ErrNotConnected) {
+		return nil, err
 	}
 
+	logDetails := searchLogDetails(req.BaseDN, req.Scope, req.Filter, req.Controls)
+	c.logger.Log("SEARCH", fmt.Sprintf("%s -> %s", logDetails, EntriesText(len(entries))), time.Since(start), err)
+	return entries, searchError(err)
+}
+
+// searchLogDetails describes a search for the operation log:
+// "base=<dn> scope=base|one|sub filter=<f> [controls=<names>]".
+func searchLogDetails(baseDN string, scope int, filter string, controls []goldap.Control) string {
+	details := fmt.Sprintf("base=%s scope=%s filter=%s", baseDN, scopeName(scope), filter)
+	if names := controlNames(controls); names != "" {
+		details += " controls=" + names
+	}
+	return details
+}
+
+// searchBaseError is searchError for a search below baseDN: a base that does
+// not exist (noSuchObject) names the base and the connection, so the user
+// sees which server the base DN was sent to (e.g. a base DN of another
+// connection).
+func (c *Client) searchBaseError(baseDN string, err error) error {
+	if !goldap.IsErrorWithCode(err, goldap.LDAPResultNoSuchObject) {
+		return searchError(err)
+	}
+	where := c.Profile().Name
+	if where == "" {
+		where = c.address()
+	}
+	msg := fmt.Sprintf("%s: the base DN %q does not exist on %q", ErrSearchFailed.Error(), baseDN, where)
+	if detail := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(ldapErrorDetail(err)), ":")); detail != "" {
+		msg += " (" + detail + ")"
+	}
+	return &opError{msg: msg, sentinel: ErrSearchFailed, cause: err}
+}
+
+// AddEntry creates a new LDAP entry with the given DN and attributes.
+// Binary attributes carry base64 values (see models.LDAPAttribute); a
+// plain-text unicodePwd is encoded for AD. userPassword values follow the
+// connection's password storage policy (AddEntryWithPasswordPolicy with
+// default options: an "ask" policy or a cleartext password on an
+// unencrypted connection is refused).
+func (c *Client) AddEntry(dn string, attrs []models.LDAPAttribute) error {
+	_, err := c.AddEntryWithPasswordPolicy(dn, attrs, models.PasswordWriteOptions{})
+	return err
+}
+
+// addEntry sends the Add request as given.
+func (c *Client) addEntry(dn string, attrs []models.LDAPAttribute) error {
 	start := time.Now()
 	addReq := goldap.NewAddRequest(dn, nil)
 	for _, attr := range attrs {
-		addReq.Attribute(attr.Name, attr.Values)
+		values, err := rawValues(attr.Name, attr.Values, attr.Binary)
+		if err != nil {
+			return fmt.Errorf("add entry failed: %w", err)
+		}
+		addReq.Attribute(attr.Name, values)
 	}
 
-	err := c.conn.Add(addReq)
-	c.logger.Log("ADD", fmt.Sprintf("dn=%s", dn), time.Since(start), err)
-	if err != nil {
-		return fmt.Errorf("add entry failed: %s", ldapErrorDetail(err))
+	err := c.write(func(conn *goldap.Conn) error {
+		return conn.Add(addReq)
+	})
+	if errors.Is(err, ErrNotConnected) || errors.Is(err, ErrReadOnly) {
+		return err
 	}
-	return nil
+	c.logger.Log("ADD", fmt.Sprintf("dn=%s", dn), time.Since(start), err)
+	return writeError("add entry", err)
+}
+
+// ModifyEntry applies all changes to the entry in a single Modify request,
+// so the server applies them atomically. Values of binary changes are base64
+// (see models.AttributeChange); plain-text unicodePwd values are encoded for
+// AD in every operation, so a delete of the old plus an add of the new
+// password performs a user's own password change, a replace an admin reset.
+// controls are sent with the request. userPassword values follow the
+// connection's password storage policy (ModifyEntryWithPasswordPolicy with
+// default options).
+func (c *Client) ModifyEntry(dn string, changes []models.AttributeChange, controls ...goldap.Control) error {
+	_, err := c.modifyWithPolicy(dn, changes, models.PasswordWriteOptions{}, controls, "MODIFY", "modify entry")
+	return err
+}
+
+// modify sends changes as one Modify request, logging it as logOp and
+// reporting failures as "<what> failed: ...".
+func (c *Client) modify(dn string, changes []models.AttributeChange, controls []goldap.Control, logOp, what string) error {
+	start := time.Now()
+	modReq, err := buildModifyRequest(dn, changes, controls)
+	if err != nil {
+		return fmt.Errorf("%s failed: %w", what, err)
+	}
+
+	err = c.write(func(conn *goldap.Conn) error {
+		return conn.Modify(modReq)
+	})
+	if errors.Is(err, ErrNotConnected) || errors.Is(err, ErrReadOnly) {
+		return err
+	}
+	c.logger.Log(logOp, fmt.Sprintf("dn=%s %s", dn, describeChanges(changes)), time.Since(start), err)
+	return writeError(what, err)
+}
+
+// buildModifyRequest validates changes and converts them to a Modify request.
+func buildModifyRequest(dn string, changes []models.AttributeChange, controls []goldap.Control) (*goldap.ModifyRequest, error) {
+	if len(changes) == 0 {
+		return nil, errors.New("no changes")
+	}
+	modReq := goldap.NewModifyRequest(dn, controls)
+	for _, ch := range changes {
+		if ch.Attribute == "" {
+			return nil, errors.New("attribute name must not be empty")
+		}
+		values, err := rawValues(ch.Attribute, ch.Values, ch.Binary)
+		if err != nil {
+			return nil, err
+		}
+		switch strings.ToLower(ch.Operation) {
+		case models.ChangeAdd:
+			if len(values) == 0 {
+				return nil, fmt.Errorf("add of %q needs at least one value", ch.Attribute)
+			}
+			modReq.Add(ch.Attribute, values)
+		case models.ChangeDelete:
+			modReq.Delete(ch.Attribute, values)
+		case models.ChangeReplace:
+			modReq.Replace(ch.Attribute, values)
+		default:
+			return nil, fmt.Errorf("unknown operation %q for attribute %q", ch.Operation, ch.Attribute)
+		}
+	}
+	return modReq, nil
+}
+
+// describeChanges summarizes changes for the operation log, without values.
+func describeChanges(changes []models.AttributeChange) string {
+	parts := make([]string, 0, len(changes))
+	for _, ch := range changes {
+		parts = append(parts, fmt.Sprintf("%s:%s(%d)", strings.ToLower(ch.Operation), ch.Attribute, len(ch.Values)))
+	}
+	return "changes=" + strings.Join(parts, ",")
 }
 
 // ModifyAttribute replaces the values of an attribute on an entry.
 // For AD unicodePwd, the value is automatically encoded as UTF-16LE with quotes.
 func (c *Client) ModifyAttribute(dn string, attrName string, values []string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return ErrNotConnected
-	}
-
-	start := time.Now()
-	modReq := goldap.NewModifyRequest(dn, nil)
-
-	if strings.EqualFold(attrName, "unicodePwd") {
-		// AD requires unicodePwd as UTF-16LE encoded, quoted string
-		for _, v := range values {
-			encoded := encodeUnicodePwd(v)
-			modReq.Changes = append(modReq.Changes, goldap.Change{
-				Operation: goldap.ReplaceAttribute,
-				Modification: goldap.PartialAttribute{
-					Type: "unicodePwd",
-					Vals: []string{string(encoded)},
-				},
-			})
-		}
-	} else {
-		modReq.Replace(attrName, values)
-	}
-
-	err := c.conn.Modify(modReq)
-	c.logger.Log("MODIFY", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
-	if err != nil {
-		return fmt.Errorf("modify %q failed: %s", attrName, ldapErrorDetail(err))
-	}
-	return nil
+	_, err := c.modifyWithPolicy(dn, []models.AttributeChange{{Operation: models.ChangeReplace, Attribute: attrName, Values: values}},
+		models.PasswordWriteOptions{}, nil, "MODIFY", fmt.Sprintf("modify %q", attrName))
+	return err
 }
 
 // encodeUnicodePwd encodes a password for AD's unicodePwd attribute.
 // AD expects the password enclosed in quotes and encoded as UTF-16LE.
 func encodeUnicodePwd(password string) []byte {
-	quoted := "\"" + password + "\""
-	encoded := make([]byte, len(quoted)*2)
-	for i, ch := range quoted {
-		encoded[i*2] = byte(ch & 0xFF)
-		encoded[i*2+1] = byte(ch >> 8)
+	units := utf16.Encode([]rune("\"" + password + "\""))
+	encoded := make([]byte, len(units)*2)
+	for i, u := range units {
+		binary.LittleEndian.PutUint16(encoded[i*2:], u)
 	}
 	return encoded
 }
 
 // AddAttribute adds values to an attribute on an entry.
 func (c *Client) AddAttribute(dn string, attrName string, values []string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return ErrNotConnected
-	}
-
-	start := time.Now()
-	modReq := goldap.NewModifyRequest(dn, nil)
-	modReq.Add(attrName, values)
-	err := c.conn.Modify(modReq)
-	c.logger.Log("ADD_ATTR", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
-	if err != nil {
-		return fmt.Errorf("add attribute %q failed: %s", attrName, ldapErrorDetail(err))
-	}
-	return nil
+	_, err := c.modifyWithPolicy(dn, []models.AttributeChange{{Operation: models.ChangeAdd, Attribute: attrName, Values: values}},
+		models.PasswordWriteOptions{}, nil, "ADD_ATTR", fmt.Sprintf("add attribute %q", attrName))
+	return err
 }
 
 // DeleteAttribute removes an attribute from an entry.
 func (c *Client) DeleteAttribute(dn string, attrName string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return ErrNotConnected
-	}
-
-	start := time.Now()
-	modReq := goldap.NewModifyRequest(dn, nil)
-	modReq.Delete(attrName, []string{})
-	err := c.conn.Modify(modReq)
-	c.logger.Log("DEL_ATTR", fmt.Sprintf("dn=%s attr=%s", dn, attrName), time.Since(start), err)
-	if err != nil {
-		return fmt.Errorf("delete attribute %q failed: %s", attrName, ldapErrorDetail(err))
-	}
-	return nil
+	changes := []models.AttributeChange{{Operation: models.ChangeDelete, Attribute: attrName}}
+	// A removed policy attribute (pwdMaxAge, …) must not be served from the shared policy cache.
+	defer c.notePolicyWriteChanges(dn, changes)
+	return c.modify(dn, changes, nil, "DEL_ATTR", fmt.Sprintf("delete attribute %q", attrName))
 }
 
 // DeleteEntry removes an entry by DN.
 func (c *Client) DeleteEntry(dn string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return ErrNotConnected
-	}
+	return c.DeleteEntryWithControls(dn)
+}
 
+// DeleteEntryWithControls removes an entry by DN, sending controls with the
+// request (e.g. the tree delete control 1.2.840.113556.1.4.805).
+func (c *Client) DeleteEntryWithControls(dn string, controls ...goldap.Control) error {
+	// A deleted policy entry must not be served from the shared policy cache.
+	defer c.notePolicyEntryWrite(dn)
 	start := time.Now()
-	delReq := goldap.NewDelRequest(dn, nil)
-	err := c.conn.Del(delReq)
-	c.logger.Log("DELETE", fmt.Sprintf("dn=%s", dn), time.Since(start), err)
-	if err != nil {
-		return fmt.Errorf("delete entry failed: %s", ldapErrorDetail(err))
+	delReq := goldap.NewDelRequest(dn, controls)
+
+	err := c.write(func(conn *goldap.Conn) error {
+		return conn.Del(delReq)
+	})
+	if errors.Is(err, ErrNotConnected) || errors.Is(err, ErrReadOnly) {
+		return err
 	}
-	return nil
+	details := fmt.Sprintf("dn=%s", dn)
+	if names := controlNames(controls); names != "" {
+		details += " controls=" + names
+	}
+	c.logger.Log("DELETE", details, time.Since(start), err)
+	return writeError("delete entry", err)
 }
 
 // RenameEntry renames or moves an LDAP entry.
 func (c *Client) RenameEntry(dn string, newRDN string, deleteOldRDN bool, newSuperior string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return ErrNotConnected
-	}
-
+	// A renamed policy entry (pwdPolicySubentry values now point nowhere) is read again.
+	defer c.notePolicyEntryWrite(dn)
 	start := time.Now()
 	modDNReq := goldap.NewModifyDNRequest(dn, newRDN, deleteOldRDN, newSuperior)
-	err := c.conn.ModifyDN(modDNReq)
-	c.logger.Log("RENAME", fmt.Sprintf("dn=%s newRDN=%s newSuperior=%s", dn, newRDN, newSuperior), time.Since(start), err)
-	if err != nil {
-		return fmt.Errorf("rename entry failed: %s", ldapErrorDetail(err))
+
+	err := c.write(func(conn *goldap.Conn) error {
+		return conn.ModifyDN(modDNReq)
+	})
+	if errors.Is(err, ErrNotConnected) || errors.Is(err, ErrReadOnly) {
+		return err
 	}
-	return nil
+	c.logger.Log("RENAME", fmt.Sprintf("dn=%s newRDN=%s newSuperior=%s", dn, newRDN, newSuperior), time.Since(start), err)
+	return writeError("rename entry", err)
 }
 
-// convertEntry converts a go-ldap Entry to our models.LDAPEntry.
+// convertEntry converts a go-ldap Entry to our models.LDAPEntry, applying
+// the binary contract (see convertAttribute).
 func convertEntry(entry *goldap.Entry) *models.LDAPEntry {
 	attrs := make([]models.LDAPAttribute, 0, len(entry.Attributes))
 	for _, a := range entry.Attributes {
-		isBinary := len(a.ByteValues) > 0 && !isPrintable(a.ByteValues)
-
-		values := a.Values
-		if isBinary {
-			if formatted := formatBinaryAttr(a.Name, a.ByteValues); formatted != nil {
-				values = formatted
-				isBinary = false
-			}
-		}
-
-		attrs = append(attrs, models.LDAPAttribute{
-			Name:   a.Name,
-			Values: values,
-			Binary: isBinary,
-		})
+		attrs = append(attrs, convertAttribute(a.Name, a.ByteValues, a.Values))
 	}
 	return &models.LDAPEntry{
 		DN:         entry.DN,
 		Attributes: attrs,
 	}
-}
-
-// isPrintable checks if byte values appear to be printable text.
-func isPrintable(byteValues [][]byte) bool {
-	for _, bv := range byteValues {
-		for _, b := range bv {
-			if b < 0x20 && b != '\n' && b != '\r' && b != '\t' {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // determineIcon returns an icon name based on objectClass values.
@@ -829,7 +1076,7 @@ func determineIcon(objectClasses []string) string {
 			return "usercog"
 		}
 	}
-	return "file"
+	return extraIcon(objectClasses)
 }
 
 // extractRDN extracts the first RDN component from a full DN.

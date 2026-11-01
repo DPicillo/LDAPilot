@@ -32,3 +32,9 @@ org.*
 .DS_Store
 Thumbs.db
 AppDataRoamingCodeUsersettings.json
+
+# Docker test lab (generated)
+docker/samba-ad/export/
+
+# Playwright MCP artifacts
+.playwright-mcp/

@@ -1,0 +1,1151 @@
+{
+  "events": {
+    "ai:approval_request": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "approvalId": "x",
+      "toolCallId": "x",
+      "kind": "x",
+      "tool": "x",
+      "toolDisplayName": "x",
+      "connection": {
+        "profileId": "x",
+        "label": "x",
+        "serverType": "x",
+        "host": "x",
+        "identity": "x",
+        "readOnly": true,
+        "localProvider": true
+      },
+      "position": {
+        "index": 1,
+        "total": 1
+      },
+      "preview": {
+        "operation": "x",
+        "dn": "x",
+        "newDn": "x",
+        "ldif": "x",
+        "changes": [
+          {
+            "attribute": "x",
+            "op": "x",
+            "before": [
+              "x"
+            ],
+            "after": [
+              "x"
+            ],
+            "values": [
+              "x"
+            ]
+          }
+        ],
+        "entrySummary": [
+          {
+            "attribute": "x",
+            "values": [
+              "x"
+            ]
+          }
+        ],
+        "risk": "x",
+        "riskReasons": [
+          "x"
+        ],
+        "warnings": [
+          "x"
+        ],
+        "explanation": "x",
+        "beforeHash": "x",
+        "assertion": true,
+        "grantScope": {
+          "tool": "x",
+          "profileId": "x",
+          "subtree": "x",
+          "groupDn": "x",
+          "attributes": [
+            "x"
+          ],
+          "action": "x",
+          "maxUses": 1,
+          "durationMin": 1,
+          "description": "x"
+        },
+        "unchanged": [
+          "x"
+        ],
+        "password": {
+          "method": "x",
+          "methodLabel": "x",
+          "scheme": "x",
+          "schemeLabel": "x",
+          "policy": "x",
+          "policySummary": "x",
+          "serverHashes": true,
+          "cleartextOnWire": true,
+          "unencrypted": true,
+          "mustChange": true,
+          "notes": [
+            "x"
+          ]
+        }
+      },
+      "providerHost": "x",
+      "providerRemote": true,
+      "allowedDecisions": [
+        "x"
+      ],
+      "requireConfirm": true,
+      "expiresAt": 1,
+      "grantsSuspended": true
+    },
+    "ai:approval_resolved": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "approvalId": "x",
+      "toolCallId": "x",
+      "decision": "x",
+      "by": "x"
+    },
+    "ai:chat_updated": {
+      "chatId": "x",
+      "title": "x",
+      "updatedAt": 1,
+      "pendingWrite": true
+    },
+    "ai:config_updated": {
+      "revision": 1
+    },
+    "ai:done": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "status": "x",
+      "finalMessageId": "x",
+      "durationMs": 1,
+      "totals": {
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheReadTokens": 1,
+        "cacheWriteTokens": 1,
+        "reasoningTokens": 1,
+        "costUsd": 1.5
+      },
+      "canContinue": true,
+      "contextEdited": true
+    },
+    "ai:error": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "code": "x",
+      "message": "x",
+      "retryable": true,
+      "status": 1,
+      "requestId": "x"
+    },
+    "ai:grants_updated": {
+      "chatId": "x",
+      "grants": [
+        {
+          "id": "x",
+          "tool": "x",
+          "profileId": "x",
+          "connectionLabel": "x",
+          "scope": "x",
+          "dns": [
+            "x"
+          ],
+          "subtree": "x",
+          "attributes": [
+            "x"
+          ],
+          "usesLeft": 1,
+          "expiresAt": 1
+        }
+      ]
+    },
+    "ai:message_started": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "messageId": "x",
+      "step": 1,
+      "model": "x"
+    },
+    "ai:models_updated": {
+      "providerKey": "x",
+      "models": [
+        {
+          "id": "x",
+          "displayName": "x",
+          "contextWindow": 1,
+          "maxOutput": 1,
+          "tools": "x",
+          "vision": "x",
+          "thinking": "x",
+          "family": "x",
+          "paramSize": "x",
+          "note": "x",
+          "remote": true,
+          "resolvedModel": "x",
+          "description": "x",
+          "thinkingModes": [
+            "x"
+          ],
+          "effortLevels": [
+            "x"
+          ],
+          "loadedContext": 1,
+          "configuredCtx": 1,
+          "default": true,
+          "contextSource": "x",
+          "toolsVerified": true,
+          "supportsEffort": true
+        }
+      ],
+      "discovery": {
+        "provider": "x",
+        "baseUrl": "x",
+        "models": [
+          {
+            "id": "x",
+            "displayName": "x",
+            "contextWindow": 1,
+            "maxOutput": 1,
+            "tools": "x",
+            "vision": "x",
+            "thinking": "x",
+            "family": "x",
+            "paramSize": "x",
+            "note": "x",
+            "remote": true,
+            "resolvedModel": "x",
+            "description": "x",
+            "thinkingModes": [
+              "x"
+            ],
+            "effortLevels": [
+              "x"
+            ],
+            "loadedContext": 1,
+            "configuredCtx": 1,
+            "default": true,
+            "contextSource": "x",
+            "toolsVerified": true,
+            "supportsEffort": true
+          }
+        ],
+        "fetchedAt": 1,
+        "fromCache": true,
+        "error": "x",
+        "warnings": [
+          "x"
+        ],
+        "configuredModel": "x",
+        "effectiveModel": "x",
+        "modelMissing": true,
+        "version": "x"
+      }
+    },
+    "ai:run_started": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "userMessageId": "x",
+      "kind": "x",
+      "engine": "x",
+      "provider": "x",
+      "model": "x",
+      "startedAt": 1
+    },
+    "ai:secret_available": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "toolCallId": "x",
+      "kind": "x",
+      "dn": "x",
+      "expiresAt": 1
+    },
+    "ai:status": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "kind": "x",
+      "message": "x",
+      "attempt": 1,
+      "delayMs": 1,
+      "param": "x"
+    },
+    "ai:step_discarded": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "messageId": "x",
+      "reason": "x"
+    },
+    "ai:text_delta": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "messageId": "x",
+      "blockIndex": 1,
+      "text": "x"
+    },
+    "ai:text_replaced": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "messageId": "x",
+      "blockIndex": 1,
+      "text": "x"
+    },
+    "ai:thinking_delta": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "messageId": "x",
+      "blockIndex": 1,
+      "text": "x"
+    },
+    "ai:tool_end": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "toolCallId": "x",
+      "status": "x",
+      "durationMs": 1,
+      "summary": "x",
+      "result": "x",
+      "isError": true,
+      "errorCode": "x",
+      "warnings": [
+        "x"
+      ],
+      "dns": [
+        "x"
+      ],
+      "write": {
+        "op": "x",
+        "dn": "x",
+        "newDn": "x",
+        "parentDn": "x",
+        "profileId": "x"
+      }
+    },
+    "ai:tool_start": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "messageId": "x",
+      "toolCallId": "x",
+      "name": "x",
+      "displayName": "x",
+      "kind": "x",
+      "args": "x",
+      "connectionId": "x",
+      "connectionLabel": "x",
+      "status": "x",
+      "warnings": [
+        "x"
+      ]
+    },
+    "ai:tool_update": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "toolCallId": "x",
+      "status": "x"
+    },
+    "ai:usage": {
+      "chatId": "x",
+      "runId": "x",
+      "seq": 1,
+      "ts": 1,
+      "step": 1,
+      "usage": {
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheReadTokens": 1,
+        "cacheWriteTokens": 1,
+        "reasoningTokens": 1,
+        "costUsd": 1.5
+      },
+      "contextTokens": 1,
+      "contextWindow": 1,
+      "contextPercent": 1.5,
+      "totals": {
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheReadTokens": 1,
+        "cacheWriteTokens": 1,
+        "reasoningTokens": 1,
+        "costUsd": 1.5
+      },
+      "costUsd": 1.5,
+      "turns": 1
+    }
+  },
+  "views": {
+    "AIConfig": {
+      "version": 1,
+      "revision": 1,
+      "engine": "x",
+      "provider": "x",
+      "flavor": "x",
+      "url": "x",
+      "apiKey": "x",
+      "hasKey": true,
+      "clearApiKey": true,
+      "keyError": "x",
+      "warnings": [
+        "x"
+      ],
+      "anthropicAuth": "x",
+      "anthropicFallback": true,
+      "allowInsecureHttp": true,
+      "tlsSkipVerify": true,
+      "endpointLocal": true,
+      "endpointConcurrency": 1,
+      "toolCallIdStyle": "x",
+      "model": "x",
+      "contextWindow": 1,
+      "maxOutputTokens": 1,
+      "maxSteps": 1,
+      "thinking": "x",
+      "hideThinking": true,
+      "effort": "x",
+      "requestTimeoutSec": 1,
+      "ollamaKeepAlive": "x",
+      "allowWrites": true,
+      "defaultAccess": "x",
+      "connectionAccess": {
+        "x": {
+          "level": "x",
+          "hosts": [
+            "x"
+          ],
+          "readHosts": [
+            "x"
+          ]
+        }
+      },
+      "redactAttributes": [
+        "x"
+      ],
+      "maskPasswordValues": "x",
+      "disableTitleGeneration": true,
+      "connectionNotes": {
+        "x": "x"
+      },
+      "claudeCode": {
+        "path": "x",
+        "model": "x",
+        "maxBudgetUsd": 1.5,
+        "allowResume": true,
+        "useAnthropicEnv": true
+      }
+    },
+    "ApprovalResult": {
+      "status": "x",
+      "decision": "x",
+      "by": "x"
+    },
+    "ChatSummary": {
+      "id": "x",
+      "title": "x",
+      "createdAt": 1,
+      "updatedAt": 1,
+      "messageCount": 1,
+      "model": "x",
+      "usage": {
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheReadTokens": 1,
+        "cacheWriteTokens": 1,
+        "reasoningTokens": 1,
+        "costUsd": 1.5
+      },
+      "running": true,
+      "corrupt": true,
+      "pendingWrite": true,
+      "note": "x"
+    },
+    "ChatView": {
+      "id": "x",
+      "title": "x",
+      "createdAt": 1,
+      "updatedAt": 1,
+      "messageCount": 1,
+      "model": "x",
+      "usage": {
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheReadTokens": 1,
+        "cacheWriteTokens": 1,
+        "reasoningTokens": 1,
+        "costUsd": 1.5
+      },
+      "running": true,
+      "corrupt": true,
+      "pendingWrite": true,
+      "note": "x",
+      "modelOverride": "x",
+      "messages": [
+        {
+          "id": "x",
+          "role": "x",
+          "blocks": [
+            {
+              "type": "x",
+              "text": "x",
+              "thinking": "x",
+              "signature": "x",
+              "data": "x",
+              "producer": "x",
+              "id": "x",
+              "providerCallId": "x",
+              "name": "x",
+              "input": {
+                "key": "value"
+              },
+              "toolUseId": "x",
+              "content": "x",
+              "isError": true,
+              "meta": {
+                "kind": "x",
+                "connectionId": "x",
+                "connectionLabel": "x",
+                "durationMs": 1,
+                "summary": "x",
+                "errorCode": "x",
+                "warnings": [
+                  "x"
+                ],
+                "approval": {
+                  "decision": "x",
+                  "by": "x",
+                  "at": 1,
+                  "previewHash": "x",
+                  "grantId": "x"
+                },
+                "synthetic": true,
+                "dns": [
+                  "x"
+                ],
+                "rawArgs": "x",
+                "executing": true,
+                "executingSince": 1,
+                "clearedAt": 1,
+                "shrunk": "x",
+                "consentHost": "x"
+              }
+            }
+          ],
+          "createdAt": 1,
+          "runId": "x",
+          "provider": "x",
+          "model": "x",
+          "stopReason": "x",
+          "usage": {
+            "inputTokens": 1,
+            "outputTokens": 1,
+            "cacheReadTokens": 1,
+            "cacheWriteTokens": 1,
+            "reasoningTokens": 1,
+            "costUsd": 1.5
+          },
+          "partial": true,
+          "truncated": true,
+          "error": {
+            "code": "x",
+            "message": "x",
+            "retryable": true,
+            "status": 1,
+            "requestId": "x"
+          },
+          "uiContext": {
+            "activeProfileId": "x",
+            "selectedDn": "x",
+            "selectedProfileId": "x",
+            "mentions": [
+              {
+                "profileId": "x",
+                "dn": "x"
+              }
+            ],
+            "locale": "x",
+            "timeZone": "x"
+          }
+        }
+      ],
+      "compactions": [
+        {
+          "id": "x",
+          "at": 1,
+          "summaryMessageId": "x",
+          "upToMessageId": "x",
+          "tokensBefore": 1,
+          "tokensAfter": 1,
+          "summary": "x",
+          "model": "x",
+          "chunks": 1,
+          "connections": [
+            "x"
+          ]
+        }
+      ],
+      "egress": [
+        {
+          "profileId": "x",
+          "providerHost": "x",
+          "remote": true,
+          "toolResults": 1,
+          "bytes": 1,
+          "firstAt": 1,
+          "lastAt": 1
+        }
+      ],
+      "readOnly": true
+    },
+    "ContextInfo": {
+      "contextWindow": 1,
+      "maxOutput": 1,
+      "inputBudget": 1,
+      "fixedOverhead": 1,
+      "estimatedTokens": 1,
+      "lastActualTokens": 1,
+      "percent": 1.5,
+      "autoCompactAt": 1.5,
+      "compactions": 1,
+      "breakdown": {
+        "x": 1
+      },
+      "windowSource": "x",
+      "suspect": true,
+      "model": "x",
+      "provider": "x"
+    },
+    "Grant": {
+      "id": "x",
+      "tool": "x",
+      "profileId": "x",
+      "connectionLabel": "x",
+      "scope": "x",
+      "dns": [
+        "x"
+      ],
+      "subtree": "x",
+      "attributes": [
+        "x"
+      ],
+      "usesLeft": 1,
+      "expiresAt": 1
+    },
+    "Message": {
+      "id": "x",
+      "role": "x",
+      "blocks": [
+        {
+          "type": "x",
+          "text": "x",
+          "thinking": "x",
+          "signature": "x",
+          "data": "x",
+          "producer": "x",
+          "id": "x",
+          "providerCallId": "x",
+          "name": "x",
+          "input": {
+            "key": "value"
+          },
+          "toolUseId": "x",
+          "content": "x",
+          "isError": true,
+          "meta": {
+            "kind": "x",
+            "connectionId": "x",
+            "connectionLabel": "x",
+            "durationMs": 1,
+            "summary": "x",
+            "errorCode": "x",
+            "warnings": [
+              "x"
+            ],
+            "approval": {
+              "decision": "x",
+              "by": "x",
+              "at": 1,
+              "previewHash": "x",
+              "grantId": "x"
+            },
+            "synthetic": true,
+            "dns": [
+              "x"
+            ],
+            "rawArgs": "x",
+            "executing": true,
+            "executingSince": 1,
+            "clearedAt": 1,
+            "shrunk": "x",
+            "consentHost": "x"
+          }
+        }
+      ],
+      "createdAt": 1,
+      "runId": "x",
+      "provider": "x",
+      "model": "x",
+      "stopReason": "x",
+      "usage": {
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheReadTokens": 1,
+        "cacheWriteTokens": 1,
+        "reasoningTokens": 1,
+        "costUsd": 1.5
+      },
+      "partial": true,
+      "truncated": true,
+      "error": {
+        "code": "x",
+        "message": "x",
+        "retryable": true,
+        "status": 1,
+        "requestId": "x"
+      },
+      "uiContext": {
+        "activeProfileId": "x",
+        "selectedDn": "x",
+        "selectedProfileId": "x",
+        "mentions": [
+          {
+            "profileId": "x",
+            "dn": "x"
+          }
+        ],
+        "locale": "x",
+        "timeZone": "x"
+      }
+    },
+    "ModelDiscovery": {
+      "provider": "x",
+      "baseUrl": "x",
+      "models": [
+        {
+          "id": "x",
+          "displayName": "x",
+          "contextWindow": 1,
+          "maxOutput": 1,
+          "tools": "x",
+          "vision": "x",
+          "thinking": "x",
+          "family": "x",
+          "paramSize": "x",
+          "note": "x",
+          "remote": true,
+          "resolvedModel": "x",
+          "description": "x",
+          "thinkingModes": [
+            "x"
+          ],
+          "effortLevels": [
+            "x"
+          ],
+          "loadedContext": 1,
+          "configuredCtx": 1,
+          "default": true,
+          "contextSource": "x",
+          "toolsVerified": true,
+          "supportsEffort": true
+        }
+      ],
+      "fetchedAt": 1,
+      "fromCache": true,
+      "error": "x",
+      "warnings": [
+        "x"
+      ],
+      "configuredModel": "x",
+      "effectiveModel": "x",
+      "modelMissing": true,
+      "version": "x"
+    },
+    "ProviderTestResult": {
+      "ok": true,
+      "latencyMs": 1,
+      "modelFound": true,
+      "tools": "x",
+      "contextWindow": 1,
+      "local": true,
+      "message": "x",
+      "warnings": [
+        "x"
+      ]
+    },
+    "RunSnapshot": {
+      "chatId": "x",
+      "runId": "x",
+      "status": "x",
+      "kind": "x",
+      "startedAt": 1,
+      "lastSeq": 1,
+      "baseMessageId": "x",
+      "messages": [
+        {
+          "id": "x",
+          "role": "x",
+          "blocks": [
+            {
+              "type": "x",
+              "text": "x",
+              "thinking": "x",
+              "signature": "x",
+              "data": "x",
+              "producer": "x",
+              "id": "x",
+              "providerCallId": "x",
+              "name": "x",
+              "input": {
+                "key": "value"
+              },
+              "toolUseId": "x",
+              "content": "x",
+              "isError": true,
+              "meta": {
+                "kind": "x",
+                "connectionId": "x",
+                "connectionLabel": "x",
+                "durationMs": 1,
+                "summary": "x",
+                "errorCode": "x",
+                "warnings": [
+                  "x"
+                ],
+                "approval": {
+                  "decision": "x",
+                  "by": "x",
+                  "at": 1,
+                  "previewHash": "x",
+                  "grantId": "x"
+                },
+                "synthetic": true,
+                "dns": [
+                  "x"
+                ],
+                "rawArgs": "x",
+                "executing": true,
+                "executingSince": 1,
+                "clearedAt": 1,
+                "shrunk": "x",
+                "consentHost": "x"
+              }
+            }
+          ],
+          "createdAt": 1,
+          "runId": "x",
+          "provider": "x",
+          "model": "x",
+          "stopReason": "x",
+          "usage": {
+            "inputTokens": 1,
+            "outputTokens": 1,
+            "cacheReadTokens": 1,
+            "cacheWriteTokens": 1,
+            "reasoningTokens": 1,
+            "costUsd": 1.5
+          },
+          "partial": true,
+          "truncated": true,
+          "error": {
+            "code": "x",
+            "message": "x",
+            "retryable": true,
+            "status": 1,
+            "requestId": "x"
+          },
+          "uiContext": {
+            "activeProfileId": "x",
+            "selectedDn": "x",
+            "selectedProfileId": "x",
+            "mentions": [
+              {
+                "profileId": "x",
+                "dn": "x"
+              }
+            ],
+            "locale": "x",
+            "timeZone": "x"
+          }
+        }
+      ],
+      "partial": {
+        "id": "x",
+        "role": "x",
+        "blocks": [
+          {
+            "type": "x",
+            "text": "x",
+            "thinking": "x",
+            "signature": "x",
+            "data": "x",
+            "producer": "x",
+            "id": "x",
+            "providerCallId": "x",
+            "name": "x",
+            "input": {
+              "key": "value"
+            },
+            "toolUseId": "x",
+            "content": "x",
+            "isError": true,
+            "meta": {
+              "kind": "x",
+              "connectionId": "x",
+              "connectionLabel": "x",
+              "durationMs": 1,
+              "summary": "x",
+              "errorCode": "x",
+              "warnings": [
+                "x"
+              ],
+              "approval": {
+                "decision": "x",
+                "by": "x",
+                "at": 1,
+                "previewHash": "x",
+                "grantId": "x"
+              },
+              "synthetic": true,
+              "dns": [
+                "x"
+              ],
+              "rawArgs": "x",
+              "executing": true,
+              "executingSince": 1,
+              "clearedAt": 1,
+              "shrunk": "x",
+              "consentHost": "x"
+            }
+          }
+        ],
+        "createdAt": 1,
+        "runId": "x",
+        "provider": "x",
+        "model": "x",
+        "stopReason": "x",
+        "usage": {
+          "inputTokens": 1,
+          "outputTokens": 1,
+          "cacheReadTokens": 1,
+          "cacheWriteTokens": 1,
+          "reasoningTokens": 1,
+          "costUsd": 1.5
+        },
+        "partial": true,
+        "truncated": true,
+        "error": {
+          "code": "x",
+          "message": "x",
+          "retryable": true,
+          "status": 1,
+          "requestId": "x"
+        },
+        "uiContext": {
+          "activeProfileId": "x",
+          "selectedDn": "x",
+          "selectedProfileId": "x",
+          "mentions": [
+            {
+              "profileId": "x",
+              "dn": "x"
+            }
+          ],
+          "locale": "x",
+          "timeZone": "x"
+        }
+      },
+      "pendingApprovals": [
+        {
+          "chatId": "x",
+          "runId": "x",
+          "seq": 1,
+          "ts": 1,
+          "approvalId": "x",
+          "toolCallId": "x",
+          "kind": "x",
+          "tool": "x",
+          "toolDisplayName": "x",
+          "connection": {
+            "profileId": "x",
+            "label": "x",
+            "serverType": "x",
+            "host": "x",
+            "identity": "x",
+            "readOnly": true,
+            "localProvider": true
+          },
+          "position": {
+            "index": 1,
+            "total": 1
+          },
+          "preview": {
+            "operation": "x",
+            "dn": "x",
+            "newDn": "x",
+            "ldif": "x",
+            "changes": [
+              {
+                "attribute": "x",
+                "op": "x",
+                "before": [
+                  "x"
+                ],
+                "after": [
+                  "x"
+                ],
+                "values": [
+                  "x"
+                ]
+              }
+            ],
+            "entrySummary": [
+              {
+                "attribute": "x",
+                "values": [
+                  "x"
+                ]
+              }
+            ],
+            "risk": "x",
+            "riskReasons": [
+              "x"
+            ],
+            "warnings": [
+              "x"
+            ],
+            "explanation": "x",
+            "beforeHash": "x",
+            "assertion": true,
+            "grantScope": {
+              "tool": "x",
+              "profileId": "x",
+              "subtree": "x",
+              "groupDn": "x",
+              "attributes": [
+                "x"
+              ],
+              "action": "x",
+              "maxUses": 1,
+              "durationMin": 1,
+              "description": "x"
+            },
+            "unchanged": [
+              "x"
+            ],
+            "password": {
+              "method": "x",
+              "methodLabel": "x",
+              "scheme": "x",
+              "schemeLabel": "x",
+              "policy": "x",
+              "policySummary": "x",
+              "serverHashes": true,
+              "cleartextOnWire": true,
+              "unencrypted": true,
+              "mustChange": true,
+              "notes": [
+                "x"
+              ]
+            }
+          },
+          "providerHost": "x",
+          "providerRemote": true,
+          "allowedDecisions": [
+            "x"
+          ],
+          "requireConfirm": true,
+          "expiresAt": 1,
+          "grantsSuspended": true
+        }
+      ],
+      "toolStatus": {
+        "x": "x"
+      },
+      "usage": {
+        "chatId": "x",
+        "runId": "x",
+        "seq": 1,
+        "ts": 1,
+        "step": 1,
+        "usage": {
+          "inputTokens": 1,
+          "outputTokens": 1,
+          "cacheReadTokens": 1,
+          "cacheWriteTokens": 1,
+          "reasoningTokens": 1,
+          "costUsd": 1.5
+        },
+        "contextTokens": 1,
+        "contextWindow": 1,
+        "contextPercent": 1.5,
+        "totals": {
+          "inputTokens": 1,
+          "outputTokens": 1,
+          "cacheReadTokens": 1,
+          "cacheWriteTokens": 1,
+          "reasoningTokens": 1,
+          "costUsd": 1.5
+        },
+        "costUsd": 1.5,
+        "turns": 1
+      }
+    },
+    "SecretValue": {
+      "kind": "x",
+      "dn": "x",
+      "value": "x",
+      "expiresAt": 1
+    },
+    "SendRequest": {
+      "chatId": "x",
+      "text": "x",
+      "ui": {
+        "activeProfileId": "x",
+        "selectedDn": "x",
+        "selectedProfileId": "x",
+        "mentions": [
+          {
+            "profileId": "x",
+            "dn": "x"
+          }
+        ],
+        "locale": "x",
+        "timeZone": "x"
+      }
+    },
+    "SendResult": {
+      "runId": "x",
+      "userMessageId": "x"
+    }
+  }
+}

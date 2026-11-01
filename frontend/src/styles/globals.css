@@ -1,50 +1,386 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
+/* =====================================================================
+   LDAPilot design tokens - FINAL ("Pro Console" + grafts)
+   Drop-in replacement for frontend/src/styles/globals.css (whole file).
+   ---------------------------------------------------------------------
+   THEMING
+   - Theme = data-theme on <html>: 'dark' | 'light'. uiStore resolves the
+     user preference ('system' | 'dark' | 'light', default 'system') and
+     writes the attribute before the first render.
+   - :root WITHOUT the attribute renders dark, so a missing attribute can
+     never produce an unstyled/half-light UI.
+   - Density = data-density on <html>: 'compact' (default) | 'comfortable'.
+     It changes table rows and controls only; the tree stays at 22px.
+
+   CONTRACT (verified by final/contrast-final.py -> final/contrast-final.txt)
+   - Every text token (*-foreground, primary, destructive, success, warning,
+     info, oc-*) >= 4.5:1 on every surface of its theme, including hover
+     (accent), selection and selection-inactive.
+   - border-strong (control edges), ring, focus, selection bar, oc-* icons
+     >= 3:1 against the surfaces they sit on.
+   - Badges/chips use the OPAQUE *-subtle fills (never tone/15 tints), so
+     they keep >= 4.5:1 on selected rows too.
+
+   RULES FOR CODE
+   - Colour channels are HSL triplets: write bg-primary/10, hsl(var(--x)),
+     or var(--color-x). Never hex, never Tailwind palette classes in new code.
+   - No text below 11px, no opacity on text (/40../80, opacity-50/60/70).
+   - The TRANSITIONAL block at the end is deleted by the post-integration
+     sweep (grep gates in SPEC.md section 10).
+   ===================================================================== */
+
+@custom-variant dark (&:where(:root:not([data-theme='light']), :root:not([data-theme='light']) *));
+@custom-variant light (&:where([data-theme='light'], [data-theme='light'] *));
+@custom-variant comfortable (&:where([data-density='comfortable'], [data-density='comfortable'] *));
+
+@theme {
+  /* --- Surfaces and text (existing names kept) ------------------------ */
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent)); /* = hover background */
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border)); /* dividers only (decorative) */
+  --color-input: hsl(var(--input)); /* input FILL */
+  --color-ring: hsl(var(--ring)); /* accent edge of a focused text field */
+  --color-activity-bar: hsl(var(--activity-bar-bg));
+  --color-activity-bar-foreground: hsl(var(--activity-bar-fg));
+  --color-activity-bar-active: hsl(var(--activity-bar-active));
+  --color-sidebar: hsl(var(--sidebar-bg));
+  --color-statusbar: hsl(var(--statusbar-bg)); /* idle / no connection */
+  --color-statusbar-connected: hsl(var(--statusbar-connected));
+
+  /* --- New neutral roles ---------------------------------------------- */
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-titlebar: hsl(var(--titlebar-bg));
+  --color-titlebar-foreground: hsl(var(--titlebar-fg));
+  --color-titlebar-close: hsl(var(--titlebar-close));
+  --color-titlebar-hover: hsl(var(--titlebar-hover)); /* hover / open menu on the title bar */
+  --color-statusbar-foreground: hsl(var(--statusbar-fg));
+  --color-statusbar-connected-foreground: hsl(var(--statusbar-connected-fg));
+  --color-statusbar-warning: hsl(var(--statusbar-warning)); /* lost / reconnecting */
+  --color-statusbar-warning-foreground: hsl(var(--statusbar-warning-fg));
+  --color-border-strong: hsl(var(--border-strong)); /* control boundaries, >= 3:1 */
+  --color-disabled-foreground: hsl(var(--disabled-foreground)); /* disabled only (WCAG-exempt) */
+  --color-selection: hsl(var(--selection)); /* selected row, focused list */
+  --color-selection-foreground: hsl(var(--selection-foreground));
+  --color-selection-inactive: hsl(var(--selection-inactive)); /* selected row, unfocused list */
+  --color-focus: hsl(var(--focus)); /* keyboard focus stroke, never equal to selection */
+  --color-overlay: hsl(var(--overlay)); /* modal scrim, already translucent */
+
+  /* --- Semantic tones (text-grade; solid fills pair with *-foreground) - */
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+
+  /* --- Opaque tinted fills for badges, chips, inline alerts ------------ */
+  --color-primary-subtle: hsl(var(--primary-subtle));
+  --color-success-subtle: hsl(var(--success-subtle));
+  --color-warning-subtle: hsl(var(--warning-subtle));
+  --color-info-subtle: hsl(var(--info-subtle));
+  --color-destructive-subtle: hsl(var(--destructive-subtle));
+
+  /* --- Directory object categories (single map for tree/list/results) - */
+  --color-oc-user: hsl(var(--oc-user));
+  --color-oc-group: hsl(var(--oc-group));
+  --color-oc-ou: hsl(var(--oc-ou));
+  --color-oc-computer: hsl(var(--oc-computer));
+  --color-oc-contact: hsl(var(--oc-contact));
+  --color-oc-domain: hsl(var(--oc-domain));
+  --color-oc-container: hsl(var(--oc-container));
+  --color-oc-service: hsl(var(--oc-service)); /* msDS-(G)MSA, service accounts */
+
+  /* --- Account status (glyph + colour, never colour alone) ------------- */
+  --color-status-ok: hsl(var(--success));
+  --color-status-disabled: hsl(var(--muted-foreground));
+  --color-status-locked: hsl(var(--warning));
+  --color-status-expired: hsl(var(--destructive));
+
+  /* --- LDAP operation log categories ---------------------------------- */
+  --color-op-search: hsl(var(--info));
+  --color-op-bind: hsl(var(--oc-contact));
+  --color-op-connect: hsl(var(--oc-domain));
+  --color-op-add: hsl(var(--success));
+  --color-op-modify: hsl(var(--warning));
+  --color-op-modrdn: hsl(var(--oc-computer));
+  --color-op-delete: hsl(var(--destructive));
+
+  /* --- Typography ------------------------------------------------------ */
+  /* Native UI face per OS. Roboto BEFORE system-ui keeps today's Linux
+     metrics (system-ui resolves to the wider DejaVu Sans on Debian/WSL). */
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto,
+    'Noto Sans', Ubuntu, Cantarell, system-ui, sans-serif;
+  --font-mono: 'Cascadia Mono', Consolas, 'SF Mono', Menlo, ui-monospace, 'Liberation Mono',
+    'DejaVu Sans Mono', monospace;
+
+  /* 11 / 12 / 13 / 14 / 16 / 20 px. 11px is the floor.
+     Phase-2 line heights (SPEC 4.1), switched on at the end of the
+     post-integration sweep. */
+  --text-xs: 11px; /* caption: badges, counts, kbd, column headers */
+  --text-xs--line-height: 16px;
+  --text-sm: 12px; /* body: tree, tables, inputs, menus, buttons */
+  --text-sm--line-height: 16px;
+  --text-base: 13px; /* emphasis body: dialog body, summary metadata */
+  --text-base--line-height: 18px;
+  --text-lg: 14px; /* dialog / panel titles */
+  --text-lg--line-height: 20px;
+  --text-xl: 16px; /* entry summary header name (new primitive only) */
+  --text-xl--line-height: 22px;
+  --text-2xl: 20px; /* welcome screen only */
+  --text-2xl--line-height: 28px;
+
+  /* --- Radii: 2px chips, 4px controls, 6px overlays, full for pills ---- */
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius: 4px;
+  --radius-md: 6px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+
+  /* --- Elevation ------------------------------------------------------- */
+  --shadow-popover: 0 8px 24px -6px hsl(var(--shadow) / 0.5), 0 2px 6px -2px hsl(var(--shadow) / 0.35);
+  --shadow-modal: 0 24px 64px -12px hsl(var(--shadow) / 0.65), 0 4px 12px -4px hsl(var(--shadow) / 0.4);
+
+  /* --- Shell metrics: h-row, h-tabbar, w-activitybar, h-control ... ---- */
+  --spacing-row: 22px; /* tree row: FIXED, the virtualizer depends on it */
+  --spacing-table-row: var(--table-row-h);
+  --spacing-titlebar: 30px;
+  --spacing-tabbar: 32px;
+  --spacing-panel-header: 32px;
+  --spacing-statusbar: 22px;
+  --spacing-activitybar: 40px;
+  --spacing-control: var(--control-h);
+  --spacing-control-sm: 22px;
+
+  /* --- Dialog widths: always clamp to the (zoomed) wrapper, never vw ---- */
+  --container-dialog-sm: min(400px, 95%);
+  --container-dialog-md: min(520px, 95%);
+  --container-dialog-lg: min(720px, 95%);
+  --container-dialog-xl: min(960px, 95%);
+
+  /* --- Motion ---------------------------------------------------------- */
+  --animate-enter: enter 140ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+/* ---------------------------------------------------------------------
+   Theme values
+   --------------------------------------------------------------------- */
 @layer base {
-  :root {
-    --background: 220 13% 10%;
-    --foreground: 0 0% 85%;
-    --card: 220 13% 13%;
-    --card-foreground: 0 0% 85%;
-    --popover: 220 13% 13%;
-    --popover-foreground: 0 0% 85%;
-    --primary: 210 78% 56%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 13% 18%;
-    --secondary-foreground: 0 0% 85%;
-    --muted: 220 13% 18%;
-    --muted-foreground: 0 0% 55%;
-    --accent: 220 13% 22%;
-    --accent-foreground: 0 0% 85%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 22%;
-    --input: 220 13% 22%;
-    --ring: 210 78% 56%;
-    --activity-bar-bg: 220 13% 13%;
-    --activity-bar-fg: 0 0% 55%;
-    --activity-bar-active: 0 0% 100%;
-    --sidebar-bg: 220 13% 15%;
-    --statusbar-bg: 260 50% 40%;
-    --statusbar-connected: 210 78% 40%;
-    --radius: 0.25rem;
+  :root,
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+
+    --background: 220 13% 10%; /* #16181d editor / main */
+    --foreground: 220 10% 87%; /* #dbdde1 */
+    --card: 220 13% 13%; /* #1d2025 dialogs, table heads */
+    --card-foreground: 220 10% 87%;
+    --popover: 220 13% 17%; /* #262931 menus sit ABOVE the surface */
+    --popover-foreground: 220 10% 87%;
+    --primary: 212 92% 69%; /* #67abf9 text-grade on every surface */
+    --primary-foreground: 220 40% 9%; /* dark ink on the bright fill */
+    --secondary: 220 13% 16%; /* #24272e tab bar / chrome strips / kbd */
+    --secondary-foreground: 220 10% 87%;
+    --muted: 220 13% 18%; /* #282c34 chip fill */
+    --muted-foreground: 220 9% 66%; /* #a0a6b0 */
+    --accent: 220 13% 22%; /* #31363f hover */
+    --accent-foreground: 220 10% 92%;
+    --destructive: 0 92% 75%; /* #f98585 */
+    --destructive-foreground: 220 40% 9%;
+    --success: 145 58% 54%; /* #46ce7e */
+    --success-foreground: 220 40% 9%;
+    --warning: 38 92% 58%; /* #f6ae31 */
+    --warning-foreground: 220 40% 9%;
+    --info: 195 85% 60%; /* #42c4f0 */
+    --info-foreground: 220 40% 9%;
+    --primary-subtle: 214 45% 18%;
+    --success-subtle: 146 35% 14%;
+    --warning-subtle: 38 45% 14%;
+    --info-subtle: 199 45% 15%;
+    --destructive-subtle: 0 40% 16%;
+    --border: 220 13% 21%; /* #2f333d dividers */
+    --border-strong: 220 8% 47%; /* #6e7581 inputs/checkboxes */
+    --input: 220 13% 10%; /* sunken field fill */
+    --ring: 212 95% 70%; /* #6aaefb focused text field edge */
+    --focus: 220 14% 94%; /* near-white keyboard focus stroke */
+    --selection: 214 42% 23%; /* #223753 + 2px primary bar */
+    --selection-foreground: 220 10% 96%;
+    --selection-inactive: 220 13% 24%; /* #353a44 + 2px muted bar */
+    --disabled-foreground: 220 7% 44%;
+    --overlay: 220 30% 3% / 0.62;
+    --shadow: 220 40% 2%;
+
+    --sidebar-bg: 220 13% 15%; /* #21252b */
+    --sidebar-foreground: 220 10% 87%;
+    --activity-bar-bg: 220 13% 12%; /* #1b1d23 */
+    --activity-bar-fg: 220 8% 62%;
+    --activity-bar-active: 220 10% 96%;
+    --titlebar-bg: 220 13% 12%; /* replaces the former hard-coded title bar hex colour */
+    --titlebar-fg: 220 8% 70%;
+    --titlebar-close: 5 75% 44%; /* #c42b1c, white text */
+    --titlebar-hover: 220 13% 22%; /* 1.38:1 vs the bar; text 5.63:1 */
+    --statusbar-bg: 220 13% 19%; /* idle (was purple) */
+    --statusbar-fg: 220 10% 87%;
+    --statusbar-connected: 212 80% 38%; /* #135cae */
+    --statusbar-connected-fg: 0 0% 100%;
+    --statusbar-warning: 32 90% 52%; /* connection lost / reconnecting */
+    --statusbar-warning-fg: 220 40% 9%;
+
+    --oc-user: 212 92% 70%;
+    --oc-group: 145 55% 55%;
+    --oc-ou: 45 90% 60%;
+    --oc-computer: 26 92% 64%;
+    --oc-contact: 280 70% 76%;
+    --oc-domain: 188 75% 58%;
+    --oc-container: 220 9% 66%;
+    --oc-service: 330 80% 76%;
+
+    --scrollbar: 220 8% 55% / 0.35;
+    --scrollbar-hover: 220 8% 60% / 0.6;
+    --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23a0a6b0' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
   }
 
-  * {
+  :root[data-theme='light'] {
+    color-scheme: light;
+
+    --background: 0 0% 100%;
+    --foreground: 220 18% 13%; /* #1b1f27 */
+    --card: 0 0% 100%;
+    --card-foreground: 220 18% 13%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 18% 13%;
+    --primary: 212 88% 40%; /* #0c60c0 white ink on it, also text-grade */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 16% 95%; /* #f0f2f4 tab bar */
+    --secondary-foreground: 220 18% 13%;
+    --muted: 220 14% 93%;
+    --muted-foreground: 220 9% 37%; /* #565c67 */
+    --accent: 220 16% 92%; /* hover */
+    --accent-foreground: 220 18% 10%;
+    --destructive: 0 74% 42%; /* #ba1c1c */
+    --destructive-foreground: 0 0% 100%;
+    --success: 145 80% 24%; /* #0c6e35 */
+    --success-foreground: 0 0% 100%;
+    --warning: 30 100% 30%; /* #994c00 text-grade amber */
+    --warning-foreground: 0 0% 100%;
+    --info: 198 95% 30%; /* #046a95 */
+    --info-foreground: 0 0% 100%;
+    --primary-subtle: 214 90% 95%;
+    --success-subtle: 146 55% 94%;
+    --warning-subtle: 40 95% 92%;
+    --info-subtle: 200 85% 95%;
+    --destructive-subtle: 0 85% 96%;
+    --border: 220 13% 87%;
+    --border-strong: 220 8% 53%; /* #7e8491 */
+    --input: 0 0% 100%;
+    --ring: 212 90% 42%;
+    --focus: 220 30% 12%; /* near-black keyboard focus stroke */
+    --selection: 212 90% 91%; /* #d3e7fd + 2px primary bar */
+    --selection-foreground: 220 30% 10%;
+    --selection-inactive: 220 13% 89%;
+    --disabled-foreground: 220 8% 62%;
+    --overlay: 220 25% 12% / 0.32;
+    --shadow: 220 30% 20%;
+
+    --sidebar-bg: 220 16% 97%;
+    --sidebar-foreground: 220 18% 13%;
+    --activity-bar-bg: 220 16% 93%;
+    --activity-bar-fg: 220 9% 38%;
+    --activity-bar-active: 220 18% 10%;
+    --titlebar-bg: 220 16% 93%;
+    --titlebar-fg: 220 10% 30%;
+    --titlebar-close: 5 75% 44%;
+    --titlebar-hover: 220 16% 84%; /* accent (92%) is 1.03:1 on the 93% bar; this is 1.26:1, text 5.99:1 */
+    --statusbar-bg: 220 16% 92%;
+    --statusbar-fg: 220 18% 16%;
+    --statusbar-connected: 212 88% 38%;
+    --statusbar-connected-fg: 0 0% 100%;
+    --statusbar-warning: 34 100% 50%;
+    --statusbar-warning-fg: 220 40% 9%;
+
+    --oc-user: 212 88% 40%;
+    --oc-group: 145 80% 23%;
+    --oc-ou: 36 100% 26%;
+    --oc-computer: 22 95% 33%;
+    --oc-contact: 280 55% 45%;
+    --oc-domain: 190 95% 25%;
+    --oc-container: 220 9% 40%;
+    --oc-service: 330 70% 40%;
+
+    --scrollbar: 220 8% 40% / 0.3;
+    --scrollbar-hover: 220 8% 35% / 0.5;
+    --select-chevron: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23565c67' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  }
+
+  /* Theme-independent metrics */
+  :root {
+    --control-h: 26px; /* new primitives: Button/Input/Select md */
+    --table-row-h: 24px; /* data tables; the tree stays at 22px */
+
+    /* z-index scale - use as z-(--z-modal) */
+    --z-sticky: 10;
+    --z-dropdown: 30;
+    --z-overlay: 40;
+    --z-modal: 50;
+    --z-popover: 60; /* menus/popovers opened from inside a modal */
+    --z-toast: 70;
+    --z-menubar: 80;
+    --z-tooltip: 90;
+  }
+
+  :root[data-density='comfortable'] {
+    --control-h: 28px;
+    --table-row-h: 28px;
+  }
+
+  /* Users who ask the OS for more contrast get stronger lines and text. */
+  @media (prefers-contrast: more) {
+    :root:not([data-theme='light']) {
+      --border: 220 9% 38%;
+      --border-strong: 220 8% 60%;
+      --muted-foreground: 220 12% 76%;
+      --selection-inactive: 220 13% 28%;
+    }
+    :root[data-theme='light'] {
+      --border: 220 10% 60%;
+      --border-strong: 220 10% 38%;
+      --muted-foreground: 220 14% 27%;
+    }
+  }
+
+  /* Tailwind v4 defaults borders to currentcolor; keep the theme border colour. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
     border-color: hsl(var(--border));
   }
 
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-sans);
     font-size: 13px;
     margin: 0;
     padding: 0;
     overflow: hidden;
     height: 100vh;
+    -webkit-font-smoothing: antialiased;
   }
 
   #root {
@@ -56,59 +392,194 @@
     position: relative;
     overflow: hidden;
   }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.35);
+  }
+
+  /* One keyboard-focus language for the whole app: a neutral high-contrast
+     stroke (near-white on dark, near-black on light) that can never be
+     confused with the blue selection bar. Zero specificity: any utility
+     (outline-hidden, focus-visible:outline-*) overrides it.
+     Text fields (ui Input/Select/Textarea) use the accent edge instead. */
+  :where(:focus-visible) {
+    outline: 2px solid hsl(var(--focus));
+    outline-offset: 1px;
+  }
+
+  /* Rows, tabs and menu items sit inside overflow containers: draw inset. */
+  :where([role='treeitem'], [role='row'], [role='gridcell'], [role='option'], [role='menuitem'],
+    [role='menuitemcheckbox'], [role='menuitemradio'], [role='tab'], tr, li):focus-visible {
+    outline-offset: -2px;
+  }
+
+  /* Sticky table headers always stack above scrolled rows (fixes the
+     AttributeTable overlap, V8) without touching feature files. A call-site
+     z-* utility still wins because :where() has zero specificity. */
+  :where(thead.sticky, thead > tr.sticky, thead > tr > th.sticky) {
+    z-index: var(--z-sticky);
+    box-shadow: inset 0 -1px 0 hsl(var(--border));
+  }
+
+  /* Transitions go to 0s (not 1ms): with the default transition-property
+     `all`, a 1ms transition also animates `visibility` (overlays are hidden
+     until measured), so focus() into a just-shown menu failed, and computed
+     colours read in the same task (native window background) were stale. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0s !important;
+      transition-delay: 0s !important;
+    }
+  }
 }
 
-/* Form input styles */
-@layer components {
-  .input-field {
-    @apply w-full px-2 py-1.5 text-sm bg-input border border-border rounded
-           text-foreground placeholder:text-muted-foreground
-           focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring;
-  }
+/* Selected row: tinted fill + 2px bar (the bar carries the >= 3:1 state
+   contrast). Use row-selected-inactive when the list does not own focus. */
+@utility row-selected {
+  background-color: hsl(var(--selection));
+  color: hsl(var(--selection-foreground));
+  box-shadow: inset 2px 0 0 0 hsl(var(--primary));
+}
 
-  .input-field:disabled {
-    @apply opacity-50 cursor-not-allowed;
-  }
+@utility row-selected-inactive {
+  background-color: hsl(var(--selection-inactive));
+  box-shadow: inset 2px 0 0 0 hsl(var(--muted-foreground));
+}
 
-  select.input-field {
-    @apply cursor-pointer appearance-none;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 0.25rem center;
-    background-repeat: no-repeat;
-    background-size: 1.25em 1.25em;
-    padding-right: 2rem;
+/* Focus stroke drawn inside the element (virtualized rows, cells, tabs). */
+@utility focus-ring-inset {
+  &:focus-visible {
+    outline: 2px solid hsl(var(--focus));
+    outline-offset: -2px;
   }
 }
 
-/* Allotment overrides for dark theme */
+/* ---------------------------------------------------------------------
+   Enter animation. Replaces the tailwindcss-animate classes that are
+   used today but compile to nothing (animate-in, fade-in, slide-in-*).
+   --------------------------------------------------------------------- */
+@keyframes enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+    translate: var(--tw-enter-translate-x, 0) var(--tw-enter-translate-y, 0);
+    scale: var(--tw-enter-scale, 1);
+  }
+}
+
+@utility animate-in {
+  animation: enter 140ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+@utility fade-in {
+  --tw-enter-opacity: 0;
+}
+@utility zoom-in-95 {
+  --tw-enter-scale: 0.95;
+}
+@utility slide-in-from-left-* {
+  --tw-enter-translate-x: calc(--value(integer) * var(--spacing) * -1);
+}
+@utility slide-in-from-right-* {
+  --tw-enter-translate-x: calc(--value(integer) * var(--spacing));
+}
+@utility slide-in-from-right-full {
+  --tw-enter-translate-x: 100%;
+}
+@utility slide-in-from-top-* {
+  --tw-enter-translate-y: calc(--value(integer) * var(--spacing) * -1);
+}
+@utility slide-in-from-bottom-* {
+  --tw-enter-translate-y: calc(--value(integer) * var(--spacing));
+}
+
+/* =====================================================================
+   TRANSITIONAL - fixes feature screens before the sweep without editing
+   feature files. Every rule here is deleted once its grep gate in SPEC.md
+   section 10.3 returns 0.
+   Status after the AI merge: T1, T2 and T4 deleted (grep 0, components/ai
+   included). T3 remains: it only matches the primitives (IconButton
+   revealOnRowHover, Tabs close) and the AI chat list, all of which carry
+   their own focus path (group-focus-within / focus-visible / focus:).
+   ===================================================================== */
+
+/* T3 lives in the utilities layer AFTER Tailwind's generated utilities:
+   same specificity as the class it patches, later in source order, so it
+   wins over it - but variant classes (hover:, focus:, group-hover:) keep
+   their higher specificity and still win over the patch. */
+@layer utilities {
+  /* T3 hover-only controls also appear on row hover and on keyboard focus
+     (AttributeTable rows lack `group`; 25 opacity-0 reveals had no focus path). */
+  tr:hover .group-hover\:opacity-100,
+  tr:focus-within .group-hover\:opacity-100,
+  .group:focus-within .group-hover\:opacity-100,
+  .opacity-0:focus-visible {
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Windows High Contrast (WebView2 forced-colors). box-shadow selection
+   bars are dropped by the UA in this mode, so selection uses system colours.
+   --------------------------------------------------------------------- */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
+  }
+  [aria-selected='true'],
+  [aria-current='true'],
+  [aria-current='page'],
+  [role='radio'][aria-checked='true'],
+  [aria-pressed='true'] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+  /* Open menubar menu / expanded triggers keep a visible state too. */
+  [role='menubar'] [aria-expanded='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Third-party chrome (unlayered on purpose: allotment's own unlayered
+   :root rule would otherwise beat anything inside @layer base)
+   --------------------------------------------------------------------- */
+:root:root {
+  --separator-border: hsl(var(--border));
+  --focus-border: hsl(var(--primary));
+  --sash-hover-size: 2px;
+}
+
+/* The sash is an invisible 8px drag area centred on the split (it reaches 4px
+   into each pane, over e.g. the row-selected bar of full-bleed tables): the
+   panes draw the 1px edge (sidebar border-r, bottom panel border-t) and the
+   sash only shows its 2px ::before line (--focus-border) while hovered or
+   dragged. */
 .sash-container .sash {
-  background-color: hsl(var(--border));
+  background-color: transparent;
 }
 
-.sash-container .sash:hover,
-.sash-container .sash.active {
-  background-color: hsl(var(--primary));
-}
-
-/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-::-webkit-scrollbar-track {
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsla(0, 0%, 50%, 0.4);
-  border-radius: 5px;
+  background-color: hsl(var(--scrollbar));
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: hsla(0, 0%, 50%, 0.6);
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
+  background-color: hsl(var(--scrollbar-hover));
 }

@@ -3,12 +3,17 @@
  * These functions wrap the auto-generated Wails bindings.
  * During development without wails dev, they fall back to stubs.
  */
-import type { ConnectionProfile, SearchParams, SearchResult, TreeNode, LDAPEntry, LDAPAttribute, SchemaInfo, SchemaObjectClass, ObjectClassInfo, ValidationError, ImportResult, BatchResult, BatchModifyChange } from '../types/ldap';
+import type { ConnectionExportResult, ConnectionImportReport, ConnectionProfile, SearchParams, SearchResult, TreeNode, LDAPEntry, LDAPAttribute, AttributeChange, ServerInfo, SchemaInfo, SchemaObjectClass, ObjectClassInfo, ValidationError, BatchResult } from '../types/ldap';
 
 // Dynamic import helpers - the wailsjs directory is auto-generated
 // We use dynamic access to avoid build errors when bindings aren't generated yet
 
-function getBinding(serviceName: string): any {
+/**
+ * Returns the Wails binding object of a Go service (window.go.services.<name>),
+ * or null when not running under Wails. Exported so feature modules can define
+ * their own wrappers next to their code.
+ */
+export function getBinding(serviceName: string): any {
   try {
     // The wailsjs bindings are available at runtime when running under wails
     const w = (window as any)['go'];
@@ -74,21 +79,90 @@ export async function Reconnect(profileID: string): Promise<void> {
   if (svc?.Reconnect) return svc.Reconnect(profileID);
 }
 
+/** Error text of the Go sentinel ldap.ErrConnectCancelled. */
+export const CONNECT_CANCELLED_MESSAGE = 'connection attempt cancelled';
+
+/**
+ * True if a rejected Connect/Reconnect call was cancelled by a Disconnect of
+ * the same profile while it was dialing (not a connection failure).
+ */
+export function isConnectCancelled(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  return msg.includes(CONNECT_CANCELLED_MESSAGE);
+}
+
 export async function PingConnection(profileID: string): Promise<boolean> {
   const svc = getBinding('ConnectionService');
   if (svc?.PingConnection) return svc.PingConnection(profileID);
   return false;
 }
 
-export async function ExportConnections(): Promise<void> {
+/**
+ * Saves all profiles (no passwords) through the save dialog. `path` is ''
+ * when the user cancelled: show no message then. Prefer
+ * `exportConnectionProfiles()` (components/connection/connectionTransfer.ts),
+ * which also shows the result.
+ */
+export async function ExportConnections(): Promise<ConnectionExportResult> {
   const svc = getBinding('ConnectionService');
-  if (svc?.ExportConnections) return svc.ExportConnections();
+  if (svc?.ExportConnections) return (await svc.ExportConnections()) ?? { path: '', count: 0 };
+  return { path: '', count: 0 };
 }
 
-export async function ImportConnections(): Promise<number> {
+const EMPTY_IMPORT: ConnectionImportReport = { cancelled: true, path: '', total: 0, imported: [], duplicates: [], skipped: [], needPassword: [] };
+
+/**
+ * Imports profiles through the open dialog and reports imported, duplicate
+ * (same host, port, bind DN and base DN) and skipped profiles. Prefer
+ * `importConnectionProfiles()` (components/connection/connectionTransfer.ts),
+ * which also shows the result and reloads the list.
+ */
+export async function ImportConnectionsReport(): Promise<ConnectionImportReport> {
   const svc = getBinding('ConnectionService');
-  if (svc?.ImportConnections) return svc.ImportConnections();
-  return 0;
+  if (!svc?.ImportConnections) return EMPTY_IMPORT;
+  const r = (await svc.ImportConnections()) as Partial<ConnectionImportReport> | null;
+  return {
+    cancelled: !!r?.cancelled,
+    path: r?.path ?? '',
+    total: r?.total ?? 0,
+    imported: r?.imported ?? [],
+    duplicates: r?.duplicates ?? [],
+    skipped: r?.skipped ?? [],
+    needPassword: r?.needPassword ?? [],
+    askPassword: r?.askPassword ?? [],
+  };
+}
+
+/** @deprecated Returns only the number of imported profiles; use ImportConnectionsReport. */
+export async function ImportConnections(): Promise<number> {
+  return (await ImportConnectionsReport()).imported.length;
+}
+
+/** Re-reads connections.json (edited outside LDAPilot) and returns the profiles (passwords masked). */
+export async function ReloadConnections(): Promise<ConnectionProfile[]> {
+  const svc = getBinding('ConnectionService');
+  if (svc?.ReloadConnections) return (await svc.ReloadConnections()) ?? [];
+  return GetConnections();
+}
+
+/**
+ * Connects with a password typed by the user (none is stored). `save` stores
+ * it (encrypted) once the connection works; otherwise it is kept in memory
+ * until LDAPilot quits.
+ */
+export async function ConnectWithPassword(profileID: string, password: string, save: boolean): Promise<void> {
+  const svc = getBinding('ConnectionService');
+  if (svc?.ConnectWithPassword) return svc.ConnectWithPassword(profileID, password, save);
+  return Connect(profileID);
+}
+
+/** Error text prefix of Go services.ErrPasswordRequired. */
+export const PASSWORD_REQUIRED_MESSAGE = 'password required';
+
+/** True if Connect/Reconnect failed because the profile needs a password none is stored for. */
+export function isPasswordRequired(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  return msg.startsWith(PASSWORD_REQUIRED_MESSAGE);
 }
 
 // --- BrowserService ---
@@ -121,6 +195,12 @@ export interface ObjectStats {
   baseDN: string;
   totalCount: number;
   byType: Record<string, number>;
+  /** LDAP filter per category (tree batch: the statistics categories run a search below the base). */
+  filters?: Record<string, string>;
+  /** Display order of the categories. */
+  order?: string[];
+  /** The count stopped at the size limit (50,000 entries): the numbers are a lower bound. */
+  truncated?: boolean;
 }
 
 export async function GetStatistics(profileID: string, baseDN: string): Promise<ObjectStats | null> {
@@ -129,11 +209,24 @@ export async function GetStatistics(profileID: string, baseDN: string): Promise<
   return null;
 }
 
+/** RootDSE capabilities (server type, controls, naming contexts), cached per connection. */
+export async function GetServerInfo(profileID: string): Promise<ServerInfo | null> {
+  const svc = getBinding('BrowserService');
+  if (svc?.GetServerInfo) return svc.GetServerInfo(profileID);
+  return null;
+}
+
 // --- EditorService ---
 
 export async function CreateEntry(profileID: string, dn: string, attributes: LDAPAttribute[]): Promise<void> {
   const svc = getBinding('EditorService');
   if (svc?.CreateEntry) return svc.CreateEntry(profileID, dn, attributes);
+}
+
+/** Applies all changes to an entry in one atomic modify request (audited). */
+export async function ModifyEntry(profileID: string, dn: string, changes: AttributeChange[]): Promise<void> {
+  const svc = getBinding('EditorService');
+  if (svc?.ModifyEntry) return svc.ModifyEntry(profileID, dn, changes);
 }
 
 export async function ModifyAttribute(profileID: string, dn: string, attrName: string, values: string[]): Promise<void> {
@@ -169,6 +262,22 @@ export async function SearchLDAP(profileID: string, params: SearchParams): Promi
   return { entries: [], totalCount: 0, truncated: false };
 }
 
+/** Cancels all running searches of a profile; returns how many were cancelled. */
+export async function CancelSearch(profileID: string): Promise<number> {
+  const svc = getBinding('SearchService');
+  if (svc?.CancelSearch) return svc.CancelSearch(profileID);
+  return 0;
+}
+
+/** Error text of the Go sentinel ldap.ErrSearchCancelled. */
+export const SEARCH_CANCELLED_MESSAGE = 'search cancelled';
+
+/** True if a rejected SearchLDAP call was cancelled (CancelSearch) rather than failed. */
+export function isSearchCancelled(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  return msg.includes(SEARCH_CANCELLED_MESSAGE);
+}
+
 export async function ValidateFilter(filter: string): Promise<void> {
   const svc = getBinding('SearchService');
   if (svc?.ValidateFilter) return svc.ValidateFilter(filter);
@@ -194,26 +303,18 @@ export async function ExportCSV(profileID: string, baseDN: string, columns: stri
   return '';
 }
 
-export async function ExportCSVToFile(profileID: string, baseDN: string, columns: string[]): Promise<void> {
+/** Saves a CSV export through the save dialog. Returns the path written, '' when the user cancelled. */
+export async function ExportCSVToFile(profileID: string, baseDN: string, columns: string[]): Promise<string> {
   const svc = getBinding('ExportService');
-  if (svc?.ExportCSVToFile) return svc.ExportCSVToFile(profileID, baseDN, columns);
+  if (svc?.ExportCSVToFile) return (await svc.ExportCSVToFile(profileID, baseDN, columns)) || '';
+  return '';
 }
 
-export async function ExportToFile(profileID: string, dns: string[]): Promise<void> {
+/** Saves an LDIF export of dns through the save dialog. Returns the path written, '' when the user cancelled. */
+export async function ExportToFile(profileID: string, dns: string[]): Promise<string> {
   const svc = getBinding('ExportService');
-  if (svc?.ExportToFile) return svc.ExportToFile(profileID, dns);
-}
-
-export async function ImportLDIF(profileID: string, ldifContent: string): Promise<ImportResult> {
-  const svc = getBinding('ExportService');
-  if (svc?.ImportLDIF) return svc.ImportLDIF(profileID, ldifContent);
-  return { entries: [], total: 0, succeeded: 0, failed: 0, errors: [] };
-}
-
-export async function ImportLDIFFromFile(profileID: string): Promise<ImportResult | null> {
-  const svc = getBinding('ExportService');
-  if (svc?.ImportLDIFFromFile) return svc.ImportLDIFFromFile(profileID);
-  return null;
+  if (svc?.ExportToFile) return (await svc.ExportToFile(profileID, dns)) || '';
+  return '';
 }
 
 export async function PreviewLDIF(ldifContent: string): Promise<LDAPEntry[]> {
@@ -268,6 +369,12 @@ export interface LogEntry {
   details: string;
   duration: string;
   error?: string;
+  /** The connection the operation ran on (every connected profile streams operation:log). */
+  profileId?: string;
+  /** Per-profile sequence number (1, 2, …): GetLogs + stream merge without duplicates. */
+  seq?: number;
+  /** Local date and time, RFC 3339 with milliseconds (exports). */
+  at?: string;
 }
 
 export async function GetLogs(profileID: string): Promise<LogEntry[]> {
@@ -391,17 +498,9 @@ export async function ListAIModels(): Promise<string[]> {
 
 // --- BatchService ---
 
-export async function BatchDelete(profileID: string, dns: string[]): Promise<BatchResult> {
-  const svc = getBinding('BatchService');
-  if (svc?.BatchDelete) return svc.BatchDelete(profileID, dns);
-  return { total: 0, succeeded: 0, failed: 0, errors: [] };
-}
-
-export async function BatchModify(profileID: string, dns: string[], changes: BatchModifyChange[]): Promise<BatchResult> {
-  const svc = getBinding('BatchService');
-  if (svc?.BatchModify) return svc.BatchModify(profileID, dns, changes);
-  return { total: 0, succeeded: 0, failed: 0, errors: [] };
-}
+// Deletes go through recycle's DeleteEntryDialog (EditorService.DeleteSubtree),
+// modifies through bulk's BatchPreview/BatchApply (lib/wails-bulk.ts) and LDIF
+// imports through PreviewLDIFChanges/ApplyLDIFChanges.
 
 export async function BatchMove(profileID: string, dns: string[], newParentDN: string): Promise<BatchResult> {
   const svc = getBinding('BatchService');

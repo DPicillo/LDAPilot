@@ -1,0 +1,6 @@
+{"model":"qwen3-vl:8b","created_at":"2026-10-29T22:35:05.9810173Z","message":{"role":"assistant","content":"","thinking":"Okay"},"done":false}
+{"model":"qwen3-vl:8b","created_at":"2026-10-29T22:35:05.9956684Z","message":{"role":"assistant","content":"","thinking":","},"done":false}
+{"model":"qwen3-vl:8b","created_at":"2026-10-29T22:35:06.0083548Z","message":{"role":"assistant","content":"","thinking":" the"},"done":false}
+{"model":"qwen3-vl:8b","created_at":"2026-10-29T22:35:10.4118209Z","message":{"role":"assistant","content":"","thinking":"\n}"},"done":false}
+{"model":"qwen3-vl:8b","created_at":"2026-10-29T22:35:10.8272283Z","message":{"role":"assistant","content":"","tool_calls":[{"id":"call_leztio3i","function":{"index":0,"name":"search_ldap","arguments":{"filter":"(sAMAccountName=jdoe)","attributes":["mail"]}}}]},"done":false}
+{"model":"qwen3-vl:8b","created_at":"2026-10-29T22:35:10.8385292Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","total_duration":4942990900,"load_duration":4608700,"prompt_eval_count":220,"prompt_eval_cached_count":219,"prompt_eval_duration":29969000,"eval_count":413,"eval_duration":4857764000}

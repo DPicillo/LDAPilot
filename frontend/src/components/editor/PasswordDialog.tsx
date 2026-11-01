@@ -1,273 +1,725 @@
-import { useState } from 'react'
-import { X, KeyRound, Loader2, AlertCircle, Eye, EyeOff, Check, Copy } from 'lucide-react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  KeyRound, AlertCircle, AlertTriangle, Info, Eye, EyeOff, Check, Copy, Wand2, X,
+  SlidersHorizontal, ShieldCheck, ShieldAlert, Lock, CheckCircle2, RefreshCw, Settings2,
+} from 'lucide-react'
 import { useConnectionStore } from '../../stores/connectionStore'
-import * as wails from '../../lib/wails'
+import { GetPasswordContext, SetPassword } from '../../lib/wails-password'
+import {
+  accountOptions, availableMethods, defaultAccountFlags, defaultSchemeFor, defaultSelection, deviatesFromPolicy, groupSchemes,
+  hasAdvancedMethods, isAdvancedSelection, loadRememberedSelection, methodDescription, methodOptionLabel, passwordSubmitBlock,
+  passwordSummaryLine, policyLine, resultOutcome, resultSummary, saveRememberedSelection, schemeLabelOptions,
+  schemeOptionLabel, schemeSupportFor, selectionNotices, selectMethod, selectScheme, sendsCleartext, storedSchemeText, verifyHint, SERVER_LABELS,
+  type DialogNotice, type PasswordSelection, type ResultOutcome,
+} from '../../lib/passwordMethod'
+import {
+  assessPassword, clampLength, generatePassword, lengthChoices, parseGeneratorOptions, type GeneratorOptions, type PasswordAssessment,
+} from '../../lib/passwordGenerator'
+import { accountDisplayName } from '../../lib/accountActions'
+import type { PasswordChangeResult, PasswordContext, PasswordScheme, SchemeSupportLevel } from '../../types/password'
+import type { ServerType } from '../../types/ldap'
 import { toast } from '../ui/Toast'
+import { UnencryptedSendDialog } from '../password/UnencryptedConsent'
+import { resetCleartextParts, unencryptedWhat } from '../../lib/unencryptedConsent'
+import { cn } from '../../lib/utils'
+import { Badge } from '../ui/Badge'
+import { Dialog, useDialogStore } from '../ui/Dialog'
+import { Button, IconButton } from '../ui/Button'
+import { DisclosureButton } from '../ui/Disclosure'
+import { Field } from '../ui/Field'
+import { Input, Select } from '../ui/Input'
+import { Checkbox } from '../ui/Checkbox'
+import { InlineAlert } from '../ui/InlineAlert'
+import { Spinner } from '../ui/Spinner'
+import { Dn } from '../ui/Dn'
+import { ConnectionDialog } from '../connection/ConnectionDialog'
+import { dismissPasswordWarnings } from '../password/passwordToastRegistry'
+import { DialogCancelButton } from './DialogCancelButton'
+import { afterAccountChange } from '../commands/accountState'
 
 interface PasswordDialogProps {
   dn: string;
   onClose: () => void;
   onChanged?: () => void;
+  /** Connection of the entry (an editor tab, a results row); default: the active connection. */
+  profileId?: string;
 }
 
-const PASSWORD_ATTR_OPTIONS = [
-  { value: 'userPassword', label: 'userPassword (OpenLDAP / standard)' },
-  { value: 'unicodePwd', label: 'unicodePwd (Active Directory)' },
-];
+const GENERATOR_STORAGE_KEY = 'ldapilot.password.generator';
 
-function generatePassword(length = 16): string {
-  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const lower = 'abcdefghijklmnopqrstuvwxyz';
-  const digits = '0123456789';
-  const symbols = '!@#$%^&*()-_=+[]{}|;:,.<>?';
-  const all = upper + lower + digits + symbols;
-
-  // Ensure at least one of each category
-  const result = [
-    upper[Math.floor(Math.random() * upper.length)],
-    lower[Math.floor(Math.random() * lower.length)],
-    digits[Math.floor(Math.random() * digits.length)],
-    symbols[Math.floor(Math.random() * symbols.length)],
-  ];
-
-  for (let i = result.length; i < length; i++) {
-    result.push(all[Math.floor(Math.random() * all.length)]);
+function loadGeneratorOptions(): GeneratorOptions {
+  try {
+    return parseGeneratorOptions(localStorage.getItem(GENERATOR_STORAGE_KEY));
+  } catch {
+    return parseGeneratorOptions(null);
   }
-
-  // Shuffle
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-
-  return result.join('');
 }
 
-export function PasswordDialog({ dn, onClose, onChanged }: PasswordDialogProps) {
+function saveGeneratorOptions(opts: GeneratorOptions) {
+  try {
+    localStorage.setItem(GENERATOR_STORAGE_KEY, JSON.stringify(opts));
+  } catch {
+    // not remembered
+  }
+}
+
+/** Notices already said by the summary line (transport) are not repeated. */
+function isTransportNotice(n: DialogNotice): boolean {
+  return n.text.startsWith('This connection is not encrypted:');
+}
+
+/**
+ * Reset Password (ADUC-style): password, generator and the account options
+ * first; one summary line says how the password is stored and how it
+ * travels, the method/scheme choice and the server facts are under
+ * "Details". Resets the server would refuse anyway (AD without TLS) are
+ * blocked with the reason and a way to fix the connection.
+ */
+export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp }: PasswordDialogProps) {
   const activeProfileId = useConnectionStore((s) => s.activeProfileId);
+  const profileId = profileProp ?? activeProfileId;
 
-  const [passwordAttr, setPasswordAttr] = useState('userPassword');
+  const [ctx, setCtx] = useState<PasswordContext | null>(null);
+  const [ctxLoading, setCtxLoading] = useState(true);
+  const [ctxError, setCtxError] = useState<string | null>(null);
+
+  const [advanced, setAdvanced] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [sel, setSel] = useState<PasswordSelection>({ method: 'userPassword', scheme: 'SSHA', verifyBind: true });
+  const [mustChange, setMustChange] = useState(false);
+  const [unlock, setUnlock] = useState(false);
+  const [enable, setEnable] = useState(false);
+
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [copied, setCopied] = useState(false);
+  /** Short confirmation next to Generate / Copy ("Generated and copied", WF-2). */
+  const [copyNote, setCopyNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
+  const [genOpts, setGenOpts] = useState<GeneratorOptions>(loadGeneratorOptions);
+  const [showGenOpts, setShowGenOpts] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [pwdLength, setPwdLength] = useState(16);
+  const [result, setResult] = useState<PasswordChangeResult | null>(null);
+  // Cleartext over an unencrypted connection needs an explicit confirmation.
+  const [confirmPlain, setConfirmPlain] = useState(false);
+  // One write at a time, also against a second Enter in the same tick.
+  const inFlight = useRef(false);
+  const pwId = `pw-new${useId().replace(/:/g, '')}`;
+  const detailsId = `pw-details${useId().replace(/:/g, '')}`;
+  const name = accountDisplayName(dn);
 
+  const loadContext = useCallback(async () => {
+    if (!profileId) {
+      setCtxLoading(false);
+      setCtxError('No active connection');
+      return;
+    }
+    setCtxLoading(true);
+    setCtxError(null);
+    try {
+      const c = await GetPasswordContext(profileId, dn);
+      if (!c) throw new Error('Password information is only available in the desktop app');
+      const initial = defaultSelection(c, loadRememberedSelection(profileId));
+      const flags = defaultAccountFlags(c);
+      setCtx(c);
+      setSel(initial);
+      const adv = isAdvancedSelection(c, initial);
+      setAdvanced(adv);
+      setShowDetails(adv);
+      setMustChange(flags.mustChange);
+      setUnlock(flags.unlock);
+      setEnable(flags.enable);
+    } catch (err: any) {
+      setCtxError(err?.message || String(err));
+    } finally {
+      setCtxLoading(false);
+    }
+  }, [profileId, dn]);
+
+  useEffect(() => { loadContext(); }, [loadContext]);
+
+  const methods = useMemo(() => (ctx ? availableMethods(ctx, advanced) : []), [ctx, advanced]);
+  const scheme = ctx?.schemes.find((s) => s.id === sel.scheme);
+  const options = ctx ? accountOptions(ctx) : null;
+  const notices = ctx ? selectionNotices(ctx, sel, mustChange).filter((n) => !isTransportNotice(n)) : [];
+  // Read-only is said once, at the top.
+  const warnings = notices.filter((n) => n.level === 'warning' && !n.text.startsWith('This connection profile is read-only'));
+  const infos = notices.filter((n) => n.level !== 'warning');
+  const block = ctx ? passwordSubmitBlock(ctx, sel) : null;
+  const summary = ctx ? passwordSummaryLine(ctx, sel) : null;
+  const assessment = useMemo(
+    () => assessPassword(newPassword, { names: ctx?.accountNames ?? [name], policy: ctx?.accountPolicy }),
+    [newPassword, ctx, name],
+  );
   const passwordsMatch = newPassword === confirmPassword;
-  const isValid = newPassword.length >= 1 && passwordsMatch;
+  const ready = !!ctx && !ctx.readOnly && !!profileId && !block && newPassword.length > 0 && passwordsMatch && !loading;
+
+  function handleMethodChange(method: PasswordSelection['method']) {
+    if (!ctx) return;
+    setSel((s) => selectMethod(ctx, s, method));
+    setResult(null);
+  }
+
+  function handleSchemeChange(schemeId: string) {
+    if (!ctx) return;
+    setSel((s) => selectScheme(ctx, s, schemeId));
+    setResult(null);
+  }
+
+  function toggleAdvanced() {
+    if (!ctx) return;
+    const next = !advanced;
+    setAdvanced(next);
+    if (!next && !availableMethods(ctx, false).some((m) => m.method === sel.method)) {
+      setSel(defaultSelection(ctx, null));
+    }
+  }
+
+  function updateGenOpts(patch: Partial<GeneratorOptions>) {
+    const next = { ...genOpts, ...patch };
+    setGenOpts(next);
+    saveGeneratorOptions(next);
+  }
+
+  /** Puts the password on the clipboard and says so briefly (a failed write says that instead). */
+  function copyPassword(pwd: string, okText: string) {
+    const done = (ok: boolean) => {
+      setCopied(ok);
+      setCopyNote({ ok, text: ok ? okText : 'Could not copy to the clipboard' });
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => {
+        setCopied(false);
+        setCopyNote(null);
+      }, 2000);
+    };
+    try {
+      navigator.clipboard.writeText(pwd).then(() => done(true), () => done(false));
+    } catch {
+      done(false);
+    }
+  }
 
   function handleGenerate() {
-    const pwd = generatePassword(pwdLength);
-    setNewPassword(pwd);
-    setConfirmPassword(pwd);
-    setShowPassword(true);
+    try {
+      const pwd = generatePassword(genOpts);
+      setNewPassword(pwd);
+      setConfirmPassword(pwd);
+      setShowPassword(true);
+      setResult(null);
+      // Generate also copies the password (WF-2: one step less); Copy stays for a typed one.
+      copyPassword(pwd, 'Generated and copied');
+    } catch (err: any) {
+      toast.error(err?.message || 'Could not generate a password');
+    }
   }
 
   function handleCopy() {
-    navigator.clipboard.writeText(newPassword);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    copyPassword(newPassword, 'Copied');
   }
 
-  async function handleSubmit() {
-    if (!activeProfileId || !isValid) return;
+  /** Closes this dialog and opens the connection settings (to switch to LDAPS / StartTLS). */
+  function editConnection() {
+    const profile = useConnectionStore.getState().profiles.find((p) => p.id === profileId);
+    if (!profile) return;
+    onClose();
+    useDialogStore.getState().open(ConnectionDialog, { profile, onSave: useConnectionStore.getState().saveProfile });
+  }
+
+  async function handleSubmit(allowUnencrypted = false) {
+    if (!ready || !ctx || !options || !profileId || inFlight.current) return;
+    if (!ctx.tls && sendsCleartext(sel) && !allowUnencrypted) {
+      setConfirmPlain(true);
+      return;
+    }
+    // The confirmation is answered: it must not come back with the result.
+    setConfirmPlain(false);
+    inFlight.current = true;
     setLoading(true);
     setError(null);
+    setResult(null);
     try {
-      await wails.ModifyAttribute(activeProfileId, dn, passwordAttr, [newPassword]);
-      toast.success('Password changed successfully');
+      const res = await SetPassword(profileId, {
+        dn,
+        password: newPassword,
+        method: sel.method,
+        scheme: sel.method === 'userPassword' ? sel.scheme : '',
+        mustChange: options.mustChange.available && mustChange,
+        unlock: options.unlock.available && unlock,
+        enable: options.enable.available && enable,
+        verifyBind: sel.verifyBind,
+        allowUnencrypted,
+      });
+      const outcome = resultOutcome(res);
+      // The dialog may stay open (warnings): show what is stored now.
+      if (res.storedScheme) {
+        setCtx((c) => (c ? { ...c, hasUserPassword: true, currentScheme: res.storedScheme!, currentSchemeLabel: res.storedSchemeLabel ?? '' } : c));
+      }
+      // A choice that just proved ineffective is not remembered.
+      if (outcome !== 'failed') saveRememberedSelection(profileId, sel);
+      // The account changed (password, maybe lock / enabled state): every view refreshes.
+      // One status read the views share; they get it with the event (RW1-P-06).
+      void afterAccountChange(profileId, dn);
       onChanged?.();
-      onClose();
+      if (outcome === 'success') {
+        // A working password supersedes earlier "stored in cleartext" / "will not work" toasts of this entry.
+        dismissPasswordWarnings(profileId, dn);
+        toast.success(resultSummary(res, name));
+        onClose();
+      } else if (outcome === 'warning') {
+        setResult(res);
+        toast.info(`${resultSummary(res, name)} - see the notes in the dialog`);
+      } else {
+        setResult(res);
+        toast.error(`Password for ${name} written, but it may not work`, [res.verifyError, ...res.warnings].filter(Boolean).join('\n'));
+      }
     } catch (err: any) {
-      setError(err?.message || 'Failed to change password');
-      toast.error('Failed to change password', err?.message);
+      const msg = err?.message || String(err) || 'Failed to reset the password';
+      setError(msg);
+      toast.error(`Password reset for ${name} failed`, msg);
     } finally {
+      inFlight.current = false;
       setLoading(false);
     }
   }
 
-  // Password strength indicator
-  const strength = getPasswordStrength(newPassword);
+  const dirty = newPassword !== '' || confirmPassword !== '';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="bg-card border border-border rounded-lg shadow-2xl w-[450px] max-w-[90vw] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold flex items-center gap-2">
-            <KeyRound size={14} className="text-primary" />
-            Change Password
-          </h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-3">
-          {/* Target DN */}
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Target Entry</label>
-            <div className="text-xs font-mono bg-background/50 px-2 py-1.5 rounded border border-border text-muted-foreground truncate" title={dn}>
-              {dn}
-            </div>
+    <Dialog
+      open
+      onOpenChange={(o) => !o && !loading && onClose()}
+      size="md"
+      icon={<KeyRound size={16} strokeWidth={1.75} aria-hidden className="text-primary" />}
+      title="Reset Password"
+      description={<Dn dn={dn} />}
+      dismissible={loading ? 'never' : 'when-clean'}
+      dirty={dirty && !result}
+      // A submit while the confirmation is open is the confirmation's own (never ours).
+      onSubmit={() => { if (!confirmPlain && ready) void handleSubmit(); }}
+      footer={
+        <>
+          <DialogCancelButton disabled={loading}>{result ? 'Close' : 'Cancel'}</DialogCancelButton>
+          <Button type="submit" variant="primary" leftIcon={KeyRound} loading={loading} disabled={!ready || confirmPlain} title={block?.reason}>
+            {result ? 'Reset Again' : 'Reset Password'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {ctxLoading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-2" role="status">
+            <Spinner size="sm" decorative /> Reading server capabilities…
           </div>
+        )}
+        {ctxError && (
+          <InlineAlert
+            tone="danger"
+            body={<span className="break-words">{ctxError}</span>}
+            actions={<Button size="sm" variant="secondary" leftIcon={RefreshCw} onClick={loadContext}>Retry</Button>}
+          />
+        )}
 
-          {/* Password Attribute */}
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Password Attribute</label>
-            <select
-              value={passwordAttr}
-              onChange={e => setPasswordAttr(e.target.value)}
-              className="input-field"
-            >
-              {PASSWORD_ATTR_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+        {ctx && (
+          <>
+            {block && (
+              <InlineAlert
+                tone="danger"
+                title="The password cannot be reset over this connection"
+                body={<span className="break-words">{block.reason} {block.fix}</span>}
+                actions={<Button size="sm" variant="secondary" leftIcon={Settings2} onClick={editConnection}>Edit Connection…</Button>}
+              />
+            )}
+            {ctx.readOnly && <InlineAlert tone="warning" body="This connection profile is read-only; the password cannot be changed." />}
 
-          {/* New Password */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-muted-foreground">New Password</label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={pwdLength}
-                  onChange={e => setPwdLength(parseInt(e.target.value))}
-                  className="text-[10px] bg-transparent border border-border rounded px-1 py-0.5 text-muted-foreground"
-                  title="Password length"
-                >
-                  {[8, 12, 16, 20, 24, 32].map(l => (
-                    <option key={l} value={l}>{l} chars</option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleGenerate}
-                  className="text-[10px] text-primary hover:text-primary/80"
-                >
-                  Generate
-                </button>
-                {newPassword && (
-                  <button
-                    onClick={handleCopy}
-                    className="text-muted-foreground hover:text-foreground"
-                    title="Copy password"
-                  >
-                    {copied ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
-                  </button>
-                )}
+            {/* New Password */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label htmlFor={pwId} className="text-sm font-medium text-muted-foreground">New password<span className="text-destructive ml-0.5" aria-hidden>*</span></label>
+                <div className="flex items-center gap-1">
+                  <span role="status" aria-live="polite" className={cn('text-xs', copyNote?.ok === false ? 'text-destructive' : 'text-success')}>
+                    {copyNote?.text ?? ''}
+                  </span>
+                  <IconButton label="Generator options" icon={SlidersHorizontal} pressed={showGenOpts} onClick={() => setShowGenOpts(!showGenOpts)} />
+                  <Button size="sm" variant="ghost" leftIcon={Wand2} onClick={handleGenerate}>Generate {genOpts.length}</Button>
+                  {newPassword && (
+                    <IconButton label={copied ? 'Copied' : 'Copy password'} icon={copied ? Check : Copy} onClick={handleCopy} />
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="relative">
-              <input
+              {showGenOpts && <GeneratorOptionsPanel opts={genOpts} onChange={updateGenOpts} />}
+              <Input
+                id={pwId}
+                required
+                mono
                 type={showPassword ? 'text' : 'password'}
                 value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                className="input-field font-mono pr-8"
-                placeholder="Enter new password..."
+                onChange={(e) => { setNewPassword(e.target.value); setResult(null); }}
+                placeholder="Enter new password…"
+                autoComplete="new-password"
                 autoFocus
+                suffix={
+                  <button type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    tabIndex={-1}
+                    className="inline-flex items-center justify-center size-4 rounded-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff size={12} strokeWidth={1.75} aria-hidden /> : <Eye size={12} strokeWidth={1.75} aria-hidden />}
+                  </button>
+                }
               />
-              <button
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? <EyeOff size={12} /> : <Eye size={12} />}
-              </button>
+              <StrengthMeter assessment={assessment} empty={!newPassword} />
             </div>
 
-            {/* Strength bar */}
-            {newPassword && (
-              <div className="mt-1.5 flex items-center gap-2">
-                <div className="flex-1 flex gap-0.5">
-                  {[0, 1, 2, 3].map(i => (
-                    <div
-                      key={i}
-                      className={`h-1 flex-1 rounded-full transition-colors ${
-                        i < strength.level
-                          ? strength.level <= 1 ? 'bg-red-500'
-                            : strength.level === 2 ? 'bg-yellow-500'
-                            : strength.level === 3 ? 'bg-blue-500'
-                            : 'bg-green-500'
-                          : 'bg-muted'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <span className={`text-[10px] ${
-                  strength.level <= 1 ? 'text-red-400'
-                    : strength.level === 2 ? 'text-yellow-400'
-                    : strength.level === 3 ? 'text-blue-400'
-                    : 'text-green-400'
-                }`}>
-                  {strength.label}
-                </span>
+            <Field label="Confirm password" required error={confirmPassword && !passwordsMatch ? 'Passwords do not match' : undefined}>
+              <Input
+                mono
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm password…"
+                autoComplete="new-password"
+              />
+            </Field>
+
+            {/* Account options */}
+            {options && (options.mustChange.available || options.unlock.available || options.enable.available || options.info) && (
+              <div className="space-y-1.5">
+                {options.mustChange.available && (
+                  <Checkbox checked={mustChange} onCheckedChange={setMustChange} label={options.mustChange.label} description={options.mustChange.hint} />
+                )}
+                {options.unlock.available && (
+                  <Checkbox
+                    checked={unlock}
+                    onCheckedChange={setUnlock}
+                    label={<span className="inline-flex items-center gap-1.5">{options.unlock.label}{ctx.locked && <Badge tone="warning" icon={Lock}>locked</Badge>}{ctx.disabled && ctx.serverType === 'openldap' && <Badge>disabled</Badge>}</span>}
+                    description={options.unlock.hint}
+                  />
+                )}
+                {options.enable.available && (
+                  <Checkbox
+                    checked={enable}
+                    onCheckedChange={setEnable}
+                    label={<span className="inline-flex items-center gap-1.5">{options.enable.label}<Badge>disabled</Badge></span>}
+                    description={options.enable.hint}
+                  />
+                )}
+                {options.info && (
+                  <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
+                    <Info size={12} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" /> {options.info}
+                  </p>
+                )}
               </div>
             )}
-          </div>
 
-          {/* Confirm Password */}
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Confirm Password</label>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              className={`input-field font-mono ${confirmPassword && !passwordsMatch ? 'border-red-500/50' : ''}`}
-              placeholder="Confirm password..."
-              onKeyDown={e => { if (e.key === 'Enter' && isValid) handleSubmit(); }}
-            />
-            {confirmPassword && !passwordsMatch && (
-              <p className="text-[10px] text-red-400 mt-0.5">Passwords do not match</p>
+            {/* One summary line: storage + transport, the rest under Details */}
+            {summary && (
+              <div className="space-y-1.5 pt-1 border-t border-border">
+                <div className="flex items-start gap-2 text-sm">
+                  <KeyRound size={12} strokeWidth={1.75} aria-hidden className="mt-1 shrink-0 text-muted-foreground" />
+                  <p className="flex-1 min-w-0 break-words">
+                    <span className="text-foreground">{summary.storage}</span>
+                    <span className="text-muted-foreground"> · </span>
+                    <span className={summary.transportWarning ? 'text-warning' : 'text-muted-foreground'}>{summary.transport}</span>
+                    {sel.verifyBind && <span className="text-muted-foreground"> · test bind afterwards</span>}
+                  </p>
+                  <DisclosureButton open={showDetails} onToggle={() => setShowDetails(!showDetails)} controls={detailsId} className="shrink-0 -my-1">
+                    Details
+                  </DisclosureButton>
+                </div>
+                <NoticeList notices={warnings} />
+              </div>
             )}
-          </div>
 
-          {error && (
-            <div className="flex items-center gap-2 text-xs px-3 py-2 rounded bg-destructive/10 text-destructive">
-              <AlertCircle size={12} />
-              {error}
-            </div>
-          )}
-        </div>
+            {showDetails && (
+              <div id={detailsId} className="space-y-3 pl-3 border-l-2 border-border">
+                <ServerSummary ctx={ctx} />
+                {policyLine(ctx) && (
+                  <p className="flex items-start gap-1.5 text-sm text-muted-foreground" title={ctx.policy?.summary}>
+                    <KeyRound size={12} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
+                    <span>
+                      {policyLine(ctx)}
+                      {deviatesFromPolicy(ctx, sel) && <span className="text-warning"> The selection below differs from it (this reset only).</span>}
+                    </span>
+                  </p>
+                )}
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
-          <button
-            onClick={onClose}
-            className="text-xs px-3 py-1.5 rounded border border-border hover:bg-accent"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !isValid}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {loading && <Loader2 size={12} className="animate-spin" />}
-            <KeyRound size={12} />
-            Change Password
-          </button>
-        </div>
+                {/* Method */}
+                <Field label="Method" hint={methodDescription(ctx, sel)}>
+                  {methods.length === 1 ? (
+                    <div className="text-sm px-2 h-control flex items-center rounded border border-border bg-background">{methodOptionLabel(ctx, methods[0])}</div>
+                  ) : (
+                    <Select
+                      value={sel.method}
+                      onChange={(e) => handleMethodChange(e.target.value as PasswordSelection['method'])}
+                      options={methods.map((m) => ({ value: m.method, label: methodOptionLabel(ctx, m) }))}
+                    />
+                  )}
+                </Field>
+                {hasAdvancedMethods(ctx) && (
+                  <DisclosureButton open={advanced} onToggle={toggleAdvanced} className="-mt-2">
+                    Advanced methods
+                  </DisclosureButton>
+                )}
+
+                {/* Scheme */}
+                {sel.method === 'userPassword' && (
+                  <Field
+                    label="Hashing scheme"
+                    hint={ctx.hasUserPassword ? <>Currently stored: <span className="font-mono">{storedSchemeText(ctx.currentScheme, ctx.currentSchemeLabel)}</span></> : undefined}
+                  >
+                    <Select value={sel.scheme} onChange={(e) => handleSchemeChange(e.target.value)}>
+                      {groupSchemes(ctx.schemes).map((g) => (
+                        <optgroup key={g.label} label={g.label}>
+                          {g.schemes.map((sc) => (
+                            <option key={sc.id} value={sc.id}>
+                              {schemeOptionLabel(sc, ctx.serverType, defaultSchemeFor(ctx), schemeLabelOptions(ctx))}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </Select>
+                    {scheme && <SchemeDetails scheme={scheme} serverType={ctx.serverType} />}
+                  </Field>
+                )}
+
+                <NoticeList notices={infos} />
+
+                <Checkbox
+                  checked={sel.verifyBind}
+                  onCheckedChange={(v) => setSel((x) => ({ ...x, verifyBind: v }))}
+                  label="Verify with a test bind as this entry"
+                  description={verifyHint(ctx)}
+                />
+              </div>
+            )}
+
+            {result && <ResultPanel result={result} outcome={resultOutcome(result)} />}
+
+            {error && <InlineAlert tone="danger" body={<span className="break-words whitespace-pre-wrap">{error}</span>} />}
+          </>
+        )}
       </div>
+      {confirmPlain && (
+        // The one unencrypted-send confirmation (DEF-21): consent box, Cancel · Continue.
+        <UnencryptedSendDialog
+          what={`This connection has no LDAPS/StartTLS. ${unencryptedWhat(resetCleartextParts(sel))}`}
+          dn={dn}
+          onCancel={() => setConfirmPlain(false)}
+          onConfirm={() => { setConfirmPlain(false); void handleSubmit(true); }}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+function ServerSummary({ ctx }: { ctx: PasswordContext }) {
+  const tlsLabel = ctx.tlsMode === 'ssl' ? 'LDAPS' : ctx.tlsMode === 'starttls' ? 'StartTLS' : 'unencrypted';
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <Badge size="md" title={[ctx.vendorName, ctx.vendorVersion].filter(Boolean).join(' ')}>
+        {SERVER_LABELS[ctx.serverType] ?? ctx.serverType}
+      </Badge>
+      <Badge
+        size="md"
+        tone={ctx.tls ? 'neutral' : 'danger'}
+        icon={ctx.tls ? ShieldCheck : ShieldAlert}
+        title={ctx.tls ? 'The connection is encrypted' : 'The connection is not encrypted'}
+      >
+        {tlsLabel}
+      </Badge>
+      {ctx.passwordModifyExop && <Badge size="md" title="Password Modify extended operation (1.3.6.1.4.1.4203.1.11.1)">RFC 3062</Badge>}
+      {ctx.ppolicyControl && ctx.serverType !== 'ad' && <Badge size="md" title="Password policy control (1.3.6.1.4.1.42.2.27.8.5.1)">ppolicy</Badge>}
+      {ctx.locked && (
+        <Badge size="md" tone="danger" icon={Lock}>locked out</Badge>
+      )}
+      {ctx.mustChange && <Badge size="md">change pending</Badge>}
+      {ctx.disabled && <Badge size="md">disabled</Badge>}
+      {ctx.passwordNeverExpires && (
+        <Badge size="md" title="userAccountControl DONT_EXPIRE_PASSWORD">password never expires</Badge>
+      )}
     </div>
   );
 }
 
-function getPasswordStrength(password: string): { level: number; label: string } {
-  if (!password) return { level: 0, label: '' };
-  let score = 0;
-  if (password.length >= 8) score++;
-  if (password.length >= 12) score++;
-  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score++;
-  if (/\d/.test(password)) score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
+const SUPPORT_STYLE: Record<SchemeSupportLevel, string> = {
+  native: 'text-success',
+  module: 'text-warning',
+  system: 'text-warning',
+  no: 'text-destructive',
+};
 
-  if (score <= 1) return { level: 1, label: 'Weak' };
-  if (score <= 2) return { level: 2, label: 'Fair' };
-  if (score <= 3) return { level: 3, label: 'Good' };
-  return { level: 4, label: 'Strong' };
+const SUPPORT_TEXT: Record<SchemeSupportLevel, string> = {
+  native: 'supported',
+  module: 'needs module',
+  system: 'depends on crypt(3)',
+  no: 'not supported',
+};
+
+function SchemeDetails({ scheme, serverType }: { scheme: PasswordScheme; serverType: ServerType }) {
+  return (
+    <div className="mt-1.5 space-y-1 text-xs">
+      <p className="text-muted-foreground">{scheme.description}</p>
+      <div className="flex flex-col gap-0.5">
+        {scheme.support.filter((s) => s.server !== 'ad' || serverType === 'ad').map((s) => (
+          <div key={s.server} className={cn('flex items-baseline gap-1.5', s.server === serverType ? 'text-foreground' : 'text-muted-foreground')}>
+            <span className={cn('w-36 shrink-0', s.server === serverType && 'font-semibold')}>
+              {SERVER_LABELS[s.server] ?? s.server}{s.server === serverType ? ' (this server)' : ''}
+            </span>
+            <span className={cn('shrink-0', SUPPORT_STYLE[s.level])}>{SUPPORT_TEXT[s.level]}</span>
+            <span className="truncate" title={s.note}>{s.note}</span>
+          </div>
+        ))}
+      </div>
+      {!schemeSupportFor(scheme, serverType) && serverType !== 'openldap' && serverType !== '389ds' && (
+        <p className="text-muted-foreground">Support on this server is unknown.</p>
+      )}
+    </div>
+  );
+}
+
+function NoticeList({ notices }: { notices: DialogNotice[] }) {
+  if (notices.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      {notices.map((n, i) => (
+        <div
+          key={i}
+          className={cn(
+            'flex items-start gap-2 text-sm px-2.5 py-1.5 rounded',
+            n.level === 'warning' ? 'bg-warning-subtle text-warning' : 'bg-secondary text-muted-foreground',
+          )}
+        >
+          {n.level === 'warning' ? <AlertTriangle size={12} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" /> : <Info size={12} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />}
+          <span>{n.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StrengthMeter({ assessment, empty }: { assessment: PasswordAssessment; empty: boolean }) {
+  const { level, label, problems, requirements } = assessment;
+  const color = level <= 1 ? 'bg-destructive' : level === 2 ? 'bg-warning' : level === 3 ? 'bg-info' : 'bg-success';
+  const text = level <= 1 ? 'text-destructive' : level === 2 ? 'text-warning' : level === 3 ? 'text-info' : 'text-success';
+  if (empty && requirements.length === 0) return null;
+  return (
+    <div className="mt-1.5 space-y-1">
+      {!empty && (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex gap-0.5" aria-hidden>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className={cn('h-1 flex-1 rounded-full transition-colors', i < level ? color : 'bg-muted')} />
+            ))}
+          </div>
+          <span className={cn('text-xs', text)}>{label}</span>
+        </div>
+      )}
+      {!empty && problems.length > 0 && (
+        <ul className="space-y-0.5 text-xs text-destructive">
+          {problems.map((p) => (
+            <li key={p} className="flex items-start gap-1"><AlertTriangle size={12} strokeWidth={1.75} aria-hidden className="mt-px shrink-0" />{p}</li>
+          ))}
+        </ul>
+      )}
+      {requirements.length > 0 && (
+        <ul className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs" aria-label="Password policy requirements">
+          {requirements.map((r) => {
+            const Icon = r.met === null || empty ? Info : r.met ? Check : X;
+            const tone = r.met === null || empty ? 'text-muted-foreground' : r.met ? 'text-success' : 'text-destructive';
+            return (
+              <li key={r.label} className={cn('flex items-center gap-1', tone)}>
+                <Icon size={12} strokeWidth={1.75} aria-hidden className="shrink-0" />
+                <span>{r.label}</span>
+                {!empty && r.met !== null && <span className="sr-only">{r.met ? '(met)' : '(not met)'}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function GeneratorOptionsPanel({ opts, onChange }: { opts: GeneratorOptions; onChange: (patch: Partial<GeneratorOptions>) => void }) {
+  const classes: { key: 'upper' | 'lower' | 'digits' | 'symbols'; label: string }[] = [
+    { key: 'upper', label: 'A-Z' },
+    { key: 'lower', label: 'a-z' },
+    { key: 'digits', label: '0-9' },
+    { key: 'symbols', label: '!@#' },
+  ];
+  const enabled = classes.filter((c) => opts[c.key]).length;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1.5 rounded border border-border bg-background text-sm text-muted-foreground" role="group" aria-label="Generator options">
+      <label className="flex items-center gap-1.5">
+        Length
+        <Select
+          size="sm"
+          value={String(opts.length)}
+          onChange={(e) => onChange({ length: clampLength(parseInt(e.target.value, 10)) })}
+          options={lengthChoices(opts.length).map((l) => ({ value: String(l), label: String(l) }))}
+          className="w-16"
+        />
+      </label>
+      {classes.map((c) => (
+        <Checkbox
+          key={c.key}
+          checked={opts[c.key]}
+          disabled={opts[c.key] && enabled === 1}
+          onCheckedChange={(v) => onChange({ [c.key]: v })}
+          label={<span className="font-mono">{c.label}</span>}
+        />
+      ))}
+      <Checkbox
+        checked={opts.avoidAmbiguous}
+        onCheckedChange={(v) => onChange({ avoidAmbiguous: v })}
+        label={<span title="Leave out I l 1 O 0 o | `">avoid look-alikes</span>}
+      />
+    </div>
+  );
+}
+
+const RESULT_HINT: Record<ResultOutcome, string> = {
+  success: '',
+  warning: 'Review the notes above, then close the dialog or set the password again.',
+  failed: 'Choose another method or scheme and set the password again, or close the dialog.',
+};
+
+function ResultPanel({ result, outcome }: { result: PasswordChangeResult; outcome: ResultOutcome }) {
+  return (
+    <div className="space-y-1.5 text-sm px-3 py-2 rounded border border-border bg-background" role="status">
+      <div className="flex items-center gap-1.5 font-medium">
+        {outcome === 'failed'
+          ? <AlertCircle size={12} className="text-destructive" />
+          : <CheckCircle2 size={12} className="text-success" />}
+        {outcome === 'failed' ? 'The password was written, but it most likely does not work' : 'The password was written'}
+        {result.storedScheme && <span className="font-normal text-muted-foreground">(stored as {storedSchemeText(result.storedScheme, result.storedSchemeLabel)})</span>}
+      </div>
+      {result.operations.length > 0 && (
+        <ul className="list-disc pl-5 text-muted-foreground">
+          {result.operations.map((op, i) => <li key={i}>{op}</li>)}
+        </ul>
+      )}
+      {result.verifyError && (
+        <div className="flex items-start gap-1.5 text-destructive">
+          <AlertCircle size={12} className="mt-px shrink-0" />
+          <span className="break-words">{result.verifyError}</span>
+        </div>
+      )}
+      {result.warnings.map((w, i) => (
+        <div key={i} className="flex items-start gap-1.5 text-warning">
+          <AlertTriangle size={12} className="mt-px shrink-0" />
+          <span>{w}</span>
+        </div>
+      ))}
+      {RESULT_HINT[outcome] && <p className="text-muted-foreground">{RESULT_HINT[outcome]}</p>}
+    </div>
+  );
 }

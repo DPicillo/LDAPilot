@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/dpicillo/LDAPilot/internal/ldap"
@@ -12,6 +14,9 @@ import (
 type BrowserService struct {
 	ctx  context.Context
 	pool *ldap.Pool
+
+	// layouts remembers the naming contexts injected below tree nodes (see treesearch_roots.go).
+	layouts treeLayouts
 }
 
 // NewBrowserService creates a new BrowserService.
@@ -27,9 +32,13 @@ func (s *BrowserService) SetContext(ctx context.Context) {
 }
 
 // GetRootEntries returns the top-level entries for a connected profile.
-// For Active Directory, it reads the RootDSE to discover all naming contexts
-// (forest domains, Configuration, Schema) and returns them as root nodes.
-// For non-AD servers, it falls back to a single root node based on BaseDN.
+// For Active Directory, it reads the RootDSE and CN=Partitions and returns
+// every naming context (forest domains, DNS zones, Configuration, Schema) as
+// a root node; child domains are injected below their parent domain (see
+// buildADRoots). Other servers follow planNonADRoots: several naming contexts
+// go through buildForestTree, otherwise the base DN, the only naming context
+// or defaultNamingContext is the single root. The RootDSE itself is never
+// returned as a node.
 func (s *BrowserService) GetRootEntries(profileID string) ([]models.TreeNode, error) {
 	client, err := s.pool.Get(profileID)
 	if err != nil {
@@ -38,21 +47,84 @@ func (s *BrowserService) GetRootEntries(profileID string) ([]models.TreeNode, er
 
 	// Try to read RootDSE for AD forest discovery
 	rootDSE, rootDSEErr := client.GetRootDSE()
-	if rootDSEErr == nil && rootDSE != nil {
-		namingContexts := getAttrValues(rootDSE, "namingContexts")
-		if len(namingContexts) > 1 {
-			// This looks like AD (or a server with multiple naming contexts)
-			return s.buildForestTree(client, rootDSE, namingContexts)
-		}
+	if rootDSEErr == nil && isADRootDSE(rootDSE) {
+		return s.buildADRoots(profileID, client, rootDSE)
 	}
+	s.layouts.set(profileID, treeLayout{})
 
-	// Fallback: single root node from BaseDN
-	return s.buildSingleRoot(client)
+	var namingContexts []string
+	var defaultNC string
+	if rootDSEErr == nil && rootDSE != nil {
+		namingContexts = getAttrValues(rootDSE, "namingContexts")
+		defaultNC = getAttrValue(rootDSE, "defaultNamingContext")
+	}
+	plan := planNonADRoots(client.Profile().BaseDN, namingContexts, defaultNC)
+	switch plan.Mode {
+	case nonADForest:
+		return s.buildForestTree(client, rootDSE, plan.NamingContexts)
+	case nonADSingle:
+		return s.buildSingleRoot(client, plan.RootDN)
+	}
+	if rootDSEErr != nil {
+		return nil, fmt.Errorf("no base DN is set and the RootDSE could not be read (%v): enter a base DN in the connection settings", rootDSEErr)
+	}
+	return nil, errors.New("no base DN is set and the server lists no naming contexts: enter a base DN in the connection settings")
 }
 
-// buildForestTree builds root nodes for an AD forest, similar to LDAPAdmin.
+// nonADRootMode says how GetRootEntries builds the roots of a non-AD server.
+type nonADRootMode int
+
+const (
+	nonADNone   nonADRootMode = iota // nothing to show: no base DN and no naming context
+	nonADSingle                      // RootDN is the only root
+	nonADForest                      // several naming contexts: buildForestTree
+)
+
+// nonADRootPlan is the result of planNonADRoots.
+type nonADRootPlan struct {
+	Mode           nonADRootMode
+	RootDN         string   // nonADSingle
+	NamingContexts []string // nonADForest: the cleaned namingContexts
+}
+
+// planNonADRoots decides the tree roots of a server that is not Active
+// Directory (pure, unit-tested). Several naming contexts keep the forest
+// path (the base DN, when set, is its primary root); otherwise the explicit
+// base DN, the only naming context or defaultNamingContext is the single
+// root. An empty DN is never planned as a root: reading "" returns the
+// RootDSE, which used to show up as a nameless node that could not expand.
+func planNonADRoots(baseDN string, namingContexts []string, defaultNC string) nonADRootPlan {
+	var ncs []string
+	seen := make(map[string]bool)
+	for _, nc := range namingContexts {
+		nc = strings.TrimSpace(nc)
+		if nc == "" || seen[dnKey(nc)] {
+			continue
+		}
+		seen[dnKey(nc)] = true
+		ncs = append(ncs, nc)
+	}
+	switch base := strings.TrimSpace(baseDN); {
+	case len(ncs) > 1:
+		return nonADRootPlan{Mode: nonADForest, NamingContexts: ncs}
+	case base != "":
+		return nonADRootPlan{Mode: nonADSingle, RootDN: base}
+	case len(ncs) == 1:
+		return nonADRootPlan{Mode: nonADSingle, RootDN: ncs[0]}
+	case strings.TrimSpace(defaultNC) != "":
+		return nonADRootPlan{Mode: nonADSingle, RootDN: strings.TrimSpace(defaultNC)}
+	}
+	return nonADRootPlan{Mode: nonADNone}
+}
+
+// buildForestTree builds the root nodes for a non-AD server with several
+// naming contexts. Active Directory (recognised by its
+// configurationNamingContext) goes through buildADRoots instead; this
+// function keeps the previous behaviour for all other servers: the base DN
+// root plus the naming contexts below it. Its AD-specific branches (crossRefs,
+// DNS zones, Configuration) no longer trigger for them.
 //
-// Discovery:
+// Former AD behaviour, for reference. Discovery:
 //   - Reads namingContexts from RootDSE (partitions hosted on the connected DC)
 //   - Queries CN=Partitions,CN=Configuration,... for crossRef objects to discover
 //     ALL forest domains, including child domains hosted on other DCs
@@ -164,7 +236,6 @@ func (s *BrowserService) buildForestTree(client *ldap.Client, rootDSE *models.LD
 		nodes = append(nodes, buildDomainNode(primaryDN))
 	}
 
-
 	for _, nc := range domainNCs {
 		ncLower := strings.ToLower(nc)
 		if added[ncLower] {
@@ -202,7 +273,12 @@ func (s *BrowserService) buildForestTree(client *ldap.Client, rootDSE *models.LD
 	}
 
 	if len(nodes) == 0 {
-		return s.buildSingleRoot(client)
+		// Never the RootDSE: the base DN, else the first naming context.
+		root := strings.TrimSpace(baseDN)
+		if root == "" && len(namingContexts) > 0 {
+			root = namingContexts[0]
+		}
+		return s.buildSingleRoot(client, root)
 	}
 
 	return nodes, nil
@@ -329,9 +405,13 @@ func (s *BrowserService) buildRootNode(client *ldap.Client, dn string, iconFallb
 	return node, nil
 }
 
-// buildSingleRoot builds a single root node from the profile's BaseDN (non-AD fallback).
-func (s *BrowserService) buildSingleRoot(client *ldap.Client) ([]models.TreeNode, error) {
-	entry, err := client.GetEntry(client.Profile().BaseDN)
+// buildSingleRoot builds the single root node rootDN (non-AD servers and the
+// AD fallback). An empty DN is refused: it would read the RootDSE.
+func (s *BrowserService) buildSingleRoot(client *ldap.Client, rootDN string) ([]models.TreeNode, error) {
+	if strings.TrimSpace(rootDN) == "" {
+		return nil, errors.New("no base DN is set: enter a base DN in the connection settings")
+	}
+	entry, err := client.GetEntry(rootDN)
 	if err != nil {
 		return nil, err
 	}
@@ -363,13 +443,26 @@ func (s *BrowserService) GetRootDSE(profileID string) (*models.LDAPEntry, error)
 	return client.GetRootDSE()
 }
 
-// GetChildren returns the child entries under the given parent DN.
+// GetServerInfo returns the capabilities announced in the server's RootDSE
+// (server type, vendor, supported controls/extensions/capabilities, naming
+// contexts). The result is cached per connection.
+func (s *BrowserService) GetServerInfo(profileID string) (*models.ServerInfo, error) {
+	client, err := s.pool.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	return client.ServerInfo()
+}
+
+// GetChildren returns the child entries under the given parent DN, plus the
+// naming contexts shown below it (AD child domains, see buildADRoots).
 func (s *BrowserService) GetChildren(profileID string, parentDN string) ([]models.TreeNode, error) {
 	client, err := s.pool.Get(profileID)
 	if err != nil {
 		return nil, err
 	}
-	return client.GetChildren(parentDN)
+	children, err := client.GetChildren(parentDN)
+	return s.withInjectedChildren(profileID, parentDN, children, err)
 }
 
 // GetEntry retrieves a single LDAP entry with all its attributes.
@@ -381,85 +474,222 @@ func (s *BrowserService) GetEntry(profileID string, dn string) (*models.LDAPEntr
 	return client.GetEntry(dn)
 }
 
-// ObjectStats holds statistics about objects under a base DN.
-type ObjectStats struct {
-	BaseDN     string            `json:"baseDN"`
-	TotalCount int               `json:"totalCount"`
-	ByType     map[string]int    `json:"byType"`
-}
-
-// GetStatistics counts objects by type under the given base DN.
-func (s *BrowserService) GetStatistics(profileID string, baseDN string) (*ObjectStats, error) {
+// AttributesPresent returns which of the attributes the entry has (names
+// only, no values; not written to the operation log). The menus use it to
+// offer Download Photo / Certificate only for entries that have one.
+func (s *BrowserService) AttributesPresent(profileID string, dn string, attributes []string) ([]string, error) {
 	client, err := s.pool.Get(profileID)
 	if err != nil {
 		return nil, err
 	}
+	return client.AttributesPresent(dn, attributes)
+}
 
-	result, err := client.Search(models.SearchParams{
+// ObjectStats holds statistics about objects under a base DN.
+type ObjectStats struct {
+	BaseDN     string         `json:"baseDN"`
+	TotalCount int            `json:"totalCount"`
+	ByType     map[string]int `json:"byType"`
+	// Filters holds, per category of ByType, the LDAP filter that finds
+	// exactly the entries counted in it (subtree below BaseDN), so the
+	// statistics dialog can list them.
+	Filters map[string]string `json:"filters"`
+	// Order lists the categories in display order (the classifier's order).
+	Order []string `json:"order"`
+	// Truncated is set when the count stopped at statsSizeLimit entries
+	// (the counts are a lower bound).
+	Truncated bool `json:"truncated,omitempty"`
+}
+
+// statsSizeLimit caps the entries GetStatistics reads.
+const statsSizeLimit = 50000
+
+// statisticsCalls tracks the running GetStatisticsRun calls (DEF-23): the
+// statistics dialog stops its count with CancelStatistics (Stop, or closing
+// the dialog). Package level like membershipCalls (one BrowserService).
+var statisticsCalls = newCallRegistry()
+
+// statsRule is one category of GetStatistics: an entry belongs to the first
+// rule that lists one of its object classes (case-insensitive).
+type statsRule struct {
+	Category string
+	Classes  []string
+}
+
+// statsOtherCategory counts the entries that match no rule.
+const statsOtherCategory = "Other"
+
+// statsRules is the classifier of GetStatistics, most specific first:
+// service accounts before computers (their class chain contains computer),
+// computers before contacts / users (AD computers are users too), contacts
+// before users (AD contacts are persons), domains before OUs (an OpenLDAP
+// suffix is dcObject + organization).
+var statsRules = []statsRule{
+	{"Service accounts", []string{"msDS-GroupManagedServiceAccount", "msDS-ManagedServiceAccount", "msDS-DelegatedManagedServiceAccount"}},
+	{"Computers", []string{"computer", "device", "ipHost"}},
+	{"Contacts", []string{"contact"}},
+	{"Groups", []string{"group", "groupOfNames", "groupOfUniqueNames", "posixGroup", "groupOfMembers"}},
+	{"Users", []string{"user", "inetOrgPerson", "posixAccount", "person", "organizationalPerson"}},
+	{"Domains", []string{"domain", "domainDNS", "dcObject"}},
+	{"OUs", []string{"organizationalUnit", "organization"}},
+	{"Containers", []string{"container", "builtinDomain", "lostAndFound", "nsContainer"}},
+}
+
+// classifyStatsEntry returns the statistics category of an entry.
+func classifyStatsEntry(objectClasses []string) string {
+	have := make(map[string]bool, len(objectClasses))
+	for _, oc := range objectClasses {
+		have[strings.ToLower(strings.TrimSpace(oc))] = true
+	}
+	for _, r := range statsRules {
+		for _, c := range r.Classes {
+			if have[strings.ToLower(c)] {
+				return r.Category
+			}
+		}
+	}
+	return statsOtherCategory
+}
+
+// statsAnyClass is "(|(objectClass=a)(objectClass=b)...)" for the classes of
+// the rules that occur in seen (lowercase class -> spelling seen on an
+// entry; nil = every class); "" when none occurs.
+func statsAnyClass(rules []statsRule, seen map[string]string) string {
+	var parts []string
+	for _, r := range rules {
+		for _, c := range r.Classes {
+			name := c
+			if seen != nil {
+				spelled, ok := seen[strings.ToLower(c)]
+				if !ok {
+					continue
+				}
+				name = spelled
+			}
+			parts = append(parts, "(objectClass="+name+")")
+		}
+	}
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	}
+	return "(|" + strings.Join(parts, "") + ")"
+}
+
+// statsCategoryFilter returns the LDAP filter matching exactly the entries
+// classifyStatsEntry puts into category: one of its classes and none of an
+// earlier rule ("Other": none of any rule). "" for an unknown category or one
+// without entries.
+//
+// seen limits the filter to the object classes that occur on the counted
+// entries (nil: all classes of the rules). OpenLDAP evaluates an equality
+// filter on an object class its schema does not define as Undefined, and
+// (!Undefined) stays Undefined, so a NOT over an unknown class (e.g.
+// msDS-GroupManagedServiceAccount) would make every filter match nothing.
+// Classes no counted entry has cannot change the result below the base.
+func statsCategoryFilter(category string, seen map[string]string) string {
+	if category == statsOtherCategory {
+		anyRule := statsAnyClass(statsRules, seen)
+		if anyRule == "" {
+			return "(objectClass=*)"
+		}
+		return "(!" + anyRule + ")"
+	}
+	for i, r := range statsRules {
+		if r.Category != category {
+			continue
+		}
+		own := statsAnyClass([]statsRule{r}, seen)
+		if own == "" {
+			return ""
+		}
+		earlier := statsAnyClass(statsRules[:i], seen)
+		if earlier == "" {
+			return own
+		}
+		return "(&" + own + "(!" + earlier + "))"
+	}
+	return ""
+}
+
+// GetStatistics counts objects by type under the given base DN (not
+// cancellable; the statistics dialog uses GetStatisticsRun).
+func (s *BrowserService) GetStatistics(profileID string, baseDN string) (*ObjectStats, error) {
+	return s.GetStatisticsRun(profileID, baseDN, "")
+}
+
+// GetStatisticsRun is GetStatistics that CancelStatistics(profileID,
+// requestID) stops (DEF-23): the subtree search is abandoned and the call
+// fails with ldap.ErrSearchCancelled ("search cancelled"); no partial counts
+// are returned. A cancel that arrives before the call started is honoured.
+func (s *BrowserService) GetStatisticsRun(profileID string, baseDN string, requestID string) (*ObjectStats, error) {
+	client, err := s.pool.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	ctx, done := statisticsCalls.track(profileID, requestID)
+	defer done()
+	if ctx.Err() != nil {
+		return nil, ldap.ErrSearchCancelled
+	}
+
+	result, err := client.SearchContext(ctx, models.SearchParams{
 		BaseDN:     baseDN,
 		Filter:     "(objectClass=*)",
 		Scope:      models.ScopeSub,
 		Attributes: []string{"objectClass"},
-		SizeLimit:  50000,
+		SizeLimit:  statsSizeLimit,
 		TimeLimit:  30,
 	})
 	if err != nil {
 		return nil, err
 	}
+	return statisticsOf(baseDN, result), nil
+}
+
+// CancelStatistics stops the GetStatisticsRun call of profileID with
+// requestID (all of the profile's statistics counts for ""); returns the
+// number of calls stopped.
+func (s *BrowserService) CancelStatistics(profileID string, requestID string) int {
+	return statisticsCalls.cancel(profileID, requestID)
+}
+
+// statisticsOf classifies the entries of the statistics search (pure).
+func statisticsOf(baseDN string, result *models.SearchResult) *ObjectStats {
 
 	byType := make(map[string]int)
+	seen := make(map[string]string) // object classes of the counted entries (filters)
 	for _, entry := range result.Entries {
-		category := ""
-		for _, attr := range entry.Attributes {
-			if strings.EqualFold(attr.Name, "objectClass") {
-				// Classify by most specific objectClass (priority order).
-				// An entry like [top, person, organizationalPerson, user]
-				// should count as "Users" exactly once.
-				bestPriority := 999
-				for _, oc := range attr.Values {
-					lower := strings.ToLower(oc)
-					pri := -1
-					cat := ""
-					switch lower {
-					case "computer":
-						pri, cat = 0, "Computers" // most specific first
-					case "user":
-						pri, cat = 1, "Users"
-					case "inetorgperson":
-						pri, cat = 2, "Users"
-					case "posixaccount":
-						pri, cat = 3, "Users"
-					case "group", "groupofnames", "groupofuniquenames", "posixgroup":
-						pri, cat = 1, "Groups"
-					case "organizationalunit":
-						pri, cat = 0, "OUs"
-					case "container", "builtindomain":
-						pri, cat = 0, "Containers"
-					case "domain", "domaindns":
-						pri, cat = 0, "Domains"
-					case "person", "organizationalperson":
-						pri, cat = 10, "Users" // low priority — only if nothing more specific matches
-					}
-					if pri >= 0 && pri < bestPriority {
-						bestPriority = pri
-						category = cat
-					}
+		classes := getObjectClasses(&entry)
+		byType[classifyStatsEntry(classes)]++
+		for _, c := range classes {
+			if key := strings.ToLower(strings.TrimSpace(c)); key != "" {
+				if _, ok := seen[key]; !ok {
+					seen[key] = strings.TrimSpace(c)
 				}
-				break
 			}
-		}
-		if category == "" {
-			byType["Other"]++
-		} else {
-			byType[category]++
 		}
 	}
 
-	return &ObjectStats{
+	stats := &ObjectStats{
 		BaseDN:     baseDN,
 		TotalCount: result.TotalCount,
 		ByType:     byType,
-	}, nil
+		Filters:    make(map[string]string),
+		Truncated:  result.Truncated,
+	}
+	for _, r := range statsRules {
+		stats.Order = append(stats.Order, r.Category)
+	}
+	stats.Order = append(stats.Order, statsOtherCategory)
+	for _, category := range stats.Order {
+		if f := statsCategoryFilter(category, seen); f != "" && byType[category] > 0 {
+			stats.Filters[category] = f
+		}
+	}
+	return stats
 }
 
 // getObjectClasses extracts objectClass values from an LDAPEntry.
@@ -484,4 +714,16 @@ func getAttrValue(entry *models.LDAPEntry, name string) string {
 		return vals[0]
 	}
 	return ""
+}
+
+// LoginAttributesOf returns, per DN, the login attribute names the entry has
+// (uid, userPassword, … — names only, types-only reads, not logged): an LDAP
+// person without them is a contact (M-06). Used by the search results and
+// the member pickers; DNs that cannot be read are left out.
+func (s *BrowserService) LoginAttributesOf(profileID string, dns []string) (map[string][]string, error) {
+	client, err := s.pool.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	return client.LoginAttributesOf(dns)
 }

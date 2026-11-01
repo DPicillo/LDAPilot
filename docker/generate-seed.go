@@ -451,7 +451,7 @@ func writeGroupsLDIF(users []user, rng *rand.Rand) {
 		desc  string
 		depts []string
 	}{
-		{"dl-all-employees", "All Employees Distribution List", nil},              // all users
+		{"dl-all-employees", "All Employees Distribution List", nil}, // all users
 		{"dl-engineering", "Engineering Department Mailing List", []string{"Engineering"}},
 		{"dl-sales", "Sales Department Mailing List", []string{"Sales"}},
 		{"dl-management", "Management Distribution List", []string{"Management"}},
@@ -705,7 +705,7 @@ func writeExtendedLDIF() {
 	entryCount++
 
 	// --- DN with plus sign ---
-	sb.WriteString(fmt.Sprintf("dn: cn=C++ Build Service,ou=Services,%s\n", baseDN))
+	sb.WriteString(fmt.Sprintf("dn: cn=C\\+\\+ Build Service,ou=Services,%s\n", baseDN))
 	sb.WriteString("objectClass: applicationProcess\n")
 	sb.WriteString("objectClass: top\n")
 	sb.WriteString("cn: C++ Build Service\n")
