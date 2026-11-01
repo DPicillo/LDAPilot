@@ -1,0 +1,232 @@
+name: CI
+
+# Tests and builds for Linux, Windows and macOS on every push to master and every
+# pull request. A pushed tag v* also publishes a GitHub release (notes from
+# CHANGELOG.md) with all builds attached. Run it by hand ("Run workflow") with a
+# release tag to attach builds to an existing release, e.g. a platform that was
+# missing.
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Attach the builds to this existing release tag (e.g. v0.5.0); empty = build only'
+        required: false
+        default: ''
+      only_missing:
+        description: 'Only upload files the release does not have yet'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  WAILS_VERSION: v2.17.0
+  NODE_VERSION: '22'
+
+jobs:
+  test:
+    name: Tests and lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: System libraries (GTK, WebKitGTK 4.0)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+
+      - name: Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}
+
+      - name: Frontend dependencies and bindings
+        run: |
+          mkdir -p frontend/dist && touch frontend/dist/.placeholder
+          (cd frontend && npm ci --no-audit --no-fund)
+          wails generate module
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$unformatted" ]; then echo "Not gofmt-formatted:"; echo "$unformatted"; exit 1; fi
+
+      - name: Go build, vet and test
+        run: |
+          go build ./...
+          go vet ./internal/... ./services/... .
+          go test ./...
+
+      - name: Design token lint gates
+        run: scripts/lint-tokens.sh
+
+      - name: TypeScript, frontend tests and Vite build
+        working-directory: frontend
+        run: |
+          npx tsc --noEmit -p .
+          node --test 'tests/*.test.ts'
+          node --test 'tests/ai/*.test.mjs'
+          npx vite build
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux (WebKitGTK 4.0)
+            os: ubuntu-22.04
+            platform: linux/amd64
+            apt: libgtk-3-dev libwebkit2gtk-4.0-dev
+            args: ''
+          - name: Linux (WebKitGTK 4.1)
+            os: ubuntu-24.04
+            platform: linux/amd64
+            apt: libgtk-3-dev libwebkit2gtk-4.1-dev
+            args: '-tags webkit2_41'
+          - name: Windows
+            os: windows-latest
+            platform: windows/amd64
+            args: '-nsis'
+          - name: macOS (universal)
+            os: macos-latest
+            platform: darwin/universal
+            args: ''
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: System libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.apt }}
+
+      - name: NSIS (installer)
+        if: runner.os == 'Windows'
+        run: |
+          choco install nsis -y --no-progress
+          echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
+
+      - name: Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}
+
+      - name: Frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Build (version, commit and date stamped)
+        run: bash scripts/build.sh -platform ${{ matrix.platform }} ${{ matrix.args }}
+
+      - name: Collect the files
+        run: |
+          mkdir -p out
+          case "${{ matrix.os }}" in
+            ubuntu-22.04) cp build/bin/LDAPilot out/LDAPilot-linux-amd64 ;;
+            ubuntu-24.04) cp build/bin/LDAPilot out/LDAPilot-linux-amd64-webkit2_41 ;;
+            windows-*)
+              cp build/bin/LDAPilot.exe out/LDAPilot-windows-amd64.exe
+              cp build/bin/LDAPilot-amd64-installer.exe out/LDAPilot-windows-amd64-installer.exe ;;
+            macos-*) ditto -c -k --keepParent build/bin/LDAPilot.app out/LDAPilot-macos-universal.zip ;;
+          esac
+          ls -la out
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ldapilot-${{ matrix.os }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ inputs.release_tag || github.ref_name }}
+      ONLY_MISSING: ${{ github.event_name == 'workflow_dispatch' && inputs.only_missing }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Create the release if needed (notes from CHANGELOG.md)
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists."
+            exit 0
+          fi
+          version="${TAG#v}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && (/^## \[/ || /^Earlier versions:/ || /^\[[0-9.]+\]: /) { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "LDAPilot $TAG" > notes.md
+          gh release create "$TAG" --verify-tag --title "LDAPilot $TAG" --notes-file notes.md
+
+      - name: Upload the builds and SHA256SUMS.txt
+        working-directory: assets
+        run: |
+          existing="$(gh release view "$TAG" --json assets -q '.assets[].name')"
+          upload=()
+          for f in *; do
+            if [ "$ONLY_MISSING" = "true" ] && grep -qxF "$f" <<<"$existing"; then
+              echo "Skipping $f (already attached)"
+              continue
+            fi
+            upload+=("$f")
+          done
+          if [ ${#upload[@]} -eq 0 ]; then
+            echo "Nothing to upload."
+            exit 0
+          fi
+          gh release upload "$TAG" "${upload[@]}" --clobber
+          # Keep the checksums of files that stay as they are, add or replace the uploaded ones.
+          gh release download "$TAG" -p SHA256SUMS.txt -O ../old-sums.txt 2>/dev/null || : > ../old-sums.txt
+          sha256sum "${upload[@]}" > ../new-sums.txt
+          names="$(printf '%s\n' "${upload[@]}")"
+          { awk 'NR == FNR { skip[$0] = 1; next } !($2 in skip)' <(echo "$names") ../old-sums.txt; cat ../new-sums.txt; } \
+            | sort -k2 > SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber
+          cat SHA256SUMS.txt

@@ -2,6 +2,11 @@
 
 All notable changes to LDAPilot are listed here. Versions follow [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [Unreleased]
+
+### Build
+- **CI pipeline** (GitHub Actions): tests, gofmt, the design token lint gates (`scripts/lint-tokens.sh`) and builds for Linux (WebKitGTK 4.0 and 4.1), Windows (portable exe and NSIS installer) and macOS (universal app) on every push and pull request; a pushed version tag publishes the release with all builds and checksums.
+
 ## [0.5.0] - 2026-11-01
 
 The biggest release so far: a new design, account and password administration for Active Directory, OpenLDAP and 389 Directory Server, bulk changes with dry runs, and a rebuilt AI assistant that only writes after you approve. Every entry point (346 of them) was walked through on all three lab servers and the findings were fixed in four rounds; the open points left after that walkthrough were built and integrated before the release (see "Added after the walkthrough").
