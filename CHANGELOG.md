@@ -5,7 +5,7 @@ All notable changes to LDAPilot are listed here. Versions follow [Semantic Versi
 ## [Unreleased]
 
 ### Build
-- **CI pipeline** (GitHub Actions): tests, gofmt, the design token lint gates (`scripts/lint-tokens.sh`) and builds for Linux (WebKitGTK 4.0 and 4.1), Windows (portable exe and NSIS installer) and macOS (universal app) on every push and pull request; a pushed version tag publishes the release with all builds and checksums.
+- **CI pipeline** (GitHub Actions): tests, gofmt, the design token lint gates (`scripts/lint-tokens.sh`) and builds for Linux (WebKitGTK 4.0 and 4.1), Windows (portable exe and NSIS installer) and macOS (universal app) on every push and pull request; builds are published only with a release: a pushed version tag creates the release with all builds and checksums.
 
 ## [0.5.0] - 2026-11-01
 
