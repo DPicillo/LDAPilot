@@ -7,7 +7,7 @@ import { adoptServerDN, entryLabel } from '../src/lib/entryEvents.ts';
 import { dropTabViews, getTabView, hasTabView, moveTabView, setTabView } from '../src/stores/tabViewState.ts';
 import { cachedAccountStatus, forgetAccountStatusesUnder, rememberAccountStatus } from '../src/stores/accountStatusCache.ts';
 import { originalDNOf } from '../src/lib/recycle.ts';
-import { offeredRecentTargets } from '../src/components/lifecycle/containerPicker.ts';
+import { offeredRecentTargets } from '../src/components/lifecycle/containerPickerModel.ts';
 import { matchingProfiles } from '../src/components/commands/paletteSearch.ts';
 import { describeQuick } from '../src/components/search/searchModel.ts';
 import { objectTypeFromClasses } from '../src/lib/membership.ts';

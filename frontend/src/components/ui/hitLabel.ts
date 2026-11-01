@@ -5,7 +5,7 @@
  * display name (else cn) follows when it says something else ("Eva Weber"),
  * so the hit, the tab and the tree row read the same.
  */
-import { rdnValue } from './dn.ts'
+import { rdnValue } from './dnParse.ts'
 
 export interface HitLabel {
   /** The unescaped RDN value (tab / tree label). */

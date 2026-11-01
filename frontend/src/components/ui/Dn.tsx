@@ -1,6 +1,6 @@
 import { Fragment, type HTMLAttributes } from 'react'
 import { cn } from '../../lib/utils'
-import { parseRdn, splitDn } from './dn'
+import { parseRdn, splitDn } from './dnParse'
 
 export interface DnProps extends HTMLAttributes<HTMLSpanElement> {
   dn: string

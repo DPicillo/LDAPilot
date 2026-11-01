@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Check, ChevronDown, CircleSlash, CloudOff, Trash2, TriangleAlert, UserX, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { domId } from './dn'
+import { domId } from './dnParse'
 import { renderIcon, type IconType } from './Button'
 import { CountBadge } from './Badge'
 import { ObjectIcon } from './ObjectIcon'

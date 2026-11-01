@@ -6,7 +6,7 @@
  * `.ts` extension (CLAUDE.md, frontend pure-function tests).
  */
 import { isDNAtOrBelow } from '../../lib/dn.ts'
-import { dcDomainName, parseDnOrUrl, parseRdn, rdnValue, splitDn } from './dn.ts'
+import { dcDomainName, parseDnOrUrl, parseRdn, rdnValue, splitDn } from './dnParse.ts'
 
 /**
  * How many items fit into `avail` px: all of them when their natural widths

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   containerName, isContainerNode, loadRecentTargets, looksLikeDN, matchesContainerFilter, pathFromRoot, rememberTarget,
   forgetTarget, targetProblem, withRecentTarget, RECENT_TARGETS_MAX, type KeyValueStorage,
-} from '../src/components/lifecycle/containerPicker.ts';
+} from '../src/components/lifecycle/containerPickerModel.ts';
 import { emitEntryMoved } from '../src/components/lifecycle/events.ts';
 import {
   deleteConfirmation, deleteReportText, deleteToastText, deletedEvents, describeRestoreLoss, friendlyTypeName, nearestExisting,

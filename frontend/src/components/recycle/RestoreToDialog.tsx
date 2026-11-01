@@ -11,7 +11,7 @@ import {
 } from '../../lib/recycle'
 import type { DeletedObject } from '../../types/recycle'
 import { ContainerPicker, type ContainerSuggestion, type TargetStatus } from '../lifecycle/ContainerPicker'
-import { rememberTarget } from '../lifecycle/containerPicker'
+import { rememberTarget } from '../lifecycle/containerPickerModel'
 
 interface RestoreToDialogProps {
   /** Connection (container tree, existence checks). */

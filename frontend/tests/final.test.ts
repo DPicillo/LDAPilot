@@ -17,7 +17,7 @@ import { getAccountActions } from '../src/lib/accountActions.ts';
 import { schemeWithStrength } from '../src/lib/passwordMethod.ts';
 import { stabilizeItems } from '../src/components/commands/menuStability.ts';
 import { closesAfterAdd, entryOutcome } from '../src/components/commands/addToGroups.ts';
-import { targetProblem, targetProblemText } from '../src/components/lifecycle/containerPicker.ts';
+import { targetProblem, targetProblemText } from '../src/components/lifecycle/containerPickerModel.ts';
 import { defaultResultColumns, quickRunProblem, resultCountText, scopeLabel } from '../src/components/search/searchModel.ts';
 import { quickObjectTypeFilter, quickObjectTypes } from '../src/lib/searchFilter.ts';
 import { staleBookmarkFilter } from '../src/lib/treesearch.ts';

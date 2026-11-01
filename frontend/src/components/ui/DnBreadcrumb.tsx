@@ -19,7 +19,7 @@ import { ContextMenu, DropdownMenu, MenuHeader, MenuItem, MenuSeparator, useCont
 import { Input } from './Input'
 import { Tooltip } from './Tooltip'
 import { toast } from './Toast'
-import { parseDnOrUrl, rdnValue } from './dn'
+import { parseDnOrUrl, rdnValue } from './dnParse'
 import { matchShortcut } from './shortcuts'
 import { crumbWindow, dnCrumbs, dnInputProblem, type Crumb } from './fit'
 

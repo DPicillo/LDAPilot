@@ -26,7 +26,7 @@ import { Spinner } from '../ui/Spinner'
 import { Dn } from '../ui/Dn'
 import { ObjectIcon } from '../ui/ObjectIcon'
 import { resolveObjectKind, type ObjectKind } from '../ui/objectKind'
-import { rdnValue } from '../ui/dn'
+import { rdnValue } from '../ui/dnParse'
 import { toast } from '../ui/Toast'
 import { fileTimeToDate, formatDateTime, generalizedTimeToDate, timesNeedSeconds } from '../ui/accountStatus';
 

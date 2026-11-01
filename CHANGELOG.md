@@ -65,6 +65,7 @@ The biggest release so far: a new design, account and password administration fo
 - `scripts/build.sh` stamps version, commit and build date (Help ▸ About, Copy diagnostics, Report Issue); the version is declared in `wails.json`, `frontend/package.json` and `services.ReleaseVersion`.
 - Docker test lab with OpenLDAP, 389 Directory Server and a Samba AD DC, all seeded with edge cases.
 - Go unit tests, node tests for the frontend logic and the AI chat, an event contract test between Go and TypeScript.
+- **CI pipeline** (GitHub Actions): tests, gofmt, the design token lint gates (`scripts/lint-tokens.sh`) and builds for Linux (WebKitGTK 4.0 and 4.1), Windows (portable exe and NSIS installer) and macOS (universal app) on every push and pull request; builds are published only with a release (a pushed version tag creates the release with all builds and checksums).
 
 ### Added after the walkthrough
 
@@ -119,9 +120,8 @@ The biggest release so far: a new design, account and password administration fo
 - Clean-ups: the old live "Search Results" tab code is gone (an old tab of that kind shows a note instead of an empty editor), Go sources are gofmt-clean.
 
 ### Known issues
-- macOS is not built or tested for this release (no Mac build host yet); Windows (amd64) and Linux (amd64) binaries are attached.
-- The Linux binary is built against WebKitGTK 4.0 (`libwebkit2gtk-4.0-37`); on Debian 13+ / distributions with only WebKitGTK 4.1 build from source with `-tags webkit2_41`.
-- Windows needs the Microsoft Edge WebView2 runtime (preinstalled on Windows 10/11).
+- The builds are not code-signed: Windows SmartScreen may ask once ("More info" → "Run anyway"); on macOS the app is not notarized, open it the first time with right-click → Open.
+- The macOS build is made by CI but was not tested on a Mac by hand; the Windows and Linux builds were.
 
 Earlier versions: see the [GitHub releases](https://github.com/DPicillo/LDAPilot/releases).
 

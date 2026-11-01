@@ -3,6 +3,11 @@
 <h4 align="center">A modern, fast and cross-platform <strong>LDAP browser</strong> and directory administration tool for Active Directory, OpenLDAP and 389 Directory Server.</h4>
 
 <p align="center">
+  <a href="https://github.com/DPicillo/LDAPilot/actions/workflows/ci.yml"><img src="https://github.com/DPicillo/LDAPilot/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI"></a>
+  <a href="https://github.com/DPicillo/LDAPilot/releases/latest"><img src="https://img.shields.io/github/v/release/DPicillo/LDAPilot" alt="Latest release"></a>
+</p>
+
+<p align="center">
   <a href="#key-features">Key Features</a> •
   <a href="#screenshots">Screenshots</a> •
   <a href="#installation">Installation</a> •
@@ -137,7 +142,15 @@ LDAPilot is an open-source alternative to classic LDAP clients such as Apache Di
 
 ### Pre-built Binaries
 
-Pre-compiled binaries for **Windows** (amd64, needs the WebView2 runtime that Windows 10/11 ship with) and **Linux** (amd64, WebKitGTK 4.0) are attached to each [release](https://github.com/DPicillo/LDAPilot/releases). On macOS, and on Linux distributions with only WebKitGTK 4.1, build from source (below).
+Every [release](https://github.com/DPicillo/LDAPilot/releases) has builds for all platforms, made by the [CI pipeline](https://github.com/DPicillo/LDAPilot/actions/workflows/ci.yml) when the release is made:
+
+| Platform | File | Notes |
+|---|---|---|
+| Windows (amd64) | `LDAPilot-windows-amd64-installer.exe` or the portable `LDAPilot-windows-amd64.exe` | Needs the WebView2 runtime (part of Windows 10/11). The builds are not code-signed, so SmartScreen may ask once ("More info" → "Run anyway"). |
+| macOS (Apple silicon and Intel) | `LDAPilot-macos-universal.zip` | Unzip and move `LDAPilot.app` to Applications. The app is not notarized: open it the first time with right-click → Open (or `xattr -dr com.apple.quarantine LDAPilot.app`). |
+| Linux (amd64) | `LDAPilot-linux-amd64` (WebKitGTK 4.0, e.g. Ubuntu 22.04, Debian 12) or `LDAPilot-linux-amd64-webkit2_41` (WebKitGTK 4.1, e.g. Ubuntu 24.04+, Debian 13+) | `chmod +x` after the download. |
+
+`SHA256SUMS.txt` lists the checksums of all files.
 
 ### Build from Source
 
