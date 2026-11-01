@@ -1,0 +1,6 @@
+{"type":"result","subtype":"error_max_budget_usd","is_error":true,"num_turns":3,"total_cost_usd":0.2531,"session_id":"s","errors":["Reached maximum budget ($0.25)"],"usage":{"input_tokens":1,"output_tokens":2}}
+{"type":"result","subtype":"success","is_error":true,"result":"Invalid API key · Please run /login","api_error_status":401,"total_cost_usd":0,"session_id":"s"}
+{"type":"result","subtype":"success","is_error":true,"result":"API Error: 529 Overloaded","api_error_status":529,"session_id":"s"}
+{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["something odd happened"],"session_id":"s"}
+{"type":"result","subtype":"success","is_error":true,"result":"There's an issue with the selected model (claude-nope). It may not exist or you may not have access to it.","session_id":"s"}
+{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":30,"session_id":"s","permission_denials":[{"tool_name":"Bash","tool_use_id":"toolu_x","tool_input":{"command":"ls"}}]}

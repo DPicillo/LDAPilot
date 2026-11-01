@@ -1,17 +1,48 @@
-import { useEffect } from 'react'
-import { AlertTriangle, Trash2 } from 'lucide-react'
+/**
+ * ConfirmDialog, rebuilt on the Dialog primitive. Same export and props as
+ * before (title, message, detail, confirmLabel, cancelLabel, variant,
+ * onConfirm, onCancel); new optional ones: open, tone (= variant), detail as
+ * a DN list, requireTyping (subtree delete), busy.
+ */
+import { useRef, useState, type ReactNode, type RefObject } from 'react'
+import { CircleHelp, Trash2, TriangleAlert } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { Dialog } from './Dialog'
+import { Button } from './Button'
+import { Input } from './Input'
+import { Field } from './Field'
+import { Dn } from './Dn'
+import { typedNameMatches } from '../../lib/recycle'
 
-interface ConfirmDialogProps {
-  title: string;
-  message: string;
-  detail?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  variant?: 'danger' | 'warning' | 'default';
-  onConfirm: () => void;
-  onCancel: () => void;
+export type ConfirmTone = 'default' | 'warning' | 'danger'
+
+export interface ConfirmDialogProps {
+  title: string
+  message: ReactNode
+  /** One DN / text, or a list of DNs (newline-separated strings become a list too). */
+  detail?: string | string[]
+  confirmLabel?: string
+  cancelLabel?: string
+  tone?: ConfirmTone
+  /** @deprecated alias of `tone` (existing call sites). */
+  variant?: ConfirmTone
+  /** The user must type this text before confirming (non-empty subtree delete). */
+  requireTyping?: string
+  /** Shows a spinner on the confirm button and blocks closing. */
+  busy?: boolean
+  /** Defaults to true: existing call sites mount the component only while open. */
+  open?: boolean
+  /** Focus target on close when the trigger is gone or disabled by then (e.g. Clear empties the list). */
+  returnFocus?: RefObject<HTMLElement | null>
+  onConfirm: () => void
+  onCancel: () => void
 }
+
+const ICON = {
+  default: { Icon: CircleHelp, cls: 'bg-primary-subtle text-primary' },
+  warning: { Icon: TriangleAlert, cls: 'bg-warning-subtle text-warning' },
+  danger: { Icon: Trash2, cls: 'bg-destructive-subtle text-destructive' },
+} as const
 
 export function ConfirmDialog({
   title,
@@ -19,62 +50,72 @@ export function ConfirmDialog({
   detail,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
-  variant = 'default',
+  tone,
+  variant,
+  requireTyping,
+  busy,
+  open = true,
+  returnFocus,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  useEffect(() => {
-    function handleEsc(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCancel();
-    }
-    document.addEventListener('keydown', handleEsc);
-    return () => document.removeEventListener('keydown', handleEsc);
-  }, [onCancel]);
-
-  const Icon = variant === 'danger' ? Trash2 : AlertTriangle;
-  const iconColor = variant === 'danger' ? 'text-red-400' : variant === 'warning' ? 'text-yellow-400' : 'text-primary';
+  const t: ConfirmTone = tone ?? variant ?? 'default'
+  const [typed, setTyped] = useState('')
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  // Case, blanks and punctuation are folded (typedNameMatches, RW1-R-07).
+  const typedOk = !requireTyping || typedNameMatches(typed, requireTyping)
+  const list = Array.isArray(detail) ? detail : detail && detail.includes('\n') ? detail.split('\n').filter(Boolean) : null
+  const { Icon, cls } = ICON[t]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
-      <div
-        className="bg-card border border-border rounded-lg shadow-2xl w-[400px] max-w-[90vw]"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="p-5">
-          <div className="flex items-start gap-3">
-            <div className={cn('p-2 rounded-full bg-background', iconColor)}>
-              <Icon size={18} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold mb-1">{title}</h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">{message}</p>
-              {detail && (
-                <p className="text-xs text-muted-foreground/70 font-mono mt-1.5 break-all">{detail}</p>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
-          <button
-            onClick={onCancel}
-            className="text-xs px-3 py-1.5 rounded border border-border hover:bg-accent"
-            autoFocus
-          >
+    <Dialog
+      open={open}
+      onOpenChange={(o) => !o && !busy && onCancel()}
+      role="alertdialog"
+      size={list && list.length > 1 ? 'md' : 'sm'}
+      title={title}
+      description={typeof message === 'string' ? message : undefined}
+      icon={
+        <span className={cn('inline-flex items-center justify-center size-8 rounded-full', cls)}>
+          <Icon size={16} strokeWidth={1.75} aria-hidden />
+        </span>
+      }
+      dismissible={busy ? 'never' : requireTyping && typed ? 'when-clean' : 'always'}
+      dirty={!!requireTyping && typed.length > 0}
+      initialFocus={requireTyping ? undefined : cancelRef}
+      returnFocus={returnFocus}
+      onSubmit={() => {
+        if (typedOk && !busy) onConfirm()
+      }}
+      footer={
+        <>
+          <Button ref={cancelRef} variant="secondary" onClick={onCancel} disabled={busy}>
             {cancelLabel}
-          </button>
-          <button
-            onClick={onConfirm}
-            className={cn(
-              'text-xs px-3 py-1.5 rounded font-medium',
-              variant === 'danger'
-                ? 'bg-red-600 text-white hover:bg-red-700'
-                : 'bg-primary text-primary-foreground hover:bg-primary/90',
-            )}
-          >
+          </Button>
+          <Button type="submit" variant={t === 'danger' ? 'danger' : 'primary'} disabled={!typedOk} loading={busy}>
             {confirmLabel}
-          </button>
+          </Button>
+        </>
+      }
+    >
+      {typeof message !== 'string' && <div className="text-base text-muted-foreground">{message}</div>}
+      {detail && !list && <Dn dn={String(detail)} className="block text-sm text-foreground" />}
+      {list && (
+        <ul className="max-h-40 overflow-auto rounded border border-border bg-background px-2 py-1 text-sm" aria-label="Affected entries">
+          {list.map((d) => (
+            <li key={d} className="py-0.5">
+              <Dn dn={d} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {requireTyping && (
+        <div className="mt-3">
+          <Field label={<>Type <span className="font-mono text-foreground">{requireTyping}</span> to confirm</>} required>
+            <Input mono autoComplete="off" spellCheck={false} value={typed} placeholder={requireTyping} onChange={(e) => setTyped(e.target.value)} />
+          </Field>
         </div>
-      </div>
-    </div>
-  );
+      )}
+    </Dialog>
+  )
 }

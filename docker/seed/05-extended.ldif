@@ -22,7 +22,7 @@ employeeNumber: EMP90002
 userPassword: patrick.obrien
 o: LDAPilot Demo GmbH
 
-dn: cn=C++ Build Service,ou=Services,dc=demo,dc=ldapilot,dc=local
+dn: cn=C\+\+ Build Service,ou=Services,dc=demo,dc=ldapilot,dc=local
 objectClass: applicationProcess
 objectClass: top
 cn: C++ Build Service

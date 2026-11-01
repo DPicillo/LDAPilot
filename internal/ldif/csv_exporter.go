@@ -44,11 +44,12 @@ func ExportCSVToWriter(w io.Writer, entries []models.LDAPEntry, columns []string
 		for i, col := range columns {
 			for _, attr := range entry.Attributes {
 				if strings.EqualFold(attr.Name, col) {
-					row[i+1] = strings.Join(attr.Values, "; ")
+					row[i+1] = neutralizeFormula(strings.Join(attr.Values, "; "))
 					break
 				}
 			}
 		}
+		row[0] = neutralizeFormula(row[0])
 
 		if err := writer.Write(row); err != nil {
 			return err
@@ -56,6 +57,16 @@ func ExportCSVToWriter(w io.Writer, entries []models.LDAPEntry, columns []string
 	}
 
 	return nil
+}
+
+// neutralizeFormula protects spreadsheet users from CSV/formula injection:
+// a value starting with = + - @ tab or CR gets a leading ' and is shown as
+// text (the same rule as the frontend's csvField in lib/bulk.ts).
+func neutralizeFormula(s string) string {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+		return "'" + s
+	}
+	return s
 }
 
 // collectAllAttributes returns a sorted list of unique attribute names across all entries.

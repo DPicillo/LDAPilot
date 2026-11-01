@@ -7,40 +7,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 )
 
 const keyFileName = "key"
 const encPrefix = "ENC:"
 
-// getOrCreateKey loads an existing encryption key from the config directory,
-// or generates and saves a new random 32-byte key (AES-256).
+// getOrCreateKey returns the application key. It delegates to AppKey, the
+// single fail-closed accessor: an unreadable key is never regenerated.
 func getOrCreateKey() ([]byte, error) {
-	dir, err := ConfigDir()
-	if err != nil {
-		return nil, err
-	}
-
-	keyPath := filepath.Join(dir, keyFileName)
-
-	// Try to load an existing key
-	data, err := os.ReadFile(keyPath)
-	if err == nil && len(data) == 32 {
-		return data, nil
-	}
-
-	// Generate a new random key
-	key := make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		return nil, fmt.Errorf("failed to generate encryption key: %w", err)
-	}
-
-	if err := os.WriteFile(keyPath, key, 0600); err != nil {
-		return nil, fmt.Errorf("failed to save encryption key: %w", err)
-	}
-
-	return key, nil
+	return AppKey()
 }
 
 // EncryptPassword encrypts a plaintext password using AES-256-GCM.

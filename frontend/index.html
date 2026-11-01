@@ -4,6 +4,22 @@
     <meta charset="UTF-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>LDAPilot</title>
+    <!-- Theme before the first paint (POST-NOTES P1/P2): the same rules as
+         components/ui/theme.ts (loadThemePref / resolveTheme / loadDensity),
+         so a light system or preference never shows one dark frame. -->
+    <script>
+      (function () {
+        var read = function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } };
+        var pref = read('ldapilot-theme');
+        var theme = pref === 'dark' || pref === 'light' ? pref : 'dark';
+        if (pref !== 'dark' && pref !== 'light') {
+          try { theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; } catch (e) { theme = 'dark'; }
+        }
+        var el = document.documentElement;
+        el.setAttribute('data-theme', theme);
+        el.setAttribute('data-density', read('ldapilot-density') === 'comfortable' ? 'comfortable' : 'compact');
+      })();
+    </script>
 </head>
 <body>
 <div id="root"></div>

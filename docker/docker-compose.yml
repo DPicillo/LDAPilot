@@ -1,3 +1,7 @@
+# LDAPilot test lab: OpenLDAP, 389 Directory Server and a Samba AD DC,
+# each seeded with test data on first start. See README.md for credentials.
+name: ldapilot-lab
+
 services:
   openldap:
     image: osixia/openldap:1.5.0
@@ -8,18 +12,81 @@ services:
       LDAP_DOMAIN: "demo.ldapilot.local"
       LDAP_BASE_DN: "dc=demo,dc=ldapilot,dc=local"
       LDAP_ADMIN_PASSWORD: "admin"
+      LDAP_CONFIG_PASSWORD: "config"
       LDAP_READONLY_USER: "true"
       LDAP_READONLY_USER_USERNAME: "readonly"
       LDAP_READONLY_USER_PASSWORD: "readonly"
-      LDAP_TLS: "false"
+      LDAP_TLS: "true"
+      LDAP_TLS_VERIFY_CLIENT: "never"
     command: --copy-service
     ports:
       - "389:389"
+      - "636:636"
     volumes:
       - ldap-data:/var/lib/ldap
       - ldap-config:/etc/ldap/slapd.d
-      #- ./seed:/seed:ro  # Use import-seed.sh instead
     restart: unless-stopped
+    networks:
+      - ldapilot-net
+
+  dirsrv:
+    image: 389ds/dirsrv:latest
+    container_name: ldapilot-389ds
+    hostname: dirsrv.ldapilot.lab
+    environment:
+      DS_DM_PASSWORD: "Admin12345"
+      DS_SUFFIX_NAME: "dc=dirsrv,dc=ldapilot,dc=lab"
+    ports:
+      - "4389:3389"
+      - "4636:3636"
+    volumes:
+      - dirsrv-data:/data
+    restart: unless-stopped
+    networks:
+      - ldapilot-net
+
+  samba-ad:
+    build: ./samba-ad
+    image: ldapilot/samba-ad:dev
+    container_name: ldapilot-samba-ad
+    hostname: dc1
+    domainname: ad.ldapilot.lab
+    cap_add:
+      - SYS_ADMIN # Samba stores NT ACLs in security.* xattrs
+    environment:
+      SAMBA_REALM: AD.LDAPILOT.LAB
+      SAMBA_DOMAIN: LDAPILOT
+      SAMBA_HOSTNAME: dc1
+      SAMBA_ADMIN_PASSWORD: "LDAPilot!2026"
+      SEED_USER_PASSWORD: "Passw0rd!2026"
+    ports:
+      - "2389:389"
+      - "2636:636"
+      - "3268:3268"
+      - "3269:3269"
+      - "88:88/tcp" # Kerberos KDC (GSSAPI bind tests)
+      - "88:88/udp"
+    volumes:
+      - samba-data:/var/lib/samba
+      - samba-config:/etc/samba
+      - ./samba-ad/export:/export
+    restart: unless-stopped
+    networks:
+      - ldapilot-net
+
+  # One-shot job: seeds OpenLDAP and 389DS if they are still empty.
+  # Uses the 389ds image because it ships both ldap-utils and dsconf.
+  seed:
+    image: 389ds/dirsrv:latest
+    container_name: ldapilot-seed
+    entrypoint: ["/bin/bash", "/lab/seed-ldap.sh"]
+    volumes:
+      - ./seed:/lab/seed:ro
+      - ./seed-ldap.sh:/lab/seed-ldap.sh:ro
+    depends_on:
+      - openldap
+      - dirsrv
+    restart: "no"
     networks:
       - ldapilot-net
 
@@ -43,6 +110,12 @@ volumes:
     name: ldapilot-ldap-data
   ldap-config:
     name: ldapilot-ldap-config
+  dirsrv-data:
+    name: ldapilot-dirsrv-data
+  samba-data:
+    name: ldapilot-samba-data
+  samba-config:
+    name: ldapilot-samba-config
 
 networks:
   ldapilot-net:

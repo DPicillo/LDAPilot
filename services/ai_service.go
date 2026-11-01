@@ -1,1187 +1,718 @@
 package services
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
+	"log"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/dpicillo/LDAPilot/internal/ai"
+	"github.com/dpicillo/LDAPilot/internal/ai/agent"
+	"github.com/dpicillo/LDAPilot/internal/ai/chatstore"
+	"github.com/dpicillo/LDAPilot/internal/ai/claudecode"
+	"github.com/dpicillo/LDAPilot/internal/ai/ldaptools"
+	"github.com/dpicillo/LDAPilot/internal/ai/permission"
+	"github.com/dpicillo/LDAPilot/internal/ai/provider"
 	"github.com/dpicillo/LDAPilot/internal/config"
 	internalldap "github.com/dpicillo/LDAPilot/internal/ldap"
-	"github.com/dpicillo/LDAPilot/internal/models"
 )
 
-const (
-	maxToolRounds      = 5
-	maxSearchResults   = 10
-	maxToolResultChars = 2000  // truncate individual tool results
-	maxHistoryMessages = 20   // keep only recent messages when sending to API
-	maxTotalChars      = 30000 // rough char limit for all messages (~8k tokens)
-	maxRetries         = 3     // retry count for rate limit errors
-)
-
-// noisyAttributes are AD attributes that waste tokens and are rarely useful for the AI.
-var noisyAttributes = map[string]bool{
-	"objectguid":              true,
-	"objectsid":               true,
-	"dscorepropagationdata":   true,
-	"whenchanged":             true,
-	"whencreated":             true,
-	"usnchanged":              true,
-	"usncreated":              true,
-	"instancetype":            true,
-	"objectcategory":          true,
-	"showinadvancedviewonly":  true,
-	"iscriticalsystemobject":  true,
-	"systemflags":             true,
-	"admincount":              true,
-	"msds-supportedencryptiontypes": true,
-	"serviceprincipalname":    true,
-	"lastlogontimestamp":      true,
-	"lastlogon":               true,
-	"logoncount":              true,
-	"badpasswordtime":         true,
-	"badpwdcount":             true,
-	"pwdlastset":              true,
-	"accountexpires":          true,
-	"primarygroupid":          true,
-	"useraccountcontrol":      true,
-	"samaccounttype":          true,
-	"codepage":                true,
-	"countrycode":             true,
-	"revision":                true,
-	"ntSecurityDescriptor":    true,
-	"gplink":                  true,
-}
-
-// systemPrompt instructs the AI about its role and constraints.
-const systemPrompt = `You are an expert LDAP/Active Directory assistant embedded in LDAPilot. You help users explore, search, and understand their LDAP directories.
-
-## CORE RULES
-1. **READ-ONLY** — You may ONLY read data. NEVER create, modify, or delete anything.
-2. **Be concise** — Keep responses brief and well-formatted. Use tables for structured data.
-3. **Be efficient with tools** — Each tool call costs tokens. Plan your approach before calling tools.
-4. **Respond in the user's language** — Match the language of the user's message (German, English, etc.).
-
-## TOOL STRATEGY (CRITICAL FOR EFFICIENCY)
-- **ALWAYS start with list_connections** if you haven't already, to discover available directories.
-- **Request ONLY the attributes you need** in search_ldap. Never request all attributes.
-  - For user lookups: cn, displayName, sAMAccountName, mail, title, department, manager
-  - For group lookups: cn, description, member, managedBy
-  - For OU browsing: cn, description, ou
-- **Use precise LDAP filters** to minimize result count:
-  - Users: (&(objectCategory=person)(objectClass=user)(sAMAccountName=...))
-  - Groups: (&(objectClass=group)(cn=...))
-  - Computers: (objectClass=computer)
-  - Disabled accounts: (&(objectCategory=person)(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=2))
-  - Locked accounts: (lockoutTime>=1)
-- **Keep sizeLimit small** (5-10). Only increase if the user explicitly asks for more.
-- **Avoid get_entry for multiple entries** — Use search_ldap with specific attributes instead.
-- **Avoid get_children on large containers** — Use search_ldap with scope=one and a filter instead.
-
-## FORMATTING
-- Use markdown tables for lists of entries
-- Use bullet points for single entry details
-- Bold key attributes like names and email
-- Keep DN displays short — show just the RDN when the full DN is obvious from context
-
-## AD KNOWLEDGE
-- sAMAccountName is the Windows login name
-- userPrincipalName is the UPN (user@domain)
-- memberOf shows group memberships (may be multi-valued)
-- manager contains the DN of the direct manager
-- userAccountControl is a bitmask (2=disabled, 512=normal, 66048=normal+password never expires)
-- distinguishedName is the full DN of the entry
-
-## MULTI-STEP REASONING
-When a user asks a complex question:
-1. Think about what data you need
-2. Plan the minimum number of tool calls
-3. Execute searches with precise filters and minimal attributes
-4. Synthesize results into a clear answer
-
-Example: "Who is John's manager?" → 
-  1. Search for John (filter: (cn=John*), attrs: cn, manager, displayName)
-  2. If manager DN found, get_entry for manager (only if needed for more details)
-  3. Answer with manager name and title`
-
-// chatMessage represents a single message in the OpenAI chat format.
-type chatMessage struct {
-	Role       string     `json:"role"`
-	Content    string     `json:"content,omitempty"`
-	ToolCalls  []toolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-}
-
-// toolCall represents a function call requested by the AI.
-type toolCall struct {
-	ID       string       `json:"id"`
-	Type     string       `json:"type"`
-	Function toolFunction `json:"function"`
-}
-
-// toolFunction holds the function name and arguments.
-type toolFunction struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-}
-
-// chatRequest is the request body for the chat completions API.
-type chatRequest struct {
-	Model    string        `json:"model"`
-	Messages []chatMessage `json:"messages"`
-	Tools    []toolDef     `json:"tools,omitempty"`
-}
-
-// toolDef describes a tool available to the AI.
-type toolDef struct {
-	Type     string         `json:"type"`
-	Function toolFunctionDef `json:"function"`
-}
-
-// toolFunctionDef describes a function the AI can call.
-type toolFunctionDef struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Parameters  interface{} `json:"parameters"`
-}
-
-// chatResponse is the response from the chat completions API.
-type chatResponse struct {
-	Choices []chatChoice `json:"choices"`
-	Error   *apiError    `json:"error,omitempty"`
-}
-
-// chatChoice represents a single choice in the API response.
-type chatChoice struct {
-	Message      chatMessage `json:"message"`
-	FinishReason string      `json:"finish_reason"`
-}
-
-// apiError represents an error returned by the API.
-type apiError struct {
-	Message string `json:"message"`
-	Type    string `json:"type"`
-}
-
-// searchLDAPArgs holds the arguments for the search_ldap tool.
-type searchLDAPArgs struct {
-	ConnectionName string   `json:"connectionName"`
-	BaseDN         string   `json:"baseDN"`
-	Filter         string   `json:"filter"`
-	Scope          string   `json:"scope"`
-	Attributes     []string `json:"attributes"`
-	SizeLimit      int      `json:"sizeLimit"`
-}
-
-// getEntryArgs holds the arguments for the get_entry tool.
-type getEntryArgs struct {
-	ConnectionName string `json:"connectionName"`
-	DN             string `json:"dn"`
-}
-
-// getChildrenArgs holds the arguments for the get_children tool.
-type getChildrenArgs struct {
-	ConnectionName string `json:"connectionName"`
-	DN             string `json:"dn"`
-}
-
-// connInfo is used to return connection info to the AI.
-type connInfo struct {
-	ProfileID string `json:"profileId"`
-	Name      string `json:"name"`
-	Host      string `json:"host"`
-	BaseDN    string `json:"baseDN"`
-}
-
-// AIService provides AI-powered LDAP query capabilities.
+// AIService is the Wails facade of the AI harness (§3.4). It owns the
+// encrypted chat store and the run manager; all harness logic lives in
+// internal/ai. Errors returned to JS are "<code>: <message>".
 type AIService struct {
 	ctx         context.Context
 	pool        *internalldap.Pool
 	configStore *config.AIConfigStore
 	chatStore   *config.ChatStore
-	mu          sync.Mutex
+	auditStore  *config.AuditStore
+
+	models       aiModels
+	emitter      func(name string, payload any) // tests; nil = Wails runtime.EventsEmit
+	autoDiscover bool                           // set by SetContext: background discovery on config changes
+
+	store    *chatstore.Store
+	storeErr string
+	mgr      *agent.Manager
+	dir      ldaptools.Directory
+	initOnce sync.Once
+	// providerOverride replaces the provider factory (tests).
+	providerOverride agent.ProviderFactory
+	// ccLauncher and ccFindCLI replace the Claude Code CLI (tests).
+	ccLauncher claudecode.Launcher
+	ccFindCLI  func(explicit string) (string, error)
 }
 
-// NewAIService creates a new AIService.
+// aiError is a facade error: "<code>: <message>"; it unwraps to the
+// chatstore sentinel for invalid IDs.
+type aiError struct {
+	code, msg string
+	cause     error
+}
+
+func (e *aiError) Error() string { return e.code + ": " + e.msg }
+func (e *aiError) Unwrap() error { return e.cause }
+
+// Code returns the error code.
+func (e *aiError) Code() string { return e.code }
+
+func facadeErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	var ae *aiError
+	if errors.As(err, &ae) {
+		return ae
+	}
+	err = agent.MapStoreError(err)
+	var e *agent.Error
+	if errors.As(err, &e) {
+		out := &aiError{code: e.Code, msg: e.Message}
+		switch e.Code {
+		case ai.CodeInvalidChatID:
+			out.cause = chatstore.ErrInvalidChatID
+		case ai.CodeStoreReadOnly:
+			out.cause = chatstore.ErrReadOnly
+		case "not_found":
+			out.cause = chatstore.ErrNotFound
+		}
+		return out
+	}
+	msg := provider.NewScrubber().Scrub(err.Error())
+	return &aiError{code: ai.CodeInternal, msg: msg, cause: err}
+}
+
+func invalidID() error {
+	return &aiError{code: ai.CodeInvalidChatID, msg: "invalid chat ID", cause: chatstore.ErrInvalidChatID}
+}
+
+// NewAIService creates the AI facade. The encrypted chat store is opened
+// on chatStore's directory (legacy plaintext chats are migrated there);
+// when that fails, chats run in degraded mode and settings keep working.
 func NewAIService(pool *internalldap.Pool, configStore *config.AIConfigStore, chatStore *config.ChatStore) *AIService {
-	return &AIService{
-		pool:        pool,
-		configStore: configStore,
-		chatStore:   chatStore,
+	s := &AIService{pool: pool, configStore: configStore, chatStore: chatStore}
+	s.configStore.Subscribe(func(c config.AIConfig) {
+		s.emit(ai.EventConfigUpdated, ai.ConfigUpdatedEvent{Revision: c.Revision})
+		if s.mgr != nil {
+			s.mgr.ConfigChanged()
+		}
+	})
+	return s
+}
+
+// SetAuditStore wires the audit log for AI writes ("via AI") and access
+// grants (AI_ACCESS).
+func (s *AIService) SetAuditStore(store *config.AuditStore) { s.auditStore = store }
+
+// ensure opens the chat store and creates the manager once.
+func (s *AIService) ensure() {
+	s.initOnce.Do(func() {
+		if s.chatStore != nil {
+			st, err := chatstore.Open(s.chatStore.Dir(), chatstore.Options{Logf: log.Printf})
+			if err != nil {
+				s.storeErr = err.Error()
+				log.Printf("AI chats unavailable: %v", err)
+			} else {
+				s.store = st
+			}
+		} else {
+			s.storeErr = "No chat directory is configured."
+		}
+		if s.dir == nil && s.pool != nil {
+			dir := newAIDirectory(s.pool, ai.SystemClock())
+			dir.audit = func(profileID, op, dn, details string, err error) {
+				writeAudit(s.auditStore, s.pool, profileID, op, dn, details, err)
+			}
+			s.dir = dir
+		}
+		providers := s.providerOverride
+		if providers == nil {
+			providers = agent.ProviderFunc(func(cfg config.AIConfig) (provider.Provider, error) {
+				return provider.New(s.providerOptions(cfg, cfg.APIKey))
+			})
+		}
+		s.mgr = agent.NewManager(agent.Deps{Emitter: facadeEmitter{s}, Directory: s.dir, Auditor: &aiAuditor{s}, Store: s.store,
+			StoreErr: s.storeErr, Providers: providers, Config: &configSource{s}, SensitiveAttr: isSensitiveAttribute, Logf: log.Printf,
+			ClaudeCode: s.claudeCodeEnv()})
+	})
+}
+
+// SetContext installs the Wails context, recovers interrupted AI writes
+// (outcome unknown) and starts loopback-only model discovery.
+func (s *AIService) SetContext(ctx context.Context) {
+	s.ctx = ctx
+	s.autoDiscover = true
+	s.ensure()
+	if dir, err := config.ConfigDir(); err == nil {
+		// Run files (MCP config with its token, system prompt) of runs a
+		// crash or kill left behind (§11 a).
+		claudecode.CleanRunFiles(filepath.Join(dir, claudeCodeFilesDir), 10*time.Minute)
+	}
+	if n := s.mgr.Recover(); n > 0 {
+		log.Printf("AI: %d interrupted write(s) marked as outcome unknown", n)
+	}
+	if s.store != nil {
+		// Chats created and never used in earlier sessions (older than an
+		// hour, so another window's fresh chat is never touched).
+		if n := s.store.PruneEmpty(time.Now().Add(-time.Hour).UnixMilli()); n > 0 {
+			log.Printf("AI: %d unused empty chat(s) removed", n)
+		}
+	}
+	s.backgroundDiscovery(true)
+}
+
+// Shutdown stops runs (waiting ≤ 2 s) and releases the chat store lock.
+// Correctness never depends on it (§3.6).
+func (s *AIService) Shutdown() {
+	if s.mgr != nil {
+		s.mgr.Shutdown()
+	}
+	if s.store != nil {
+		s.store.Close()
 	}
 }
 
-// SetContext sets the Wails application context.
-func (s *AIService) SetContext(ctx context.Context) {
-	s.ctx = ctx
-}
+// --- configuration ---
 
-// GetAIConfig returns the current AI configuration (with API key masked).
+// GetAIConfig returns the current AI configuration (API key masked).
 func (s *AIService) GetAIConfig() config.AIConfig {
 	return s.configStore.GetMasked()
 }
 
-// SaveAIConfig saves the AI configuration with encrypted API key.
+// SaveAIConfig validates and saves the AI configuration (API key encrypted
+// at rest). A config without "version" comes from the legacy settings form
+// (provider/url/apiKey/model only) and is merged into the stored v2 config.
 func (s *AIService) SaveAIConfig(cfg config.AIConfig) error {
-	return s.configStore.Set(cfg)
-}
-
-// ListModels fetches available models from the configured AI provider.
-func (s *AIService) ListModels() ([]string, error) {
-	cfg := s.configStore.Get()
-	if cfg.URL == "" {
-		return nil, fmt.Errorf("AI provider not configured")
-	}
-
-	endpoint := strings.TrimRight(cfg.URL, "/")
-	switch cfg.Provider {
-	case "ollama":
-		endpoint += "/api/tags"
-	default:
-		endpoint += "/models"
-	}
-
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	if cfg.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
-	}
-
-	var modelList []string
-
-	if cfg.Provider == "ollama" {
-		var ollamaResp struct {
-			Models []struct {
-				Name string `json:"name"`
-			} `json:"models"`
+	before := s.configStore.GetMasked()
+	if cfg.Version == 0 {
+		m := config.MigrateLegacyAIConfig(cfg.Provider, cfg.URL, cfg.Model)
+		if m.Provider == "openai" && before.Provider == "openai" && strings.EqualFold(strings.TrimSpace(cfg.Provider), "openai") {
+			// The legacy form shows every OpenAI-compatible flavor as
+			// "openai"; saving it back must not turn LiteLLM into OpenAI
+			// (that would also drop the stored key).
+			m.Flavor = before.Flavor
 		}
-		if err := json.Unmarshal(body, &ollamaResp); err != nil {
-			return nil, fmt.Errorf("failed to parse response: %w", err)
-		}
-		for _, m := range ollamaResp.Models {
-			modelList = append(modelList, m.Name)
-		}
-	} else {
-		var openaiResp struct {
-			Data []struct {
-				ID string `json:"id"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(body, &openaiResp); err != nil {
-			return nil, fmt.Errorf("failed to parse response: %w", err)
-		}
-		for _, m := range openaiResp.Data {
-			modelList = append(modelList, m.ID)
-		}
+		merged := before
+		merged.Provider, merged.Flavor, merged.URL, merged.Model = m.Provider, m.Flavor, m.URL, m.Model
+		merged.APIKey = cfg.APIKey
+		cfg = merged
 	}
-
-	return modelList, nil
-}
-
-// --- Chat management methods ---
-
-// ListChats returns all conversations without messages, sorted by most recent.
-func (s *AIService) ListChats() ([]config.ChatConversation, error) {
-	return s.chatStore.ListChats()
-}
-
-// GetChat returns a conversation including all messages.
-func (s *AIService) GetChat(id string) (*config.ChatConversation, error) {
-	return s.chatStore.GetChat(id)
-}
-
-// CreateChat creates a new empty conversation.
-func (s *AIService) CreateChat(title string) (*config.ChatConversation, error) {
-	if title == "" {
-		title = "New Chat"
-	}
-	return s.chatStore.CreateChat(title)
-}
-
-// DeleteChat removes a conversation.
-func (s *AIService) DeleteChat(id string) error {
-	return s.chatStore.DeleteChat(id)
-}
-
-// RenameChat changes the title of a conversation.
-func (s *AIService) RenameChat(id string, title string) error {
-	conv, err := s.chatStore.GetChat(id)
-	if err != nil {
+	if err := s.configStore.Set(cfg); err != nil {
 		return err
 	}
-	conv.Title = title
-	return s.chatStore.SaveChat(conv)
+	if endpointChanged(before, s.configStore.GetMasked()) {
+		s.backgroundDiscovery(false)
+	}
+	return nil
 }
 
-// Chat sends a user message in the given conversation, processes tool calls, and returns the response.
-// The AI can search across ALL connected LDAP directories.
-func (s *AIService) Chat(chatID string, message string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Load conversation
-	conv, err := s.chatStore.GetChat(chatID)
-	if err != nil {
-		return "", fmt.Errorf("failed to load chat: %w", err)
+// SetConnectionAccess sets one profile's AI access level (none, ask, read,
+// write). With a remote provider the level is bound to its host (§6.1).
+func (s *AIService) SetConnectionAccess(profileID, level string) error {
+	if strings.TrimSpace(profileID) == "" {
+		return &aiError{code: ai.CodeBadRequest, msg: "profile ID is required"}
 	}
-
-	// Initialize with system prompt if empty
-	if len(conv.Messages) == 0 {
-		conv.Messages = append(conv.Messages, config.ChatMsg{
-			Role:    "system",
-			Content: systemPrompt,
-		})
+	cfg := s.configStore.Get()
+	dest := permission.Classify(cfg, false)
+	bind := ""
+	if !dest.Local && (level == config.AccessRead || level == config.AccessWrite) {
+		bind = dest.Host
 	}
+	if _, err := s.configStore.SetConnectionAccess(profileID, level, bind); err != nil {
+		return &aiError{code: ai.CodeBadRequest, msg: err.Error()}
+	}
+	return nil
+}
 
-	// Append user message
-	conv.Messages = append(conv.Messages, config.ChatMsg{
-		Role:    "user",
-		Content: message,
-	})
+// GetBuiltinRedactions lists the built-in secret attributes (read-only in
+// the settings).
+func (s *AIService) GetBuiltinRedactions() []string { return ldaptools.BuiltinSecretNames() }
 
-	// Convert stored messages to API format
-	messages := s.storedToAPI(conv.Messages)
-	tools := s.buildToolDefinitions()
-
-	// Tool call loop
-	for round := 0; round < maxToolRounds; round++ {
-		resp, err := s.callAPI(messages, tools)
+// TestProvider checks an unsaved config (never persisted): reachability,
+// latency, the model, tool support, the context window and locality.
+func (s *AIService) TestProvider(cfg config.AIConfig) (ai.ProviderTestResult, error) {
+	if cfg.Engine == "claudecode" {
+		// `claude --version` plus the free initialize request: no model
+		// call, no cost.
+		start := time.Now()
+		d, err := s.DiscoverModels(cfg, true)
 		if err != nil {
-			return "", err
+			return ai.ProviderTestResult{}, err
 		}
-
-		if len(resp.Choices) == 0 {
-			return "", fmt.Errorf("AI returned no response")
+		msg := d.Error
+		if msg == "" {
+			msg = fmt.Sprintf("Claude Code %s answered in %d ms with %s (checked without a model call).", firstNonEmptyStr(d.Version, "(unknown version)"),
+				time.Since(start).Milliseconds(), ldaptools.Plural(len(d.Models), "model", "models"))
 		}
-
-		choice := resp.Choices[0]
-		assistantMsg := choice.Message
-
-		// Add assistant message to messages
-		messages = append(messages, assistantMsg)
-
-		// Store assistant message
-		storedAssistant := config.ChatMsg{
-			Role:    "assistant",
-			Content: assistantMsg.Content,
-		}
-		if len(assistantMsg.ToolCalls) > 0 {
-			tcJSON, _ := json.Marshal(assistantMsg.ToolCalls)
-			storedAssistant.ToolCalls = string(tcJSON)
-		}
-		conv.Messages = append(conv.Messages, storedAssistant)
-
-		// If no tool calls, we have the final response
-		if len(assistantMsg.ToolCalls) == 0 || choice.FinishReason == "stop" {
-			s.autoTitle(conv, message)
-			if err := s.chatStore.SaveChat(conv); err != nil {
-				return "", fmt.Errorf("failed to save chat: %w", err)
-			}
-			return assistantMsg.Content, nil
-		}
-
-		// Process tool calls
-		for _, tc := range assistantMsg.ToolCalls {
-			result := s.executeTool(tc.Function.Name, tc.Function.Arguments)
-			toolResultMsg := chatMessage{
-				Role:       "tool",
-				Content:    result,
-				ToolCallID: tc.ID,
-			}
-			messages = append(messages, toolResultMsg)
-
-			// Store tool result
-			conv.Messages = append(conv.Messages, config.ChatMsg{
-				Role:       "tool",
-				Content:    result,
-				ToolCallID: tc.ID,
-			})
-		}
+		return ai.ProviderTestResult{OK: d.Error == "", LatencyMs: time.Since(start).Milliseconds(), ModelFound: !d.ModelMissing, Tools: ai.CapYes,
+			Message: msg, Warnings: d.Warnings}, nil
 	}
-
-	// Max rounds reached - get a final response without tools
-	resp, err := s.callAPI(messages, nil)
+	norm := cfg
+	norm.URL = config.NormalizeAIURL(cfg.Provider, cfg.URL)
+	if norm.URL == "" {
+		norm.URL = config.DefaultAIURL(cfg.Provider, cfg.Flavor)
+	}
+	if norm.Provider == provider.KindOpenAI && norm.Flavor == "" {
+		norm.Flavor = provider.FlavorCustom
+	}
+	key := s.configStore.EffectiveKey(norm)
+	if err := config.ValidateAIConfig(norm, key != ""); err != nil {
+		return ai.ProviderTestResult{}, err
+	}
+	p, err := provider.NewUnwrapped(s.providerOptions(norm, key))
 	if err != nil {
-		return "", err
+		return ai.ProviderTestResult{}, err
 	}
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("AI returned no response after tool rounds")
+	ctx, cancel := context.WithTimeout(context.Background(), discoveryCallLimit)
+	defer cancel()
+	start := time.Now()
+	models, err := p.ListModels(ctx)
+	res := ai.ProviderTestResult{LatencyMs: time.Since(start).Milliseconds(), Tools: ai.CapUnknown}
+	if err != nil {
+		res.Message = provider.NewScrubber(key).Scrub(err.Error())
+		return res, nil
 	}
-
-	finalMsg := resp.Choices[0].Message
-	conv.Messages = append(conv.Messages, config.ChatMsg{
-		Role:    "assistant",
-		Content: finalMsg.Content,
-	})
-
-	s.autoTitle(conv, message)
-	if err := s.chatStore.SaveChat(conv); err != nil {
-		return "", fmt.Errorf("failed to save chat: %w", err)
-	}
-
-	return finalMsg.Content, nil
-}
-
-// autoTitle sets the conversation title based on the first user message if currently generic.
-func (s *AIService) autoTitle(conv *config.ChatConversation, userMessage string) {
-	if conv.Title != "" && conv.Title != "New Chat" {
-		return
-	}
-	title := userMessage
-	if len(title) > 50 {
-		title = title[:50] + "..."
-	}
-	// Remove newlines for a clean title
-	title = strings.ReplaceAll(title, "\n", " ")
-	title = strings.ReplaceAll(title, "\r", "")
-	conv.Title = title
-}
-
-// storedToAPI converts stored ChatMsg to API chatMessage format.
-func (s *AIService) storedToAPI(stored []config.ChatMsg) []chatMessage {
-	messages := make([]chatMessage, 0, len(stored))
-	for _, m := range stored {
-		msg := chatMessage{
-			Role:       m.Role,
-			Content:    m.Content,
-			ToolCallID: m.ToolCallID,
+	res.OK = true
+	model := norm.Model
+	for _, m := range models {
+		if m.ID == model {
+			res.ModelFound = true
 		}
-		// Restore tool calls from JSON
-		if m.ToolCalls != "" {
-			var tcs []toolCall
-			if err := json.Unmarshal([]byte(m.ToolCalls), &tcs); err == nil {
-				msg.ToolCalls = tcs
+	}
+	if model == "" && len(models) > 0 {
+		model, _, _ = provider.ResolveModel(p.Key(), "", models)
+		res.Warnings = append(res.Warnings, "No model selected; "+model+" would be used.")
+		res.ModelFound = true
+	}
+	caps, _ := p.ModelCaps(ctx, model)
+	res.Tools, res.ContextWindow = caps.Tools, caps.ContextWindow
+	res.Local = permission.Classify(norm, caps.Remote).Local
+	if norm.Provider == provider.KindOpenAI && norm.Flavor == provider.FlavorOllama {
+		if rt, ok := provider.AsOllamaRuntime(p); ok {
+			if n, loaded, err := rt.LoadedContext(ctx, model); err == nil && loaded {
+				res.ContextWindow = n
+				if n < 16384 {
+					res.Warnings = append(res.Warnings, fmt.Sprintf("Ollama /v1 uses the model's loaded context (%d tokens); use the 'Ollama (native)' preset for 16k+.", n))
+				}
 			}
 		}
-		messages = append(messages, msg)
 	}
-	return messages
+	if caps.Tools == ai.CapNo {
+		res.Warnings = append(res.Warnings, "LDAP tools will not work with this model.")
+	}
+	if !res.ModelFound {
+		res.Message = fmt.Sprintf("Connected (%s), but the model %q was not found.", ldaptools.Plural(len(models), "model", "models"), model)
+	} else {
+		res.Message = fmt.Sprintf("Connected in %d ms; %s available.", res.LatencyMs, ldaptools.Plural(len(models), "model", "models"))
+	}
+	return res, nil
 }
 
-// --- Connection resolution ---
-
-// getConnectedProfiles returns info about all currently connected profiles.
-func (s *AIService) getConnectedProfiles() []connInfo {
-	connected := s.pool.GetConnected()
-	var infos []connInfo
-	for id, client := range connected {
-		profile := client.Profile()
-		infos = append(infos, connInfo{
-			ProfileID: id,
-			Name:      profile.Name,
-			Host:      profile.Host,
-			BaseDN:    profile.BaseDN,
-		})
+func firstNonEmptyStr(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
 	}
-	return infos
+	return ""
 }
 
-// resolveConnection finds a connected client by name (case-insensitive partial match).
-// If name is empty or "*", returns nil (meaning search all).
-func (s *AIService) resolveConnection(name string) (*internalldap.Client, error) {
-	if name == "" || name == "*" {
-		// Use first connected profile
-		connected := s.pool.GetConnected()
-		for _, client := range connected {
-			return client, nil
-		}
-		return nil, fmt.Errorf("no LDAP connections available")
+// --- chats ---
+
+func (s *AIService) chats() (*chatstore.Store, error) {
+	s.ensure()
+	if s.store == nil {
+		return nil, &aiError{code: ai.CodeStoreUnavailable, msg: firstNonEmptyStr(s.storeErr, "Chats are unavailable.")}
 	}
-
-	connected := s.pool.GetConnected()
-	nameLower := strings.ToLower(name)
-
-	// Exact match first
-	for _, client := range connected {
-		if strings.EqualFold(client.Profile().Name, name) {
-			return client, nil
-		}
-	}
-
-	// Partial match
-	for _, client := range connected {
-		if strings.Contains(strings.ToLower(client.Profile().Name), nameLower) {
-			return client, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no connected directory matching %q", name)
+	return s.store, nil
 }
 
-// resolveConnections returns all matching clients. If name is empty or "*", returns all connected.
-func (s *AIService) resolveConnections(name string) ([]*internalldap.Client, error) {
-	connected := s.pool.GetConnected()
-	if len(connected) == 0 {
-		return nil, fmt.Errorf("no LDAP connections available")
-	}
-
-	if name == "" || name == "*" {
-		var clients []*internalldap.Client
-		for _, client := range connected {
-			clients = append(clients, client)
-		}
-		return clients, nil
-	}
-
-	client, err := s.resolveConnection(name)
+// ListChats returns all chats, most recently updated first.
+func (s *AIService) ListChats() ([]ai.ChatSummary, error) {
+	st, err := s.chats()
 	if err != nil {
 		return nil, err
 	}
-	return []*internalldap.Client{client}, nil
-}
-
-// --- Tool definitions ---
-
-// buildToolDefinitions returns the tool definitions for the AI.
-func (s *AIService) buildToolDefinitions() []toolDef {
-	return []toolDef{
-		{
-			Type: "function",
-			Function: toolFunctionDef{
-				Name:        "list_connections",
-				Description: "List all currently connected LDAP directories. Returns name, host, and baseDN of each connected directory. Use this first to discover available directories.",
-				Parameters: map[string]interface{}{
-					"type":       "object",
-					"properties": map[string]interface{}{},
-				},
-			},
-		},
-		{
-			Type: "function",
-			Function: toolFunctionDef{
-				Name:        "search_ldap",
-				Description: "Search an LDAP directory with a filter. ALWAYS specify 'attributes' to avoid returning unnecessary data. Use precise filters and small sizeLimit (5-10). If connectionName is empty, searches the first connected directory.",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"connectionName": map[string]interface{}{
-							"type":        "string",
-							"description": "Name of the connection (partial match). Leave empty for default connection.",
-						},
-						"baseDN": map[string]interface{}{
-							"type":        "string",
-							"description": "Base DN to search from. Leave empty to use the connection's default baseDN.",
-						},
-						"filter": map[string]interface{}{
-							"type":        "string",
-							"description": "LDAP filter. Examples: '(&(objectCategory=person)(objectClass=user)(cn=John*))', '(&(objectClass=group)(cn=Admin*))'",
-						},
-						"scope": map[string]interface{}{
-							"type":        "string",
-							"enum":        []string{"base", "one", "sub"},
-							"description": "Search scope: 'sub' (subtree, default), 'one' (one level), 'base' (single entry)",
-						},
-						"attributes": map[string]interface{}{
-							"type":        "array",
-							"items":       map[string]interface{}{"type": "string"},
-							"description": "IMPORTANT: Always specify attributes to save tokens. E.g. ['cn','mail','displayName','sAMAccountName','title','department'] for users, ['cn','description','member'] for groups.",
-						},
-						"sizeLimit": map[string]interface{}{
-							"type":        "integer",
-							"description": "Max entries to return. Keep low (5-10) unless user needs more. Max: 20.",
-						},
-					},
-					"required": []string{"filter"},
-				},
-			},
-		},
-		{
-			Type: "function",
-			Function: toolFunctionDef{
-				Name:        "get_entry",
-				Description: "Read a single LDAP entry by its full DN. Returns all attributes of the entry.",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"connectionName": map[string]interface{}{
-							"type":        "string",
-							"description": "Name of the connection to use. If empty, tries all connected directories.",
-						},
-						"dn": map[string]interface{}{
-							"type":        "string",
-							"description": "The full distinguished name of the entry (e.g. 'CN=John Doe,OU=Users,DC=example,DC=com')",
-						},
-					},
-					"required": []string{"dn"},
-				},
-			},
-		},
-		{
-			Type: "function",
-			Function: toolFunctionDef{
-				Name:        "get_children",
-				Description: "List the immediate child entries under a given DN. Returns DN, RDN, and objectClass of each child.",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"connectionName": map[string]interface{}{
-							"type":        "string",
-							"description": "Name of the connection to use. If empty, tries all connected directories.",
-						},
-						"dn": map[string]interface{}{
-							"type":        "string",
-							"description": "The DN of the parent entry whose children to list",
-						},
-					},
-					"required": []string{"dn"},
-				},
-			},
-		},
-	}
-}
-
-// --- Tool execution ---
-
-// executeTool runs a tool call and returns the result as a string.
-func (s *AIService) executeTool(toolName string, argsJSON string) string {
-	var result string
-	switch toolName {
-	case "list_connections":
-		result = s.executeListConnections()
-	case "search_ldap":
-		result = s.executeSearch(argsJSON)
-	case "get_entry":
-		result = s.executeGetEntry(argsJSON)
-	case "get_children":
-		result = s.executeGetChildren(argsJSON)
-	default:
-		return fmt.Sprintf("Error: unknown tool %q", toolName)
-	}
-	// Truncate large results to prevent context overflow
-	if len(result) > maxToolResultChars {
-		result = result[:maxToolResultChars] + "\n... (truncated, use more specific filters or request fewer attributes)"
-	}
-	return result
-}
-
-// filterNoisyAttributes removes AD attributes that are rarely useful for the AI
-// to keep tool results compact and avoid wasting tokens.
-func filterNoisyAttributes(attrs []models.LDAPAttribute) []models.LDAPAttribute {
-	filtered := make([]models.LDAPAttribute, 0, len(attrs))
-	for _, attr := range attrs {
-		if noisyAttributes[strings.ToLower(attr.Name)] {
-			continue
-		}
-		// Truncate very long attribute values (e.g. certificates, huge multi-value)
-		if len(attr.Values) > 5 {
-			attr.Values = append(attr.Values[:5], fmt.Sprintf("... (%d more values)", len(attr.Values)-5))
-		}
-		for i, v := range attr.Values {
-			if len(v) > 200 {
-				attr.Values[i] = v[:200] + "..."
-			}
-		}
-		filtered = append(filtered, attr)
-	}
-	return filtered
-}
-
-// executeListConnections returns information about all connected directories.
-func (s *AIService) executeListConnections() string {
-	infos := s.getConnectedProfiles()
-	if len(infos) == 0 {
-		return `{"connections": [], "message": "No LDAP directories are currently connected."}`
-	}
-	data, err := json.Marshal(map[string]interface{}{
-		"connections": infos,
-		"count":       len(infos),
-	})
+	list, err := st.List()
 	if err != nil {
-		return fmt.Sprintf("Error formatting connections: %v", err)
+		return nil, facadeErr(err)
 	}
-	return string(data)
+	for i := range list {
+		list[i].Running = s.mgr.Running(list[i].ID)
+	}
+	return list, nil
 }
 
-// executeSearch performs an LDAP search, optionally across all connected directories.
-// Results are filtered to remove noisy attributes and save tokens.
-func (s *AIService) executeSearch(argsJSON string) string {
-	var args searchLDAPArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return fmt.Sprintf("Error parsing arguments: %v", err)
+// GetChat returns a chat with all messages.
+func (s *AIService) GetChat(id string) (*ai.ChatView, error) {
+	if chatstore.ValidateID(id) != nil {
+		return nil, invalidID()
 	}
-
-	// Determine scope
-	scope := models.ScopeSub
-	switch strings.ToLower(args.Scope) {
-	case "base":
-		scope = models.ScopeBase
-	case "one":
-		scope = models.ScopeOne
-	case "sub", "":
-		scope = models.ScopeSub
-	}
-
-	// Enforce size limit
-	sizeLimit := args.SizeLimit
-	if sizeLimit <= 0 || sizeLimit > maxSearchResults {
-		sizeLimit = maxSearchResults
-	}
-
-	// If no specific attributes requested, default to useful ones for AI
-	attrs := args.Attributes
-	if len(attrs) == 0 {
-		attrs = []string{"dn", "cn", "displayName", "sAMAccountName", "mail",
-			"objectClass", "description", "memberOf", "member", "distinguishedName",
-			"userPrincipalName", "title", "department", "company", "manager",
-			"telephoneNumber", "l", "st", "co"}
-	}
-
-	// Resolve connections to search
-	clients, err := s.resolveConnections(args.ConnectionName)
+	st, err := s.chats()
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return nil, err
 	}
-
-	type dirResult struct {
-		Directory  string             `json:"directory"`
-		BaseDN     string             `json:"baseDN"`
-		TotalCount int                `json:"totalCount"`
-		Truncated  bool               `json:"truncated"`
-		Entries    []models.LDAPEntry `json:"entries"`
-		Error      string             `json:"error,omitempty"`
-	}
-
-	var results []dirResult
-	for _, client := range clients {
-		profile := client.Profile()
-		baseDN := args.BaseDN
-		if baseDN == "" {
-			baseDN = profile.BaseDN
-		}
-
-		params := models.SearchParams{
-			BaseDN:     baseDN,
-			Filter:     args.Filter,
-			Scope:      scope,
-			Attributes: attrs,
-			SizeLimit:  sizeLimit,
-		}
-
-		result, err := client.Search(params)
-		if err != nil {
-			results = append(results, dirResult{
-				Directory: profile.Name,
-				BaseDN:    baseDN,
-				Error:     err.Error(),
-			})
-			continue
-		}
-
-		// Filter noisy attributes from each entry
-		for i := range result.Entries {
-			result.Entries[i].Attributes = filterNoisyAttributes(result.Entries[i].Attributes)
-		}
-
-		results = append(results, dirResult{
-			Directory:  profile.Name,
-			BaseDN:     baseDN,
-			TotalCount: result.TotalCount,
-			Truncated:  result.Truncated,
-			Entries:    result.Entries,
-		})
-	}
-
-	data, err := json.Marshal(map[string]interface{}{
-		"results":          results,
-		"directoriesCount": len(results),
-	})
+	c, err := st.Get(id)
 	if err != nil {
-		return fmt.Sprintf("Error formatting results: %v", err)
+		return nil, facadeErr(err)
 	}
-	return string(data)
+	v := &ai.ChatView{ChatSummary: c.Summary(), ModelOverride: c.ModelOverride, Messages: c.Messages, Compactions: c.Compactions, Egress: c.Egress, ReadOnly: st.ReadOnly()}
+	v.Running = s.mgr.Running(id)
+	if v.Messages == nil {
+		v.Messages = []ai.Message{}
+	}
+	if v.Compactions == nil {
+		v.Compactions = []ai.CompactionMarker{}
+	}
+	if v.Egress == nil {
+		v.Egress = []ai.EgressRecord{}
+	}
+	return v, nil
 }
 
-// executeGetEntry reads a single LDAP entry and returns it as JSON.
-// Noisy AD attributes are filtered out to save tokens.
-func (s *AIService) executeGetEntry(argsJSON string) string {
-	var args getEntryArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return fmt.Sprintf("Error parsing arguments: %v", err)
+// GetChatEgress returns the chat's "directory data sent" ledger, live while
+// a response runs (the chat info popover refreshes it after each tool
+// result).
+func (s *AIService) GetChatEgress(id string) ([]ai.EgressRecord, error) {
+	if chatstore.ValidateID(id) != nil {
+		return nil, invalidID()
 	}
-
-	clients, err := s.resolveConnections(args.ConnectionName)
+	if _, err := s.chats(); err != nil {
+		return nil, err
+	}
+	out, err := s.mgr.Egress(id)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return nil, facadeErr(err)
 	}
-
-	// Try each client until we find the entry
-	for _, client := range clients {
-		entry, err := client.GetEntry(args.DN)
-		if err != nil {
-			continue
-		}
-		// Filter noisy attributes to save tokens
-		entry.Attributes = filterNoisyAttributes(entry.Attributes)
-		data, err := json.Marshal(map[string]interface{}{
-			"directory": client.Profile().Name,
-			"entry":     entry,
-		})
-		if err != nil {
-			return fmt.Sprintf("Error formatting entry: %v", err)
-		}
-		return string(data)
-	}
-
-	return fmt.Sprintf("Error: entry %q not found in any connected directory", args.DN)
+	return out, nil
 }
 
-// executeGetChildren lists children of a DN and returns them as JSON.
-func (s *AIService) executeGetChildren(argsJSON string) string {
-	var args getChildrenArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return fmt.Sprintf("Error parsing arguments: %v", err)
+// GetMessages returns the messages after sinceMessageID ("" = all).
+func (s *AIService) GetMessages(chatID, sinceMessageID string) ([]ai.Message, error) {
+	if chatstore.ValidateID(chatID) != nil {
+		return nil, invalidID()
 	}
-
-	clients, err := s.resolveConnections(args.ConnectionName)
+	st, err := s.chats()
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return nil, err
 	}
-
-	// Try each client until we find children
-	for _, client := range clients {
-		children, err := client.GetChildren(args.DN)
-		if err != nil {
-			continue
-		}
-
-		// Limit to prevent oversized context
-		if len(children) > maxSearchResults {
-			children = children[:maxSearchResults]
-		}
-
-		data, err := json.Marshal(map[string]interface{}{
-			"directory": client.Profile().Name,
-			"children":  children,
-		})
-		if err != nil {
-			return fmt.Sprintf("Error formatting children: %v", err)
-		}
-		return string(data)
+	msgs, err := st.Messages(chatID, sinceMessageID)
+	if err != nil {
+		return nil, facadeErr(err)
 	}
-
-	return fmt.Sprintf("Error: DN %q not found in any connected directory", args.DN)
+	if msgs == nil {
+		msgs = []ai.Message{}
+	}
+	return msgs, nil
 }
 
-// --- API communication ---
-
-// callAPI sends a request to the configured AI provider's chat completions endpoint.
-// trimMessages reduces the message list to fit within token/char limits.
-// It always keeps the system prompt (first message) and the most recent messages.
-// Older messages are dropped, and tool results are truncated.
-// trimMessages intelligently reduces the message list to fit within token/char limits.
-// Key strategies:
-//   1. Always keep system prompt (first message)
-//   2. Compress old tool results into short summaries
-//   3. Keep tool_call + tool_result pairs together (never orphan them)
-//   4. Add a summary note when dropping old messages so the AI knows prior context existed
-//   5. Always keep the most recent messages intact
-func trimMessages(messages []chatMessage) []chatMessage {
-	if len(messages) == 0 {
-		return messages
+// CreateChat creates an empty chat.
+func (s *AIService) CreateChat(title string) (*ai.ChatSummary, error) {
+	st, err := s.chats()
+	if err != nil {
+		return nil, err
 	}
-
-	// First pass: aggressively truncate ALL tool results
-	for i := range messages {
-		if messages[i].Role == "tool" && len(messages[i].Content) > maxToolResultChars {
-			messages[i].Content = messages[i].Content[:maxToolResultChars] + "\n... (truncated)"
-		}
+	c, err := st.Create(title)
+	if err != nil {
+		return nil, facadeErr(err)
 	}
-
-	// Check if we're within limits
-	totalChars := 0
-	for _, m := range messages {
-		totalChars += len(m.Content)
-	}
-	if len(messages) <= maxHistoryMessages && totalChars <= maxTotalChars {
-		return messages
-	}
-
-	// Separate system prompt
-	var systemMsg *chatMessage
-	workMessages := messages
-	if len(messages) > 0 && messages[0].Role == "system" {
-		systemMsg = &messages[0]
-		workMessages = messages[1:]
-	}
-
-	// Second pass: compress old tool results into short summaries.
-	// Keep the last 6 messages fully intact, compress older tool results.
-	keepFullCount := 6
-	if keepFullCount > len(workMessages) {
-		keepFullCount = len(workMessages)
-	}
-	cutoff := len(workMessages) - keepFullCount
-	for i := 0; i < cutoff; i++ {
-		if workMessages[i].Role == "tool" && len(workMessages[i].Content) > 200 {
-			// Create a short summary of the tool result
-			content := workMessages[i].Content
-			summary := content
-			if len(summary) > 150 {
-				summary = summary[:150]
-			}
-			// Count entries if it looks like JSON search results
-			entryCount := strings.Count(content, `"dn"`)
-			if entryCount > 0 {
-				workMessages[i].Content = fmt.Sprintf("[Tool result: %d entries found. First result: %s...]", entryCount, summary)
-			} else {
-				workMessages[i].Content = fmt.Sprintf("[Tool result summary: %s...]", summary)
-			}
-		}
-	}
-
-	// Recalculate total
-	totalChars = 0
-	if systemMsg != nil {
-		totalChars += len(systemMsg.Content)
-	}
-	for _, m := range workMessages {
-		totalChars += len(m.Content)
-	}
-
-	// If still over limits, drop messages from the front while keeping pairs intact
-	droppedUserMessages := 0
-	for len(workMessages) > keepFullCount && (len(workMessages) > maxHistoryMessages-1 || totalChars > maxTotalChars) {
-		// Find the next safe cut point - don't break tool_call/tool_result pairs
-		cutIdx := 0
-		
-		// If message[0] is an assistant with tool_calls, we need to also remove
-		// all subsequent tool results that reference those calls
-		if workMessages[0].Role == "assistant" && len(workMessages[0].ToolCalls) > 0 {
-			cutIdx = 1
-			// Skip all tool results that follow
-			for cutIdx < len(workMessages) && workMessages[cutIdx].Role == "tool" {
-				cutIdx++
-			}
-		} else if workMessages[0].Role == "tool" {
-			// Orphaned tool result - safe to remove
-			cutIdx = 1
-		} else {
-			cutIdx = 1
-		}
-
-		if workMessages[0].Role == "user" {
-			droppedUserMessages++
-		}
-
-		// Subtract chars being removed
-		for i := 0; i < cutIdx && i < len(workMessages); i++ {
-			totalChars -= len(workMessages[i].Content)
-		}
-
-		if cutIdx >= len(workMessages) {
-			workMessages = nil
-			break
-		}
-		workMessages = workMessages[cutIdx:]
-	}
-
-	// Build final result
-	var result []chatMessage
-	if systemMsg != nil {
-		result = append(result, *systemMsg)
-	}
-
-	// If we dropped messages, add a context note so the AI knows
-	if droppedUserMessages > 0 {
-		result = append(result, chatMessage{
-			Role:    "system",
-			Content: fmt.Sprintf("[Context note: %d earlier conversation turns were trimmed to save context space. Focus on the recent messages below.]", droppedUserMessages),
-		})
-	}
-
-	result = append(result, workMessages...)
-
-	// CRITICAL: Final validation — remove orphaned tool results.
-	// Claude/Anthropic requires every tool_result to have a matching tool_use
-	// in the immediately preceding assistant message.
-	result = removeOrphanedToolResults(result)
-
-	return result
+	sum := c.Summary()
+	return &sum, nil
 }
 
-// removeOrphanedToolResults removes tool messages whose tool_call_id
-// doesn't match any tool_call in the messages. This prevents API errors
-// like "unexpected tool_use_id found in tool_result blocks".
-func removeOrphanedToolResults(messages []chatMessage) []chatMessage {
-	// Collect all valid tool_call IDs from assistant messages
-	validToolCallIDs := make(map[string]bool)
-	for _, m := range messages {
-		if m.Role == "assistant" {
-			for _, tc := range m.ToolCalls {
-				validToolCallIDs[tc.ID] = true
+// DeleteChat stops the chat's run, waits for finalization and deletes it.
+// The ID must be a canonical UUID, so no path outside the chats directory
+// can be addressed.
+func (s *AIService) DeleteChat(id string) error {
+	if chatstore.ValidateID(id) != nil {
+		return invalidID()
+	}
+	if _, err := s.chats(); err != nil {
+		return err
+	}
+	return facadeErr(s.mgr.DeleteChat(id))
+}
+
+// DeleteChatLater hides a chat for the Undo time of the chat list (A-07);
+// DeleteChat then deletes it, RestoreChat undoes it. LDAPilot deletes chats
+// still waiting when it quits (or at the next start after a crash).
+func (s *AIService) DeleteChatLater(id string) error {
+	if chatstore.ValidateID(id) != nil {
+		return invalidID()
+	}
+	if _, err := s.chats(); err != nil {
+		return err
+	}
+	return facadeErr(s.mgr.DeleteChatLater(id))
+}
+
+// RestoreChat undoes DeleteChatLater (not_found: already deleted).
+func (s *AIService) RestoreChat(id string) error {
+	if chatstore.ValidateID(id) != nil {
+		return invalidID()
+	}
+	if _, err := s.chats(); err != nil {
+		return err
+	}
+	return facadeErr(s.mgr.RestoreChat(id))
+}
+
+// RenameChat sets a user title (never replaced by generated titles).
+func (s *AIService) RenameChat(id string, title string) error {
+	if chatstore.ValidateID(id) != nil {
+		return invalidID()
+	}
+	st, err := s.chats()
+	if err != nil {
+		return err
+	}
+	if err := st.Rename(id, title); err != nil {
+		return facadeErr(err)
+	}
+	if c, err := st.Get(id); err == nil {
+		s.emit(ai.EventChatUpdated, ai.ChatUpdatedEvent{ChatID: id, Title: c.Title, UpdatedAt: c.UpdatedAt})
+	}
+	return nil
+}
+
+// SetChatModel sets a per-chat model ("" = the configured model).
+func (s *AIService) SetChatModel(id string, model string) error {
+	if chatstore.ValidateID(id) != nil {
+		return invalidID()
+	}
+	st, err := s.chats()
+	if err != nil {
+		return err
+	}
+	model = strings.TrimSpace(model)
+	return facadeErr(st.Update(id, func(c *chatstore.Chat) error {
+		if c.ModelOverride != model {
+			c.ModelOverride = model
+			c.Calibration = nil // k resets on a model change (§7.1)
+		}
+		return nil
+	}))
+}
+
+// ExportChatMarkdown renders the transcript without hidden blocks.
+func (s *AIService) ExportChatMarkdown(id string) (string, error) {
+	if chatstore.ValidateID(id) != nil {
+		return "", invalidID()
+	}
+	st, err := s.chats()
+	if err != nil {
+		return "", err
+	}
+	c, err := st.Get(id)
+	if err != nil {
+		return "", facadeErr(err)
+	}
+	return exportMarkdown(c), nil
+}
+
+func exportMarkdown(c *chatstore.Chat) string {
+	var b strings.Builder
+	// The chat store already masked passwords typed into older chats (and
+	// the answers that repeated them); the title is masked again here for
+	// chats passed in directly.
+	fmt.Fprintf(&b, "# %s\n\n", ai.MaskPasswords(c.Title))
+	names := map[string]string{}
+	for _, m := range c.Messages {
+		for _, blk := range m.Blocks {
+			if blk.Type == ai.BlockToolUse {
+				names[blk.ID] = blk.Name
 			}
 		}
 	}
-
-	// Filter out tool results with no matching tool_call
-	var cleaned []chatMessage
-	for _, m := range messages {
-		if m.Role == "tool" {
-			if m.ToolCallID == "" || !validToolCallIDs[m.ToolCallID] {
-				continue // drop orphaned tool result
-			}
-		}
-		// Also ensure assistant messages with tool_calls have ALL their
-		// tool results present. If not, remove the tool_calls from
-		// the assistant message to avoid the API expecting results.
-		cleaned = append(cleaned, m)
-	}
-
-	// Second pass: check that every tool_call in assistant messages
-	// has a matching tool result. If not, clear the tool_calls.
-	toolResultIDs := make(map[string]bool)
-	for _, m := range cleaned {
-		if m.Role == "tool" && m.ToolCallID != "" {
-			toolResultIDs[m.ToolCallID] = true
-		}
-	}
-
-	for i, m := range cleaned {
-		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
-			allPresent := true
-			for _, tc := range m.ToolCalls {
-				if !toolResultIDs[tc.ID] {
-					allPresent = false
-					break
+	for _, m := range c.Messages {
+		var parts []string
+		for _, blk := range m.Blocks {
+			switch blk.Type {
+			case ai.BlockText:
+				if blk.Meta != nil && (blk.Meta.Kind == "context" || blk.Meta.Kind == "summary") {
+					continue
 				}
-			}
-			if !allPresent {
-				// Remove tool_calls from this assistant message
-				// and keep only the text content
-				cleaned[i].ToolCalls = nil
-			}
-		}
-	}
-
-	return cleaned
-}
-
-func (s *AIService) callAPI(messages []chatMessage, tools []toolDef) (*chatResponse, error) {
-	cfg := s.configStore.Get()
-	if cfg.URL == "" {
-		return nil, fmt.Errorf("AI provider not configured. Please set up the AI provider in the AI Chat settings.")
-	}
-
-	// Trim messages to fit within context limits
-	messages = trimMessages(messages)
-
-	model := cfg.Model
-	if model == "" {
-		switch cfg.Provider {
-		case "ollama":
-			model = "llama3.1"
-		default:
-			model = "gpt-4o"
-		}
-	}
-
-	// Build endpoint URL based on provider
-	endpoint := strings.TrimRight(cfg.URL, "/")
-	switch cfg.Provider {
-	case "ollama":
-		endpoint += "/api/chat"
-	default: // litellm, openai, etc.
-		endpoint += "/chat/completions"
-	}
-
-	reqBody := chatRequest{
-		Model:    model,
-		Messages: messages,
-	}
-	if len(tools) > 0 {
-		reqBody.Tools = tools
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	// Retry loop with exponential backoff for rate limits
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		req, err := http.NewRequestWithContext(s.ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if cfg.APIKey != "" {
-			req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-		}
-
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("API request failed: %w", err)
-		}
-
-		respBytes, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return nil, fmt.Errorf("failed to read API response: %w", err)
-		}
-
-		// Handle rate limit errors (429 Too Many Requests, 529 Overloaded)
-		if resp.StatusCode == 429 || resp.StatusCode == 529 {
-			if attempt < maxRetries {
-				// Exponential backoff: 2s, 4s, 8s
-				waitDuration := time.Duration(1<<uint(attempt+1)) * time.Second
-				// Check Retry-After header
-				if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
-					var secs int
-					if n, _ := fmt.Sscanf(retryAfter, "%d", &secs); n == 1 && secs > 0 {
-						waitDuration = time.Duration(secs) * time.Second
+				if strings.TrimSpace(blk.Text) != "" {
+					t := blk.Text
+					if m.Role == ai.RoleUser {
+						t = ai.MaskPasswords(t)
 					}
+					parts = append(parts, t)
 				}
-				if waitDuration > 30*time.Second {
-					waitDuration = 30 * time.Second
+			case ai.BlockToolUse:
+				parts = append(parts, fmt.Sprintf("*Tool call: `%s` %s*", blk.Name, string(blk.Input)))
+			case ai.BlockToolResult:
+				sum := ""
+				if blk.Meta != nil {
+					sum = blk.Meta.Summary
 				}
-				select {
-				case <-time.After(waitDuration):
-					continue // retry
-				case <-s.ctx.Done():
-					return nil, fmt.Errorf("request cancelled during rate limit backoff")
-				}
+				parts = append(parts, fmt.Sprintf("*Result of `%s`: %s*", names[blk.ToolUseID], sum))
 			}
-			return nil, fmt.Errorf("API rate limited (status %d) after %d retries. Please wait a moment and try again.", resp.StatusCode, maxRetries)
 		}
-
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBytes))
+		if len(parts) == 0 {
+			continue
 		}
-
-		var chatResp chatResponse
-		if err := json.Unmarshal(respBytes, &chatResp); err != nil {
-			return nil, fmt.Errorf("failed to parse API response: %w", err)
+		who := "User"
+		if m.Role == ai.RoleAssistant {
+			who = "Assistant"
 		}
-
-		if chatResp.Error != nil {
-			return nil, fmt.Errorf("API error: %s", chatResp.Error.Message)
-		}
-
-		return &chatResp, nil
+		fmt.Fprintf(&b, "## %s (%s)\n\n%s\n\n", who, time.UnixMilli(m.CreatedAt).UTC().Format(time.RFC3339), strings.Join(parts, "\n\n"))
 	}
+	return b.String()
+}
 
-	return nil, fmt.Errorf("API request failed after %d retries", maxRetries)
+// GetGrants returns the active "approve for this chat" grants.
+func (s *AIService) GetGrants(chatID string) ([]ai.Grant, error) {
+	s.ensure()
+	gs, err := s.mgr.Grants(chatID)
+	return gs, facadeErr(err)
+}
+
+// RevokeGrant removes a grant.
+func (s *AIService) RevokeGrant(chatID, grantID string) error {
+	s.ensure()
+	return facadeErr(s.mgr.RevokeGrant(chatID, grantID))
+}
+
+// --- runs ---
+
+// legacyChatWait bounds the blocking legacy Chat call.
+const legacyChatWait = 30 * time.Minute
+
+// Chat is the legacy blocking call: SendMessage, then wait for the run to
+// finish and return the final answer text. Approvals still go through the
+// UI events.
+func (s *AIService) Chat(chatID string, message string) (string, error) {
+	if chatstore.ValidateID(chatID) != nil {
+		return "", invalidID()
+	}
+	res, err := s.SendMessage(ai.SendRequest{ChatID: chatID, Text: message})
+	if err != nil {
+		return "", err
+	}
+	if !s.mgr.Wait(chatID, legacyChatWait) {
+		return "", &aiError{code: ai.CodeTimeout, msg: "the response did not finish in time"}
+	}
+	msgs, err := s.store.Messages(chatID, res.UserMessageID)
+	if err != nil {
+		return "", facadeErr(err)
+	}
+	var text string
+	var rerr *ai.RunError
+	for _, m := range msgs {
+		if m.Role != ai.RoleAssistant {
+			continue
+		}
+		if m.Error != nil {
+			rerr = m.Error
+		}
+		var parts []string
+		for _, b := range m.Blocks {
+			if b.Type == ai.BlockText && strings.TrimSpace(b.Text) != "" && (b.Meta == nil || b.Meta.Kind == "") {
+				parts = append(parts, b.Text)
+			}
+		}
+		if len(parts) > 0 {
+			text = strings.Join(parts, "\n\n")
+		}
+	}
+	if text == "" && rerr != nil {
+		return "", &aiError{code: rerr.Code, msg: rerr.Message}
+	}
+	return text, nil
+}
+
+// SendMessage persists the user message and starts a run.
+func (s *AIService) SendMessage(req ai.SendRequest) (ai.SendResult, error) {
+	if chatstore.ValidateID(req.ChatID) != nil {
+		return ai.SendResult{}, invalidID()
+	}
+	if _, err := s.chats(); err != nil {
+		return ai.SendResult{}, err
+	}
+	r, err := s.mgr.Send(req)
+	return r, facadeErr(err)
+}
+
+// ContinueRun continues after step_limit or truncated.
+func (s *AIService) ContinueRun(chatID string, ui ai.UIContext) (ai.SendResult, error) {
+	if _, err := s.chats(); err != nil {
+		return ai.SendResult{}, err
+	}
+	r, err := s.mgr.Continue(chatID, ui)
+	return r, facadeErr(err)
+}
+
+// RegenerateLast runs the last user turn again.
+func (s *AIService) RegenerateLast(chatID string, ui ai.UIContext) (ai.SendResult, error) {
+	if _, err := s.chats(); err != nil {
+		return ai.SendResult{}, err
+	}
+	r, err := s.mgr.Regenerate(chatID, ui)
+	return r, facadeErr(err)
+}
+
+// EditLastUserMessage replaces the last user message and runs again.
+func (s *AIService) EditLastUserMessage(chatID string, text string, ui ai.UIContext) (ai.SendResult, error) {
+	if _, err := s.chats(); err != nil {
+		return ai.SendResult{}, err
+	}
+	r, err := s.mgr.EditLast(chatID, text, ui)
+	return r, facadeErr(err)
+}
+
+// CompactChat summarizes older turns (/compact).
+func (s *AIService) CompactChat(chatID string) (ai.SendResult, error) {
+	if _, err := s.chats(); err != nil {
+		return ai.SendResult{}, err
+	}
+	r, err := s.mgr.Compact(chatID)
+	return r, facadeErr(err)
+}
+
+// StopRun stops the chat's run; it returns at once (finalization is
+// asynchronous).
+func (s *AIService) StopRun(chatID string) error {
+	s.ensure()
+	return facadeErr(s.mgr.Stop(chatID))
+}
+
+// RespondApproval answers an approval or access request.
+func (s *AIService) RespondApproval(approvalID, decision, note string) (ai.ApprovalResult, error) {
+	s.ensure()
+	r, err := s.mgr.Respond(approvalID, decision, note)
+	if err != nil {
+		return r, &aiError{code: ai.CodeBadRequest, msg: err.Error()}
+	}
+	return r, nil
+}
+
+// RevealSecret returns a generated password once (§6.7).
+func (s *AIService) RevealSecret(toolCallID string) (ai.SecretValue, error) {
+	s.ensure()
+	v, err := s.mgr.RevealSecret(toolCallID)
+	if err != nil {
+		return v, &aiError{code: "secret_gone", msg: err.Error()}
+	}
+	return v, nil
+}
+
+// GetRunState returns the running run of a chat (nil when idle).
+func (s *AIService) GetRunState(chatID string) (*ai.RunSnapshot, error) {
+	s.ensure()
+	r, err := s.mgr.RunState(chatID)
+	return r, facadeErr(err)
+}
+
+// GetContextInfo returns the context budget of a chat.
+func (s *AIService) GetContextInfo(chatID string) (ai.ContextInfo, error) {
+	if _, err := s.chats(); err != nil {
+		return ai.ContextInfo{}, err
+	}
+	ci, err := s.mgr.ContextInfo(chatID)
+	return ci, facadeErr(err)
 }

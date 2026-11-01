@@ -1,129 +1,157 @@
-# LDAPilot Docker Demo Environment
+# LDAPilot Test Lab
 
-A self-contained OpenLDAP demo environment with 300+ pre-seeded entries for testing and developing LDAPilot.
+Three directory servers for developing and testing LDAPilot, each seeded with
+realistic data and the edge cases an LDAP admin tool has to cope with.
+
+| Server | Container | Ports (host) | Base DN |
+|---|---|---|---|
+| OpenLDAP 2.4 (osixia) | `ldapilot-openldap` | 389 (StartTLS), 636 (LDAPS) | `dc=demo,dc=ldapilot,dc=local` |
+| 389 Directory Server | `ldapilot-389ds` | 4389 (StartTLS), 4636 (LDAPS) | `dc=dirsrv,dc=ldapilot,dc=lab` |
+| Samba 4 AD DC | `ldapilot-samba-ad` | 2389 (StartTLS), 2636 (LDAPS), 3268/3269 (Global Catalog), 88 (Kerberos KDC, TCP/UDP) | `DC=ad,DC=ldapilot,DC=lab` |
 
 ## Quick Start
 
 ```bash
 cd docker
-
-# Generate seed LDIF files (only needed once, or after modifying generate-seed.go)
-go run generate-seed.go
-
-# Start the OpenLDAP container
-docker compose up -d
-
-# Verify it's running
-docker compose ps
+docker compose up -d --build   # first start: ~1-2 min until Samba is provisioned and seeded
+docker compose ps              # samba-ad turns "healthy" once seeding is done
+docker compose logs seed       # OpenLDAP/389DS seed summary
+docker compose logs samba-ad | grep seed
 ```
 
-## Connection Details
+The `seed` service is a one-shot job: it seeds OpenLDAP and 389DS only while
+they are empty, so re-running `docker compose up -d` is safe. Samba seeds itself
+on first start (marker file in its volume).
 
-| Parameter       | Value                                        |
-|-----------------|----------------------------------------------|
-| Host            | `localhost`                                  |
-| LDAP Port       | `389`                                        |
-| LDAPS Port      | `636`                                        |
-| Base DN         | `dc=demo,dc=ldapilot,dc=local`              |
-| Admin DN        | `cn=admin,dc=demo,dc=ldapilot,dc=local`     |
-| Admin Password  | `admin`                                      |
-| Readonly DN     | `cn=readonly,dc=demo,dc=ldapilot,dc=local`  |
-| Readonly Pass   | `readonly`                                   |
-| TLS             | Self-signed certificate (accept in LDAPilot) |
+## Credentials
 
-## Connecting with LDAPilot
+| Server | Bind DN | Password |
+|---|---|---|
+| OpenLDAP admin | `cn=admin,dc=demo,dc=ldapilot,dc=local` | `admin` |
+| OpenLDAP read-only | `cn=readonly,dc=demo,dc=ldapilot,dc=local` | `readonly` |
+| OpenLDAP `cn=config` | `cn=admin,cn=config` | `config` |
+| OpenLDAP users | `uid=<uid>,ou=<dept>,ou=People,...` | same as the uid |
+| 389DS Directory Manager | `cn=Directory Manager` | `Admin12345` |
+| Samba AD Administrator | `Administrator@ad.ldapilot.lab` (or `LDAPILOT\Administrator`) | `LDAPilot!2026` |
+| Samba AD seeded users | `<sAMAccountName>@ad.ldapilot.lab` | `Passw0rd!2026` |
 
-1. Launch LDAPilot
-2. Click **New Connection**
-3. Fill in:
-   - **Name**: Demo OpenLDAP
-   - **Host**: localhost
-   - **Port**: 389
-   - **Bind DN**: `cn=admin,dc=demo,dc=ldapilot,dc=local`
-   - **Password**: `admin`
-   - **Base DN**: `dc=demo,dc=ldapilot,dc=local`
-4. Click **Connect**
+TLS certificates are self-signed (OpenLDAP, 389DS) or issued by a lab CA
+(Samba, exported to `samba-ad/export/ca.pem`); in LDAPilot either pick
+"Skip verification" under TLS trust, add that CA file, or use "Use as CA
+certificate" in the test result. Samba accepts simple binds over plain LDAP
+(host port 2389) for testing (`ldap server require strong auth = no`) – never
+do that in production. Password writes on AD (`unicodePwd`) need StartTLS or LDAPS.
 
-For read-only testing, use the readonly credentials instead.
+## Connecting LDAPilot
 
-## What's Included
+Host `localhost` for all three; the connection presets fill in the rest:
 
-The seed data provides a realistic directory structure:
+| Profile | Preset | Port / TLS | Bind |
+|---|---|---|---|
+| Samba AD | Active Directory | 2636 LDAPS (or 2389 + StartTLS) | `Administrator@ad.ldapilot.lab` |
+| Samba AD Global Catalog | AD Global Catalog | 3269 LDAPS (read-only) | as above |
+| Samba AD via Kerberos | Active Directory, Authentication Kerberos | 2636 | User name `Administrator`, Realm `AD.LDAPILOT.LAB`, KDC `localhost:88`, SPN `ldap/dc1.ad.ldapilot.lab` |
+| Samba AD via NTLM | Active Directory, Authentication NTLM | 2636 | User name `Administrator`, Domain `LDAPILOT` |
+| OpenLDAP | OpenLDAP | 389 (plain or StartTLS) or 636 LDAPS | `cn=admin,dc=demo,dc=ldapilot,dc=local` |
+| OpenLDAP read-only | OpenLDAP, Read-only on | 389 | `cn=readonly,dc=demo,dc=ldapilot,dc=local` |
+| 389DS | 389 Directory Server | 4389 (plain or StartTLS) or 4636 LDAPS | `cn=Directory Manager` |
+
+Kerberos needs the SPN override because the DC's service principal is
+`ldap/dc1.ad.ldapilot.lab`, not `ldap/localhost`; with a KDC set, LDAPilot
+builds the Kerberos configuration itself (TCP, no `krb5.conf` needed). On a
+plain connection LDAPilot asks before a cleartext password crosses the wire.
+
+## Password and Lockout Policies
+
+| Server | Policy | Lockout | Must change |
+|---|---|---|---|
+| OpenLDAP | ppolicy `cn=default-ppolicy,ou=Policies` (min. length 8, history 5, max. age 90 days; the overlay hashes cleartext `userPassword` values) | after 3 failed binds, **until an admin unlocks** | `pwdMustChange: TRUE` (after an admin reset) |
+| 389DS | global policy (max. age 90 days) | after 3 failed binds, **until an admin unlocks** (`passwordUnlock: off`) | `passwordMustChange: on` |
+| Samba AD | domain policy + PSOs: `PSO-Admins` (`GG-IT-Admins`: min. length 16, history 24), `PSO-Lockout-Test` (`GG-Lockout-Test`) | **only** members of `GG-Lockout-Test` (`test.locked`): 3 failures, 10 minutes; the domain itself has no lockout threshold | `pwdLastSet=0` |
+
+Only ever fail binds with accounts you created yourself: a locked OpenLDAP or
+389DS account stays locked until an administrator unlocks it.
+
+## OpenLDAP and 389 Directory Server
+
+Both get the same data from `seed/*.ldif` (389DS with the suffix rewritten):
 
 ```
-dc=demo,dc=ldapilot,dc=local
-├── ou=People (~200 users)
-│   ├── ou=Engineering (55 users)
-│   ├── ou=Sales (35 users)
-│   ├── ou=Management (15 users)
-│   ├── ou=HR (20 users)
-│   ├── ou=IT (35 users)
-│   ├── ou=Finance (20 users)
-│   └── ou=Contractors (20 users)
-├── ou=Groups (~50 groups)
-│   ├── ou=Teams (20 team groups)
-│   ├── ou=Roles (11 role groups, including nested)
-│   ├── ou=Distribution (10 mailing lists, one with all users)
-│   └── ou=Security (10 security groups, including nested)
-├── ou=Services (16 service accounts)
-├── ou=Devices (15 device entries)
-└── ou=Policies (8 policy entries)
+<base>
+├── ou=People (~200 inetOrgPerson users in 7 department OUs, ~40 with posixAccount)
+├── ou=Groups (~50 groupOfNames: teams, roles, distribution, nested security groups)
+├── ou=Services (service accounts) · ou=Devices · ou=Policies
 ```
 
-### Notable Test Entries
+Edge cases: a group with all ~200 users, nested groups, DNs with `,` `'` `+`,
+umlauts (base64 in LDIF), a 1000+ character description, multi-valued
+attributes and a `jpegPhoto`.
 
-- **Large group**: `dl-all-employees` has all ~200 users as members
-- **Near-empty group**: `grp-legacy-system` has only 1 member
-- **Nested groups**: `role-all-access` and `sec-all-security` contain other groups as members
-- **Special characters in DN**: `Meier, Dr. Hans-Peter` (comma), `Patrick O'Brien` (apostrophe), `C++ Build Service` (plus)
-- **Very long description**: `policy-data-governance` has a 1000+ character description
-- **UTF-8/German umlauts**: Entries with base64-encoded umlauts (ue, ae, oe, ss)
-- **Multi-valued attributes**: `multi.value` user has 3 emails, 3 phones, 3 descriptions
-- **POSIX users**: ~40 users have posixAccount overlay (uidNumber, gidNumber, homeDirectory, loginShell)
-- **Binary attribute**: `photo.test` user has a jpegPhoto attribute
+Server specifics added by `seed-ldap.sh`:
 
-## phpLDAPadmin (Optional)
+- **OpenLDAP**: memberOf overlay reconfigured for `groupOfNames`/`member`
+  (osixia ships it for `groupOfUniqueNames`), refint, **ppolicy** overlay with
+  `cn=default-ppolicy,ou=Policies` (see the policy table above). The first user
+  in `ou=Contractors` is locked (`pwdAccountLockedTime`), the second has
+  `pwdReset: TRUE`.
+- **389DS**: memberOf and referential integrity plugins, global password policy
+  with lockout, a **managed role** and a **filtered role**, a **pointer CoS**
+  (virtual `postalAddress` below `ou=People`), one user in `ou=Sales` with
+  `nsAccountLock: true` and the next one locked by failed binds.
 
-To also start the phpLDAPadmin web UI:
+## Samba Active Directory
+
+Realm `AD.LDAPILOT.LAB`, NetBIOS `LDAPILOT`, schema 2019, functional level 2016.
+Test data lives below `OU=LDAPilot` (generated by `samba-ad/seed.py`, orchestrated
+by `samba-ad/seed.sh`):
+
+```
+OU=LDAPilot
+├── OU=Users / Berlin, Hamburg, München, Köln   ~80 users, manager chain, phone/address,
+│                                               RFC2307 attributes for IT/Engineering
+├── OU=Groups / Departments, Locations, Resources, Distribution, Admin
+├── OU=Service Accounts   SPNs (kerberoastable), constrained delegation, adm.mertens (Domain/Enterprise Admins)
+├── OU=Computers / Workstations, Laptops, Servers   OS attributes, managedBy, disabled + EOL machines
+├── OU=Contacts           external contacts
+├── OU=Disabled Users     former employees
+├── OU=Special Cases      one account per edge case (see below)
+├── OU=Bulk               1500 contacts (more than AD's MaxPageSize of 1000)
+├── OU=Empty OU
+└── OU=Deep Structure     8 nested OUs with a user at the bottom
+```
+
+**Account states** in `OU=Special Cases`: disabled, expired, expiring in 5 days,
+must change password (`pwdLastSet=0`), password never expires, **locked out**
+(`test.locked`, via `PSO-Lockout-Test`), smartcard required, no Kerberos
+pre-auth, not delegated, unconstrained delegation, never logged on, photo
+(`thumbnailPhoto` + `jpegPhoto`), multi-valued attributes, long description.
+
+**DN escaping**: `Schmidt, Anna`, `C++ Developer`, `#Hash User`,
+`Quote "Q" User`, `Semi;Colon <Angle>`, `Back\Slash`, `Jürgen Weiß-Özdemir`,
+`Zoë Ångström 日本`.
+
+**Groups**: all six scope/type combinations (global/domain local/universal ×
+security/distribution), AGDLP nesting, a 3-level nesting chain, a **circular**
+membership (`GG-Circular-A` ⇄ `GG-Circular-B`), an empty group, a large group,
+`managedBy`.
+
+**Other AD features**: two fine-grained password policies (PSOs), an ACL
+delegation (`GG-Helpdesk` may reset passwords below `OU=Users`), a GPO linked to
+two OUs (`gPLink`), a KDS root key and a gMSA (`gmsa-web$`), tombstones in
+`CN=Deleted Objects`, real logons (`lastLogon`, `logonCount`) and failed logons
+(`badPwdCount`). The AD Recycle Bin is not enabled, so deleted objects are
+tombstones: LDAPilot restores them with the attributes a tombstone keeps and
+lists what was lost.
+
+## Managing the Lab
 
 ```bash
-docker compose --profile admin up -d
+docker compose down              # stop, keep data
+docker compose down -v           # stop and delete all data (next start re-seeds)
+docker compose --profile admin up -d phpldapadmin   # phpLDAPadmin on http://localhost:8080
 ```
 
-Then open http://localhost:8080 and log in with the admin credentials.
-
-## Managing the Container
-
-```bash
-# Stop the container (data persists in volumes)
-docker compose down
-
-# Stop and remove all data (fresh start)
-docker compose down -v
-
-# View logs
-docker compose logs -f openldap
-
-# Restart
-docker compose restart
-```
-
-## Regenerating Seed Data
-
-To modify the seed data:
-
-1. Edit `generate-seed.go`
-2. Run `go run generate-seed.go`
-3. Remove volumes and restart: `docker compose down -v && docker compose up -d`
-
-The LDIF files in `seed/` are only loaded on first container start. To reload, you must remove the volumes.
-
-## Seed Files
-
-| File                  | Contents                                          |
-|-----------------------|---------------------------------------------------|
-| `seed/01-base.ldif`   | OU hierarchy (manually created)                  |
-| `seed/02-users.ldif`  | ~200 inetOrgPerson users                         |
-| `seed/03-groups.ldif` | ~50 groupOfNames groups                          |
-| `seed/04-services.ldif` | Service accounts, devices, policies             |
-| `seed/05-extended.ldif` | Edge cases: special chars, umlauts, long values |
+To change the OpenLDAP/389DS seed, edit `generate-seed.go`, run
+`go run generate-seed.go`, then `docker compose down -v && docker compose up -d`.
+For Samba, edit `samba-ad/seed.py` / `seed.sh`, then
+`docker compose down -v && docker compose up -d --build`.
