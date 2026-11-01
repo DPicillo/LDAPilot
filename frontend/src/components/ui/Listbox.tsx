@@ -20,7 +20,7 @@ import { Portal, useAnchoredPosition, useOverlayZ } from './layer'
 import { useDismiss } from './useDismiss'
 import { Input } from './Input'
 import { Spinner } from './Spinner'
-import { domId } from './dn'
+import { domId } from './dnParse'
 
 export interface OptionState {
   active: boolean

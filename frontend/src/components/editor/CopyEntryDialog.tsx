@@ -43,7 +43,7 @@ import { InlineAlert } from '../ui/InlineAlert'
 import { Spinner } from '../ui/Spinner'
 import { Dn } from '../ui/Dn'
 import { ContainerPicker, type TargetStatus } from '../lifecycle/ContainerPicker'
-import { rememberTarget } from '../lifecycle/containerPicker'
+import { rememberTarget } from '../lifecycle/containerPickerModel'
 import { emitEntryCreated } from '../lifecycle/events'
 import { summarizeCreate, type CreateStep } from '../lifecycle/newEntry'
 
