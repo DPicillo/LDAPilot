@@ -142,7 +142,7 @@ LDAPilot is an open-source alternative to classic LDAP clients such as Apache Di
 
 ### Pre-built Binaries
 
-Releases are built by the [CI pipeline](https://github.com/DPicillo/LDAPilot/actions/workflows/ci.yml) for all platforms when the release is made (from the next release on; [v0.5.0](https://github.com/DPicillo/LDAPilot/releases/tag/v0.5.0) has the portable Windows exe and the Linux WebKitGTK 4.0 build — on macOS build v0.5.0 from source):
+Every [release](https://github.com/DPicillo/LDAPilot/releases) has builds for all platforms, made by the [CI pipeline](https://github.com/DPicillo/LDAPilot/actions/workflows/ci.yml) when the release is made:
 
 | Platform | File | Notes |
 |---|---|---|

@@ -193,6 +193,17 @@ jobs:
             on { print }
           ' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "LDAPilot $TAG" > notes.md
+          cat >> notes.md <<'NOTES'
+
+          ### Downloads
+          | Platform | File | Notes |
+          |---|---|---|
+          | **Windows** (amd64) | `LDAPilot-windows-amd64-installer.exe` (installer) or `LDAPilot-windows-amd64.exe` (portable) | Needs the WebView2 runtime (part of Windows 10/11) |
+          | **macOS** (Apple silicon + Intel) | `LDAPilot-macos-universal.zip` | Not notarized: open the app the first time with right-click → Open |
+          | **Linux** (amd64) | `LDAPilot-linux-amd64` (WebKitGTK 4.0: Ubuntu 22.04, Debian 12) or `LDAPilot-linux-amd64-webkit2_41` (WebKitGTK 4.1: Ubuntu 24.04+, Debian 13+) | `chmod +x` after the download |
+
+          Checksums: `SHA256SUMS.txt`. Full changelog: [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md)
+          NOTES
           gh release create "$TAG" --verify-tag --title "LDAPilot $TAG" --notes-file notes.md
 
       - name: Upload the builds and SHA256SUMS.txt
