@@ -65,6 +65,7 @@ func contractViews() map[string]any {
 		"RunSnapshot":        &ai.RunSnapshot{},
 		"ContextInfo":        &ai.ContextInfo{},
 		"ModelDiscovery":     &ai.ModelDiscovery{},
+		"ClaudeCodeHosts":    &ai.ClaudeCodeHosts{},
 		"ProviderTestResult": &ai.ProviderTestResult{},
 		"ApprovalResult":     &ai.ApprovalResult{},
 		"SecretValue":        &ai.SecretValue{},

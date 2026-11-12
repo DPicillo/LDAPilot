@@ -191,8 +191,11 @@ func (s *loopState) setup() *ai.RunError {
 // discovery when no model is configured, the model's capabilities and
 // context window. It runs after ai:run_started, so Stop cancels it.
 func (s *loopState) setupProvider() *ai.RunError {
-	if s.cc != nil || s.prov == nil {
-		return nil // Claude Code: set up completely by setup()
+	if s.cc != nil {
+		return s.resolveClaudeCLI() // Claude Code: the rest was set up by setup()
+	}
+	if s.prov == nil {
+		return nil
 	}
 	prov := s.prov
 	if s.model == "" {

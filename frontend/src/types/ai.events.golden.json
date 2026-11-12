@@ -253,7 +253,14 @@
         "configuredModel": "x",
         "effectiveModel": "x",
         "modelMissing": true,
-        "version": "x"
+        "version": "x",
+        "claudeCode": {
+          "runtime": "x",
+          "path": "x",
+          "distro": "x",
+          "wslVersion": 1,
+          "envSource": "x"
+        }
       }
     },
     "ai:run_started": {
@@ -458,6 +465,9 @@
         "x": "x"
       },
       "claudeCode": {
+        "runtime": "x",
+        "wslDistro": "x",
+        "wslPath": "x",
         "path": "x",
         "model": "x",
         "maxBudgetUsd": 1.5,
@@ -627,6 +637,21 @@
       ],
       "readOnly": true
     },
+    "ClaudeCodeHosts": {
+      "os": "x",
+      "wsl": {
+        "available": true,
+        "error": "x",
+        "distros": [
+          {
+            "name": "x",
+            "default": true,
+            "state": "x",
+            "version": 1
+          }
+        ]
+      }
+    },
     "ContextInfo": {
       "contextWindow": 1,
       "maxOutput": 1,
@@ -788,7 +813,14 @@
       "configuredModel": "x",
       "effectiveModel": "x",
       "modelMissing": true,
-      "version": "x"
+      "version": "x",
+      "claudeCode": {
+        "runtime": "x",
+        "path": "x",
+        "distro": "x",
+        "wslVersion": 1,
+        "envSource": "x"
+      }
     },
     "ProviderTestResult": {
       "ok": true,

@@ -29,7 +29,7 @@ func TestBuildInvocation(t *testing.T) {
 	token := "tok-0123456789abcdef"
 	env := []string{"PATH=/usr/bin", "HOME=/home/u", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODE_SESSION_ID=x", "CLAUDE_PID=7",
 		"CLAUDE_EFFORT=high", "ANTHROPIC_API_KEY=sk-secret", "HTTPS_PROXY=http://proxy:3128", "MCP_TOOL_TIMEOUT=5", "ENABLE_TOOL_SEARCH=true"}
-	inv, err := BuildInvocation(RunOptions{Path: "/usr/bin/claude", WorkDir: work, FilesDir: files, MCPURL: "http://127.0.0.1:4242/mcp", MCPToken: token,
+	inv, err := BuildInvocation(RunOptions{CLI: CLI{Path: "/usr/bin/claude"}, WorkDir: work, FilesDir: files, MCPURL: "http://127.0.0.1:4242/mcp", MCPToken: token,
 		Tools: []string{"search_ldap", "get_entry"}, SystemPrompt: "SYSTEM", Prompt: "Which accounts are locked?", Model: "haiku", MaxBudgetUSD: 0.25, Environ: env})
 	if err != nil {
 		t.Fatal(err)

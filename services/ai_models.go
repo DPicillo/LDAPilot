@@ -27,6 +27,10 @@ const (
 	claudeCodeWorkDir  = "claude-code-workdir"
 	claudeCodeFilesDir = "claude-code-runs"
 	discoveryCallLimit = 20 * time.Second
+	// claudeCodeDiscoveryLimit bounds the Claude Code discovery: finding the
+	// CLI in WSL may start WSL (cold start), then --version and initialize
+	// run there with their own limits.
+	claudeCodeDiscoveryLimit = ccResolveLimit + 2*claudecode.WSLCommandTimeout
 )
 
 // aiModels holds the discovery state of the AI facade.
@@ -120,11 +124,13 @@ func (s *AIService) DiscoverModels(cfg config.AIConfig, refresh bool) (ai.ModelD
 
 func (s *AIService) discoverModels(parent context.Context, cfg config.AIConfig, refresh bool) (ai.ModelDiscovery, error) {
 	s.models.init()
-	ctx, cancel := context.WithTimeout(parent, discoveryCallLimit)
-	defer cancel()
 	if cfg.Engine == "claudecode" {
+		ctx, cancel := context.WithTimeout(parent, claudeCodeDiscoveryLimit)
+		defer cancel()
 		return s.discoverClaudeCode(ctx, cfg, refresh), nil
 	}
+	ctx, cancel := context.WithTimeout(parent, discoveryCallLimit)
+	defer cancel()
 	if cfg.Provider == "" {
 		return ai.ModelDiscovery{Models: []ai.ModelInfo{}, Error: "No AI provider is configured."}, nil
 	}
@@ -234,34 +240,43 @@ func normFlavor(c config.AIConfig) string {
 }
 
 // discoverClaudeCode runs the free initialize request of the CLI (cached
-// per CLI path and version; re-detected when `claude --version` changes).
+// per CLI and version; re-detected when `claude --version` changes). The
+// CLI may be native or inside a WSL distribution; all calls go there.
 func (s *AIService) discoverClaudeCode(ctx context.Context, cfg config.AIConfig, refresh bool) ai.ModelDiscovery {
-	path, err := s.findClaude(cfg.ClaudeCode.Path)
+	cli, err := s.resolveClaudeCode(ctx, cfg.ClaudeCode, refresh)
 	if err != nil {
-		return ai.ModelDiscovery{Provider: "claudecode", Models: claudecode.FallbackModels(), Error: err.Error(), EffectiveModel: orDefault(cfg.ClaudeCode.Model)}
+		d := ai.ModelDiscovery{Provider: "claudecode", Models: claudecode.FallbackModels(), Error: err.Error(), EffectiveModel: orDefault(cfg.ClaudeCode.Model)}
+		if ctx.Err() != nil {
+			d.Error = "The search for Claude Code was stopped or took too long."
+			if errors.Is(ctx.Err(), context.Canceled) {
+				d.ErrorCode = ai.CodeCancelled
+			}
+		}
+		return d
 	}
-	version, verr := claudecode.Version(ctx, path, nil)
+	version, verr := claudecode.Version(ctx, cli, nil)
 	workDir := ""
 	if dir, err := config.ConfigDir(); err == nil {
 		workDir = filepath.Join(dir, claudeCodeWorkDir)
 		_ = os.MkdirAll(workDir, 0o700)
 	}
 	if err := s.models.acquire(ctx); err != nil {
-		d := discoveryStopped("claudecode", path, err)
+		d := discoveryStopped("claudecode", cli.Describe(), err)
 		d.Models = claudecode.FallbackModels()
+		d.ClaudeCode = claudeCodeLocation(cli)
 		return d
 	}
 	defer s.models.release()
 	d := provider.Discover(ctx, s.models.cache, provider.DiscoverRequest{
-		CacheKey:    "claudecode|" + path,
+		CacheKey:    "claudecode|" + cli.Key(),
 		ProviderKey: "claudecode",
-		BaseURL:     path,
+		BaseURL:     cli.Describe(),
 		Configured:  orDefault(cfg.ClaudeCode.Model),
 		Kind:        "claudecode",
 		Refresh:     refresh,
 		Version:     version,
 		List: func(ctx context.Context) ([]ai.ModelInfo, error) {
-			res, err := claudecode.DiscoverModels(ctx, claudecode.DiscoverOptions{Path: path, WorkDir: workDir, UseAnthropicEnv: cfg.ClaudeCode.UseAnthropicEnv})
+			res, err := claudecode.DiscoverModels(ctx, claudecode.DiscoverOptions{CLI: cli, WorkDir: workDir, UseAnthropicEnv: cfg.ClaudeCode.UseAnthropicEnv})
 			if err != nil {
 				return nil, err
 			}
@@ -275,6 +290,7 @@ func (s *AIService) discoverClaudeCode(ctx context.Context, cfg config.AIConfig,
 	if verr != nil {
 		d.Warnings = append(d.Warnings, verr.Error())
 	}
+	d.ClaudeCode = claudeCodeLocation(cli)
 	return d
 }
 
@@ -351,14 +367,17 @@ func (s *AIService) backgroundDiscovery(startup bool) {
 func endpointChanged(a, b config.AIConfig) bool {
 	return a.Engine != b.Engine || a.Provider != b.Provider || normFlavor(a) != normFlavor(b) ||
 		config.NormalizeAIURL(a.Provider, a.URL) != config.NormalizeAIURL(b.Provider, b.URL) ||
-		a.HasKey != b.HasKey || a.ClaudeCode.Path != b.ClaudeCode.Path
+		a.HasKey != b.HasKey || ccCacheKey(a.ClaudeCode) != ccCacheKey(b.ClaudeCode)
 }
 
 // claudeCodeEnv wires the Claude Code engine: a dedicated empty working
 // directory and a private directory for per-run files under the config
 // directory, and the model fallback from the cached discovery.
 func (s *AIService) claudeCodeEnv() *agent.ClaudeCodeEnv {
-	env := &agent.ClaudeCodeEnv{Launcher: s.ccLauncher, FindCLI: s.ccFindCLI, ResolveModel: s.resolveClaudeModel}
+	env := &agent.ClaudeCodeEnv{Launcher: s.ccLauncher, ResolveModel: s.resolveClaudeModel, Forget: s.forgetClaudeCode,
+		Resolve: func(ctx context.Context, cc config.ClaudeCodeConfig) (claudecode.CLI, error) {
+			return s.resolveClaudeCode(ctx, cc, false)
+		}}
 	if dir, err := config.ConfigDir(); err == nil {
 		env.WorkDir = filepath.Join(dir, claudeCodeWorkDir)
 		env.FilesDir = filepath.Join(dir, claudeCodeFilesDir)
@@ -366,24 +385,24 @@ func (s *AIService) claudeCodeEnv() *agent.ClaudeCodeEnv {
 	return env
 }
 
-func (s *AIService) findClaude(explicit string) (string, error) {
-	if s.ccFindCLI != nil {
-		return s.ccFindCLI(explicit)
-	}
-	return claudecode.FindCLI(explicit)
-}
-
 // resolveClaudeModel keeps the configured model when the last discovery
 // lists it (by alias or resolved model ID) and otherwise falls back to the
 // CLI default with a notice (Addendum A). Without a cached list the
-// configured model is used as is.
+// configured model is used as is. This runs before ai:run_started, so it
+// waits for the CLI search only briefly (a native CLI is found at once; a
+// search in WSL goes on and the run waits for it after ai:run_started).
 func (s *AIService) resolveClaudeModel(cfg config.AIConfig, configured string) (string, string) {
 	s.models.init()
-	path, err := s.findClaude(cfg.ClaudeCode.Path)
-	if err != nil {
-		return configured, ""
+	cli, ok := s.cachedClaudeCode(cfg.ClaudeCode)
+	if !ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		defer cancel()
+		var err error
+		if cli, err = s.resolveClaudeCode(ctx, cfg.ClaudeCode, false); err != nil {
+			return configured, ""
+		}
 	}
-	e, ok := s.models.cache.Get("claudecode|" + path)
+	e, ok := s.models.cache.Get("claudecode|" + cli.Key())
 	if !ok || len(e.Models) == 0 {
 		return configured, ""
 	}

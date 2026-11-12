@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dpicillo/LDAPilot/internal/ai/mcprelay"
 )
 
 // MCPServerName is the server name in --mcp-config; Claude Code names the
@@ -31,17 +33,21 @@ const MCPToolTimeoutMs = 900000
 
 // Invocation is everything needed to start one `claude -p` run.
 type Invocation struct {
-	Path  string   // CLI path
+	Path  string   // program: the CLI, or wsl.exe in WSL mode
 	Args  []string // without the path
 	Env   []string
 	Dir   string // working directory (dedicated, empty)
 	Stdin string // the prompt (written to stdin, then stdin is closed)
+	// WSL is the distribution the CLI runs in (nil = native); Stop signals
+	// the CLI there.
+	WSL *WSLTarget
 
 	// Informational, for fakes and diagnostics.
 	MCPURL      string
 	MCPToken    string
 	MCPConfig   string // path of the --mcp-config file
 	SystemFile  string // path of the --append-system-prompt-file file
+	RelayFile   string // WSL: path of the relay file (URL and token)
 	Model       string
 	ResumeID    string
 	AllowedTool []string
@@ -49,7 +55,7 @@ type Invocation struct {
 
 // RunOptions configure BuildInvocation.
 type RunOptions struct {
-	Path            string
+	CLI             CLI
 	WorkDir         string // cwd of the CLI: a dedicated empty directory
 	FilesDir        string // private (0700) directory for this run's files
 	MCPURL          string
@@ -73,6 +79,22 @@ func MCPConfigJSON(url, token string) ([]byte, error) {
 		"type":       "http",
 		"url":        url,
 		"headers":    map[string]string{"Authorization": "Bearer " + token},
+		"timeout":    MCPToolTimeoutMs,
+		"alwaysLoad": true,
+	}}}
+	return json.Marshal(doc)
+}
+
+// RelayMCPConfigJSON is the --mcp-config document of a run in WSL: one
+// stdio server, LDAPilot.exe in relay mode (command = its path inside the
+// distribution) reading URL and token from relayFile (a Windows path, read
+// by the relay, a Windows process). Like MCPConfigJSON it loads the tools up
+// front and sets the tool timeout above the approval wait.
+func RelayMCPConfigJSON(command, relayFile string) ([]byte, error) {
+	doc := map[string]any{"mcpServers": map[string]any{MCPServerName: map[string]any{
+		"type":       "stdio",
+		"command":    command,
+		"args":       []string{mcprelay.Flag, relayFile},
 		"timeout":    MCPToolTimeoutMs,
 		"alwaysLoad": true,
 	}}}
@@ -216,21 +238,44 @@ func writePrivate(path string, data []byte) error {
 	return f.Close()
 }
 
+// hostPathInWSL maps a path of this host to the path the CLI sees inside
+// the distribution (a variable for tests on non-Windows hosts, whose temp
+// paths are no drive paths).
+var hostPathInWSL = WindowsToWSLPath
+
 // BuildInvocation writes the run's private files (MCP config with the
-// token, system prompt) into o.FilesDir and returns the invocation. The
-// caller removes o.FilesDir when the run ends.
+// token, system prompt; in WSL the relay file with the token instead) into
+// o.FilesDir and returns the invocation. The caller removes o.FilesDir when
+// the run ends.
 func BuildInvocation(o RunOptions) (*Invocation, error) {
-	if o.Path == "" {
+	if o.CLI.Path == "" {
 		return nil, errors.New("Claude Code CLI not found")
 	}
 	if o.FilesDir == "" {
 		return nil, errors.New("no directory for Claude Code run files")
 	}
-	cfg, err := MCPConfigJSON(o.MCPURL, o.MCPToken)
+	w := o.CLI.WSL
+	mcpPath := filepath.Join(o.FilesDir, "mcp.json")
+	relayPath := ""
+	var cfg []byte
+	var err error
+	if w == nil {
+		cfg, err = MCPConfigJSON(o.MCPURL, o.MCPToken)
+	} else {
+		relayPath = filepath.Join(o.FilesDir, "relay.json")
+		rc, _ := json.Marshal(mcprelay.Config{URL: o.MCPURL, Token: o.MCPToken})
+		if err := writePrivate(relayPath, rc); err != nil {
+			return nil, fmt.Errorf("cannot write the relay file: %w", err)
+		}
+		relayCmd, perr := hostPathInWSL(w.Relay, w.MountRoot)
+		if perr != nil {
+			return nil, fmt.Errorf("cannot run LDAPilot's tool relay in WSL: %w", perr)
+		}
+		cfg, err = RelayMCPConfigJSON(relayCmd, relayPath)
+	}
 	if err != nil {
 		return nil, err
 	}
-	mcpPath := filepath.Join(o.FilesDir, "mcp.json")
 	if err := writePrivate(mcpPath, cfg); err != nil {
 		return nil, fmt.Errorf("cannot write the MCP config: %w", err)
 	}
@@ -250,7 +295,20 @@ func BuildInvocation(o RunOptions) (*Invocation, error) {
 			return nil, err
 		}
 	}
-	return &Invocation{Path: o.Path, Args: BuildArgs(o, mcpPath, sysPath), Env: RunEnv(env, o.UseAnthropicEnv), Dir: o.WorkDir, Stdin: o.Prompt,
-		MCPURL: o.MCPURL, MCPToken: o.MCPToken, MCPConfig: mcpPath, SystemFile: sysPath, Model: o.Model, ResumeID: o.ResumeSessionID,
+	// The CLI reads the files under the paths it sees.
+	mcpArg, sysArg := mcpPath, sysPath
+	if w != nil {
+		if mcpArg, err = hostPathInWSL(mcpPath, w.MountRoot); err != nil {
+			return nil, fmt.Errorf("cannot pass the run files to WSL: %w", err)
+		}
+		if sysPath != "" {
+			if sysArg, err = hostPathInWSL(sysPath, w.MountRoot); err != nil {
+				return nil, fmt.Errorf("cannot pass the run files to WSL: %w", err)
+			}
+		}
+	}
+	prog, args, cenv := o.CLI.command(BuildArgs(o, mcpArg, sysArg), env, o.UseAnthropicEnv, true, true)
+	return &Invocation{Path: prog, Args: args, Env: cenv, Dir: o.WorkDir, Stdin: o.Prompt, WSL: w,
+		MCPURL: o.MCPURL, MCPToken: o.MCPToken, MCPConfig: mcpPath, SystemFile: sysPath, RelayFile: relayPath, Model: o.Model, ResumeID: o.ResumeSessionID,
 		AllowedTool: AllowedTools(o.Tools)}, nil
 }

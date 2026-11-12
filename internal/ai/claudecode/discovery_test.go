@@ -129,7 +129,7 @@ sleep 30
 `)
 	t.Setenv("CLAUDECODE", "1")
 	start := time.Now()
-	res, err := DiscoverModels(context.Background(), DiscoverOptions{Path: cli, WorkDir: t.TempDir()})
+	res, err := DiscoverModels(context.Background(), DiscoverOptions{CLI: CLI{Path: cli}, WorkDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ sleep 30
 
 func TestDiscoverModelsFallback(t *testing.T) {
 	cli := fakeCLI(t, "echo 'boom: not logged in' >&2; exit 1\n")
-	res, err := DiscoverModels(context.Background(), DiscoverOptions{Path: cli})
+	res, err := DiscoverModels(context.Background(), DiscoverOptions{CLI: CLI{Path: cli}})
 	if err == nil || !strings.Contains(err.Error(), "not logged in") {
 		t.Fatalf("err %v", err)
 	}
@@ -153,7 +153,7 @@ func TestDiscoverModelsFallback(t *testing.T) {
 	}
 	slow := fakeCLI(t, "sleep 30\n")
 	start := time.Now()
-	_, err = DiscoverModels(context.Background(), DiscoverOptions{Path: slow, Timeout: 300 * time.Millisecond})
+	_, err = DiscoverModels(context.Background(), DiscoverOptions{CLI: CLI{Path: slow}, Timeout: 300 * time.Millisecond})
 	if err == nil || time.Since(start) > 5*time.Second {
 		t.Fatalf("timeout err %v after %v", err, time.Since(start))
 	}
@@ -161,7 +161,7 @@ func TestDiscoverModelsFallback(t *testing.T) {
 
 func TestVersionAndFind(t *testing.T) {
 	cli := fakeCLI(t, `echo "2.1.308 (Claude Code)"`+"\n")
-	v, err := Version(context.Background(), cli, nil)
+	v, err := Version(context.Background(), CLI{Path: cli}, nil)
 	if err != nil || v != "2.1.308" {
 		t.Fatalf("%q %v", v, err)
 	}

@@ -132,7 +132,7 @@ LDAPilot is an open-source alternative to classic LDAP clients such as Apache Di
 
 ### 🤖 AI Assistant
 - **Chat about your directories** — "Why can't this user log in?", "Which groups is deep.user in?", "Compare the users of both servers"; the assistant searches, counts, reads entries, resolves memberships and account states on every connected directory
-- **Providers** — any OpenAI-compatible API (OpenAI, LiteLLM, vLLM, LM Studio, Ollama `/v1`), native **Ollama**, **Anthropic**, and the **Claude Code headless engine** (`claude -p` with a private, per-run MCP server)
+- **Providers** — any OpenAI-compatible API (OpenAI, LiteLLM, vLLM, LM Studio, Ollama `/v1`), native **Ollama**, **Anthropic**, and the **Claude Code headless engine** (`claude -p` with a private, per-run MCP server; on Windows also a Claude Code installed only in WSL)
 - **Model auto-detection** from the provider (context window and tool support included); local models stay on your machine
 - **Approvals** — per-connection access (none / ask / read / write); every change is shown as an exact diff with decoded values and needs your approval; read-only profiles always refuse; writes are audited "via AI"
 - **Privacy** — secret attributes are never read, a redaction list for your own attributes, passwords typed into the chat are never sent, generated passwords are shown only to you; chats are stored encrypted
@@ -236,7 +236,7 @@ LDAPilot/
 │   ├── ldap/           # LDAP client: connect/auth/TLS, search, CRUD, accounts, passwords,
 │   │                   #   membership, deleted objects, schema, referrals
 │   ├── ai/             # AI harness: providers, agent loop, tools, permissions, encrypted chats,
-│   │                   #   Claude Code engine and its MCP server
+│   │                   #   Claude Code engine, its MCP server and the WSL relay
 │   ├── ldif/           # LDIF / CSV import and export, RFC 2849 change records
 │   ├── models/         # Data types shared with the frontend
 │   └── config/         # Profiles, encryption, AI config, audit log, paths

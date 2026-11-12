@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -85,12 +86,24 @@ type AccessEntry struct {
 
 // ClaudeCodeConfig configures the Claude Code CLI engine.
 type ClaudeCodeConfig struct {
+	// Runtime is where the CLI runs (Windows only; elsewhere always
+	// natively): "" = automatic (a Windows CLI wins, else WSL), "windows",
+	// "wsl".
+	Runtime         string  `json:"runtime,omitempty"`
+	WSLDistro       string  `json:"wslDistro,omitempty"`       // WSL: "" = the default distribution
+	WSLPath         string  `json:"wslPath,omitempty"`         // WSL: Linux path of the CLI, "" = auto-detect
 	Path            string  `json:"path,omitempty"`            // "" = auto-detect
 	Model           string  `json:"model,omitempty"`           // "" = the CLI's default
 	MaxBudgetUSD    float64 `json:"maxBudgetUsd,omitempty"`    // per message; 0 = DefaultClaudeCodeBudgetUSD
 	AllowResume     bool    `json:"allowResume,omitempty"`     // keep Claude Code's own (unencrypted) session copy
 	UseAnthropicEnv bool    `json:"useAnthropicEnv,omitempty"` // pass ANTHROPIC_* variables to the CLI
 }
+
+// Claude Code runtimes (ClaudeCodeConfig.Runtime).
+const (
+	ClaudeCodeRuntimeWindows = "windows"
+	ClaudeCodeRuntimeWSL     = "wsl"
+)
 
 // Defaults and limits used by validation and by the harness.
 const (
@@ -643,6 +656,7 @@ var (
 	redactEntryRe = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9-]*\*?|[0-9]+(\.[0-9]+)+)$`)
 	keepAliveRe   = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?(ms|s|m|h)?$`)
 	ccModelRe     = regexp.MustCompile(`^[A-Za-z0-9._:\[\]/-]{0,128}$`)
+	wslDistroRe   = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 )
 
 func validAccessLevel(l string) bool {
@@ -788,6 +802,17 @@ func ValidateAIConfig(cfg AIConfig, hasKey bool) error {
 	}
 	if cc.Path != "" && !filepath.IsAbs(cc.Path) {
 		return fmt.Errorf("the Claude Code path must be absolute")
+	}
+	switch cc.Runtime {
+	case "", ClaudeCodeRuntimeWindows, ClaudeCodeRuntimeWSL:
+	default:
+		return fmt.Errorf("invalid Claude Code runtime %q", cc.Runtime)
+	}
+	if cc.WSLDistro != "" && !wslDistroRe.MatchString(cc.WSLDistro) {
+		return fmt.Errorf("invalid WSL distribution name %q", cc.WSLDistro)
+	}
+	if cc.WSLPath != "" && (!strings.HasPrefix(cc.WSLPath, "/") || len(cc.WSLPath) > 1024 || strings.ContainsFunc(cc.WSLPath, unicode.IsControl)) {
+		return fmt.Errorf("the Claude Code path in WSL must be an absolute Linux path (/home/…/claude)")
 	}
 	if !ccModelRe.MatchString(cc.Model) {
 		return fmt.Errorf("invalid Claude Code model %q", cc.Model)

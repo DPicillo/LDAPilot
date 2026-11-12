@@ -615,6 +615,73 @@ func TestClaudeCodeCLIMissing(t *testing.T) {
 	}
 }
 
+// Finding the CLI (in WSL: possibly a cold start) happens after
+// ai:run_started, so Stop works while LDAPilot looks for it; a stopped
+// search ends the run as cancelled, without an error card.
+func TestClaudeCodeStopWhileResolving(t *testing.T) {
+	h, cli, _ := ccHarness(t, "read", false, func(f *fakeRun) {})
+	searching := make(chan struct{})
+	var got config.ClaudeCodeConfig
+	h.m.d.ClaudeCode.Resolve = func(ctx context.Context, cc config.ClaudeCodeConfig) (claudecode.CLI, error) {
+		got = cc
+		close(searching)
+		<-ctx.Done()
+		return claudecode.CLI{}, ctx.Err()
+	}
+	h.cfg.update(func(c *config.AIConfig) { c.ClaudeCode.Runtime, c.ClaudeCode.WSLDistro = "wsl", "Ubuntu" })
+	id := h.newChat()
+	h.send(id, "Hi")
+	<-searching
+	if n := len(eventsOf[*ai.RunStartedEvent](h, ai.EventRunStarted)); n != 1 {
+		t.Fatalf("run_started before the search: %d", n)
+	}
+	if err := h.m.Stop(id); err != nil {
+		t.Fatal(err)
+	}
+	h.wait(id)
+	if d := h.done(); d.Status != ai.RunCancelled {
+		t.Fatalf("done %+v", d)
+	}
+	if errs := eventsOf[*ai.ErrorEvent](h, ai.EventError); len(errs) != 0 {
+		t.Fatalf("error card for a stopped search: %+v", errs)
+	}
+	if got.Runtime != "wsl" || got.WSLDistro != "Ubuntu" {
+		t.Fatalf("settings passed %+v", got)
+	}
+	cli.mu.Lock()
+	launched := len(cli.invs)
+	cli.mu.Unlock()
+	if launched != 0 {
+		t.Fatal("CLI started after the stop")
+	}
+}
+
+// A run whose CLI exits without an answer drops the cached search (the
+// CLI may have moved, e.g. to a new nvm version); a NotFoundError is shown
+// as it is (it already says what to install).
+func TestClaudeCodeForgetAndNotFound(t *testing.T) {
+	h, _, _ := ccHarness(t, "read", false, func(f *fakeRun) {})
+	forgot := 0
+	h.m.d.ClaudeCode.Forget = func() { forgot++ }
+	id := h.newChat()
+	h.send(id, "Hi")
+	h.wait(id)
+	if forgot != 1 {
+		t.Fatalf("forget called %d times", forgot)
+	}
+	h.m.d.ClaudeCode.Resolve = func(context.Context, config.ClaudeCodeConfig) (claudecode.CLI, error) {
+		return claudecode.CLI{}, &claudecode.NotFoundError{Msg: "Claude Code CLI not found. Windows: not found (…). WSL: Ubuntu: no claude …. Install Claude Code for Windows (…) or inside a WSL distribution (…)."}
+	}
+	id = h.newChat()
+	h.send(id, "Hi")
+	h.wait(id)
+	errs := eventsOf[*ai.ErrorEvent](h, ai.EventError)
+	last := errs[len(errs)-1]
+	if last.Code != ai.CodeConfigMissing || strings.Contains(last.Message, "Install Claude Code or set its path") || !strings.Contains(last.Message, "inside a WSL distribution") {
+		t.Fatalf("not found error %+v", last)
+	}
+}
+
 // An MCP call whose tool_use never shows up in the stream (or shows up
 // late) is still recorded, attached to the current message.
 func TestClaudeCodeUncorrelatedCallAndWarnings(t *testing.T) {

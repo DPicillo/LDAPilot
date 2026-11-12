@@ -52,6 +52,43 @@ type ModelDiscovery struct {
 	EffectiveModel  string `json:"effectiveModel,omitempty"` // the model that will be used (fallback applied)
 	ModelMissing    bool   `json:"modelMissing,omitempty"`   // the configured model is not in Models
 	Version         string `json:"version,omitempty"`        // Claude Code CLI version
+	// ClaudeCode says where the Claude Code CLI was found (engine
+	// claudecode, when found).
+	ClaudeCode *ClaudeCodeLocation `json:"claudeCode,omitempty"`
+}
+
+// ClaudeCodeLocation is where the Claude Code CLI runs.
+type ClaudeCodeLocation struct {
+	Runtime    string `json:"runtime"`              // "native" or "wsl"
+	Path       string `json:"path"`                 // the executable (in WSL: its Linux path)
+	Distro     string `json:"distro,omitempty"`     // WSL distribution
+	WSLVersion int    `json:"wslVersion,omitempty"` // WSL 1 or 2 (0 = unknown)
+	// EnvSource is where the CLI's environment comes from in WSL: "login"
+	// (the interactive login shell, as in a terminal) or "plain" (sh).
+	EnvSource string `json:"envSource,omitempty"`
+}
+
+// ClaudeCodeHosts says where the Claude Code CLI can run on this machine
+// (AI settings: the runtime choice exists on Windows only).
+type ClaudeCodeHosts struct {
+	OS  string     `json:"os"`            // runtime.GOOS
+	WSL *WSLStatus `json:"wsl,omitempty"` // Windows only
+}
+
+// WSLStatus lists the installed WSL distributions (no distribution is
+// started to list them).
+type WSLStatus struct {
+	Available bool        `json:"available"`
+	Error     string      `json:"error,omitempty"` // why none is listed (WSL not installed, …)
+	Distros   []WSLDistro `json:"distros"`
+}
+
+// WSLDistro is one installed distribution.
+type WSLDistro struct {
+	Name    string `json:"name"`
+	Default bool   `json:"default,omitempty"`
+	State   string `json:"state,omitempty"`   // as wsl.exe reports it (localized)
+	Version int    `json:"version,omitempty"` // WSL 1 or 2 (0 = unknown)
 }
 
 // ProviderTestResult is returned by the settings "Test" action.

@@ -16,6 +16,7 @@ import type {
   ApprovalResult,
   ChatSummary,
   ChatView,
+  ClaudeCodeHosts,
   ContextInfo,
   EgressRecord,
   Grant,
@@ -67,6 +68,8 @@ export const SaveAIConfig = (cfg: AIConfig) => call<void>('SaveAIConfig', cfg);
 export const SetConnectionAccess = (profileId: string, level: string) => call<void>('SetConnectionAccess', profileId, level);
 export const TestProvider = (cfg: AIConfig) => call<ProviderTestResult>('TestProvider', cfg);
 export const DiscoverModels = (cfg: AIConfig, refresh: boolean) => call<ModelDiscovery>('DiscoverModels', cfg, refresh);
+/** Where Claude Code can run (Windows: the WSL distributions, listed without starting one). */
+export const GetClaudeCodeHosts = () => call<ClaudeCodeHosts>('GetClaudeCodeHosts');
 /** the check before a run: rejects (code provider_unreachable / timeout) only when the endpoint did not answer */
 export const CheckProvider = (cfg: AIConfig) => call<ModelDiscovery>('CheckProvider', cfg);
 /** stops a running CheckProvider (Stop / Esc in the composer); it then rejects with code cancelled (UX P4) */

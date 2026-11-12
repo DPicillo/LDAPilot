@@ -38,11 +38,17 @@ const ProviderKeyClaudeCode = "claudecode"
 
 // ClaudeCodeEnv is what the Claude Code engine needs from the host.
 type ClaudeCodeEnv struct {
-	Launcher claudecode.Launcher                   // nil = claudecode.ExecLauncher{}
-	FindCLI  func(explicit string) (string, error) // nil = claudecode.FindCLI
-	WorkDir  string                                // dedicated empty working directory of the CLI
-	FilesDir string                                // private (0700) root for per-run files (MCP config, system prompt)
-	Environ  func() []string                       // nil = os.Environ
+	Launcher claudecode.Launcher // nil = claudecode.ExecLauncher{}
+	// Resolve finds the CLI for the settings: native, or inside a WSL
+	// distribution (Windows). nil = FindCLI, natively.
+	Resolve func(ctx context.Context, cfg config.ClaudeCodeConfig) (claudecode.CLI, error)
+	FindCLI func(explicit string) (string, error) // without Resolve; nil = claudecode.FindCLI
+	// Forget drops a cached Resolve result after a run whose CLI could not
+	// be started or exited without an answer (the next run checks again).
+	Forget   func()
+	WorkDir  string          // dedicated empty working directory of the CLI
+	FilesDir string          // private (0700) root for per-run files (MCP config, system prompt)
+	Environ  func() []string // nil = os.Environ
 	// ResolveModel maps the configured model to the one to pass (the
 	// discovery fallback when it disappeared); a notice becomes a warning.
 	ResolveModel func(cfg config.AIConfig, configured string) (model, notice string)
@@ -78,7 +84,7 @@ const ccServerInstructions = "LDAPilot's LDAP and Active Directory tools for the
 type ccRun struct {
 	s        *loopState
 	env      *ClaudeCodeEnv
-	path     string
+	cli      claudecode.CLI // resolved by resolveClaudeCLI after ai:run_started
 	maxSteps int
 
 	mu         sync.Mutex
@@ -140,14 +146,6 @@ func (s *loopState) setupClaudeCode(chat *chatstore.Chat) *ai.RunError {
 	if env == nil {
 		return runErr(ai.CodeConfigMissing, "The Claude Code engine is not available in this build; choose the built-in engine in the AI settings.")
 	}
-	find := env.FindCLI
-	if find == nil {
-		find = claudecode.FindCLI
-	}
-	path, err := find(s.cfg.ClaudeCode.Path)
-	if err != nil {
-		return runErr(ai.CodeConfigMissing, "%v. Install Claude Code or set its path in the AI settings.", err)
-	}
 	s.providerKey = ProviderKeyClaudeCode
 	model := chat.ModelOverride
 	if model == "" {
@@ -185,9 +183,44 @@ func (s *loopState) setupClaudeCode(chat *chatstore.Chat) *ai.RunError {
 	if maxSteps <= 0 {
 		maxSteps = config.DefaultMaxSteps
 	}
-	s.cc = &ccRun{s: s, env: env, path: path, maxSteps: maxSteps, byClaude: map[string]*ccMsg{}, useChanged: make(chan struct{}),
+	s.cc = &ccRun{s: s, env: env, maxSteps: maxSteps, byClaude: map[string]*ccMsg{}, useChanged: make(chan struct{}),
 		window: window, windowKnown: known, warned: map[string]bool{}}
 	return nil
+}
+
+// resolveClaudeCLI finds the CLI (called from setupProvider, after
+// ai:run_started): the first check of a WSL distribution can take a while
+// when WSL has to start, and Stop must work meanwhile.
+func (s *loopState) resolveClaudeCLI() *ai.RunError {
+	c := s.cc
+	var cli claudecode.CLI
+	var err error
+	if c.env.Resolve != nil {
+		cli, err = c.env.Resolve(s.r.ctx, s.cfg.ClaudeCode)
+	} else {
+		find := c.env.FindCLI
+		if find == nil {
+			find = claudecode.FindCLI
+		}
+		cli.Path, err = find(s.cfg.ClaudeCode.Path)
+	}
+	if err != nil {
+		var nf *claudecode.NotFoundError
+		if errors.As(err, &nf) {
+			return runErr(ai.CodeConfigMissing, "%v", err)
+		}
+		return runErr(ai.CodeConfigMissing, "%v. Install Claude Code or set its path in the AI settings.", err)
+	}
+	c.cli = cli
+	return nil
+}
+
+// forgetCLI drops the cached CLI resolution (the CLI did not start or
+// exited without an answer: it may have moved, e.g. a new nvm version).
+func (c *ccRun) forgetCLI() {
+	if c.env.Forget != nil {
+		c.env.Forget()
+	}
 }
 
 // runClaudeCode runs the CLI until it exits, the run is cancelled or the
@@ -234,7 +267,7 @@ func (s *loopState) runClaudeCode() (string, *ai.RunError) {
 	if budget <= 0 {
 		budget = config.DefaultClaudeCodeBudgetUSD
 	}
-	opts := claudecode.RunOptions{Path: c.path, WorkDir: env.WorkDir, FilesDir: filesDir, MCPURL: srv.URL(), MCPToken: srv.Token(),
+	opts := claudecode.RunOptions{CLI: c.cli, WorkDir: env.WorkDir, FilesDir: filesDir, MCPURL: srv.URL(), MCPToken: srv.Token(),
 		Tools: tools.Names(s.specs), SystemPrompt: SystemPrompt + ccSystemAddendum, Prompt: prompt, Model: s.model, MaxBudgetUSD: budget,
 		Persist: s.cfg.ClaudeCode.AllowResume, UseAnthropicEnv: s.cfg.ClaudeCode.UseAnthropicEnv, Environ: environ}
 	if resume {
@@ -250,6 +283,7 @@ func (s *loopState) runClaudeCode() (string, *ai.RunError) {
 	}
 	proc, err := launcher.Launch(s.r.ctx, inv)
 	if err != nil {
+		c.forgetCLI()
 		return ai.RunFailed, runErr(ai.CodeProviderUnreachable, "%s", scrub.Scrub(err.Error()))
 	}
 
@@ -327,6 +361,7 @@ loop:
 	res := c.result
 	if res == nil {
 		c.recordPartialUsage()
+		c.forgetCLI()
 		msg := "Claude Code exited without an answer."
 		if errText := firstLine(proc.Stderr()); errText != "" {
 			msg += " " + truncateRunes(errText, 300)

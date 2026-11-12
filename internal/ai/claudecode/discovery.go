@@ -171,11 +171,11 @@ func FallbackModels() []ai.ModelInfo {
 
 // DiscoverOptions configure DiscoverModels.
 type DiscoverOptions struct {
-	Path            string   // CLI path (required)
-	WorkDir         string   // dedicated empty directory ("" = os.TempDir())
-	Environ         []string // base environment (nil = os.Environ())
-	UseAnthropicEnv bool     // keep ANTHROPIC_* variables
-	Timeout         time.Duration
+	CLI             CLI           // the CLI (required)
+	WorkDir         string        // dedicated empty directory ("" = os.TempDir())
+	Environ         []string      // base environment (nil = os.Environ())
+	UseAnthropicEnv bool          // keep ANTHROPIC_* variables
+	Timeout         time.Duration // 0 = DiscoveryTimeout (WSL: WSLCommandTimeout)
 }
 
 // DiscoverModels runs the CLI in stream-json mode with all tools and
@@ -205,25 +205,26 @@ func InitializeArgs() []string {
 }
 
 func runInitialize(ctx context.Context, o DiscoverOptions) (*InitResult, error) {
-	if o.Path == "" {
+	if o.CLI.Path == "" {
 		return nil, errors.New("Claude Code CLI not found")
 	}
 	timeout := o.Timeout
 	if timeout <= 0 {
-		timeout = DiscoveryTimeout
+		timeout = o.CLI.commandTimeout(DiscoveryTimeout)
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, o.Path, InitializeArgs()...)
-	cmd.Dir = o.WorkDir
-	if cmd.Dir == "" {
-		cmd.Dir = os.TempDir()
-	}
 	env := o.Environ
 	if env == nil {
 		env = os.Environ()
 	}
-	cmd.Env = ChildEnv(env, o.UseAnthropicEnv)
+	prog, args, cenv := o.CLI.command(InitializeArgs(), env, o.UseAnthropicEnv, false, false)
+	cmd := exec.CommandContext(ctx, prog, args...)
+	cmd.Dir = o.WorkDir
+	if cmd.Dir == "" {
+		cmd.Dir = os.TempDir()
+	}
+	cmd.Env = cenv
 	cmd.WaitDelay = 2 * time.Second
 	prepareProcess(cmd)
 	req := `{"type":"control_request","request_id":"` + initRequestID + `","request":{"subtype":"initialize"}}` + "\n"
@@ -235,7 +236,7 @@ func runInitialize(ctx context.Context, o DiscoverOptions) (*InitResult, error) 
 	var stderr limitedBuffer
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("cannot start %s: %w", o.Path, err)
+		return nil, fmt.Errorf("cannot start %s: %w", o.CLI.Describe(), err)
 	}
 	res, perr := ParseInitialize(stdout)
 	if perr == nil {
@@ -248,6 +249,9 @@ func runInitialize(ctx context.Context, o DiscoverOptions) (*InitResult, error) 
 			return nil, fmt.Errorf("claude did not answer the initialize request within %s", timeout)
 		}
 		msg := strings.TrimSpace(stderr.String())
+		if o.CLI.WSL != nil {
+			msg = strings.TrimSpace(DecodeWSLOutput([]byte(msg)))
+		}
 		if msg == "" && werr != nil {
 			msg = werr.Error()
 		}
@@ -284,28 +288,50 @@ func truncate(s string, n int) string {
 
 var versionRe = regexp.MustCompile(`\d+\.\d+\.\d+[0-9A-Za-z.+-]*`)
 
+// versionTimeout bounds `claude --version` of a native CLI.
+const versionTimeout = 10 * time.Second
+
 // Version runs `claude --version` and returns the version number
 // ("2.1.308").
-func Version(ctx context.Context, path string, environ []string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+func Version(ctx context.Context, cli CLI, environ []string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, cli.commandTimeout(versionTimeout))
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "--version")
 	if environ == nil {
 		environ = os.Environ()
 	}
-	cmd.Env = ChildEnv(environ, false)
+	prog, args, env := cli.command([]string{"--version"}, environ, false, false, false)
+	cmd := exec.CommandContext(ctx, prog, args...)
+	cmd.Env = env
+	cmd.Dir = os.TempDir()
 	cmd.Stdin = nil
 	cmd.WaitDelay = time.Second
 	prepareProcess(cmd)
+	var stderr limitedBuffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("%s --version failed: %w", path, err)
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("%s --version did not answer within %s", cli.Describe(), cli.commandTimeout(versionTimeout))
+		}
+		if msg := firstLineOf(DecodeWSLOutput([]byte(stderr.String()))); msg != "" && cli.WSL != nil {
+			return "", fmt.Errorf("%s --version failed: %v: %s", cli.Describe(), err, truncate(msg, 300))
+		}
+		return "", fmt.Errorf("%s --version failed: %w", cli.Describe(), err)
 	}
 	v := versionRe.FindString(string(out))
 	if v == "" {
 		return strings.TrimSpace(string(out)), nil
 	}
 	return v, nil
+}
+
+func firstLineOf(s string) string {
+	for _, l := range strings.Split(s, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			return l
+		}
+	}
+	return ""
 }
 
 // claudeCodeAlways are CLAUDE_CODE_* variables that configure the CLI

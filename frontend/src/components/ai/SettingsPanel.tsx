@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Globe, HardDrive, Loader2, Lock, Plug, RefreshCw, Save, X } from 'lucide-react';
-import type { AIConfig, AccessEntry, ModelDiscovery, ModelInfo, ProviderTestResult } from '../../types/ai';
+import type { AIConfig, AccessEntry, ClaudeCodeHosts, ModelDiscovery, ModelInfo, ProviderTestResult } from '../../types/ai';
 import { classifyDestination, DEFAULT_URLS, formatRelativeTime, formatTokens, isLoopbackHost, providerKeyOf, urlHost } from '../../lib/aiFormat';
 import * as api from '../../lib/ai';
 import { useAIStore } from '../../stores/aiStore';
 import { soleModel } from '../../lib/aiComposer';
 import { discoveryNeedsKey, reloadSettingsDraft } from '../../lib/aiSettings';
+import { anthropicEnvHint, CC_RUNTIMES, ccRuntimeHint, distroOptions, locationText } from '../../lib/aiClaudeCode';
 import { scanPasswords } from '../../lib/aiPassword';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { CapabilityChips } from './ModelPicker';
@@ -260,6 +261,9 @@ export function SettingsPanel() {
   const [testError, setTestError] = useState<string | null>(null);
   const [discovery, setDiscovery] = useState<ModelDiscovery | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  // Where Claude Code can run (Windows: the WSL distributions).
+  const [ccHosts, setCCHosts] = useState<ClaudeCodeHosts | null>(null);
+  const [ccHostsLoading, setCCHostsLoading] = useState(false);
   const [redactInput, setRedactInput] = useState('');
   const [notesOpen, setNotesOpen] = useState<string | null>(null);
   const [showBuiltins, setShowBuiltins] = useState(false);
@@ -276,6 +280,21 @@ export function SettingsPanel() {
   useEffect(() => {
     if (!saved) void loadConfig();
   }, [saved, loadConfig]);
+
+  const loadCCHosts = useCallback(async () => {
+    setCCHostsLoading(true);
+    try {
+      setCCHosts(await api.GetClaudeCodeHosts());
+    } catch {
+      setCCHosts({ os: '' });
+    } finally {
+      setCCHostsLoading(false);
+    }
+  }, []);
+  const ccEngine = draft?.engine === 'claudecode';
+  useEffect(() => {
+    if (ccEngine && !ccHosts) void loadCCHosts();
+  }, [ccEngine, ccHosts, loadCCHosts]);
 
   const dirty = useMemo(() => {
     if (!saved || !draft) return false;
@@ -334,7 +353,8 @@ export function SettingsPanel() {
   }, [draft, forCall, dispatch, discovery?.models, keyMode, newKey, setDraft]);
 
   // Discover when the endpoint changes (debounced) and when the settings open.
-  const endpointKey = draft ? JSON.stringify([draft.engine, draft.provider, draft.flavor, draft.url, keyMode, keyMode === 'replace' ? newKey.length > 0 : 0, draft.claudeCode.path, draft.tlsSkipVerify]) : '';
+  const endpointKey = draft ? JSON.stringify([draft.engine, draft.provider, draft.flavor, draft.url, keyMode, keyMode === 'replace' ? newKey.length > 0 : 0,
+    draft.claudeCode.path, draft.claudeCode.runtime, draft.claudeCode.wslDistro, draft.claudeCode.wslPath, draft.tlsSkipVerify]) : '';
   useEffect(() => {
     if (!draft) return;
     const t = setTimeout(() => void runDiscovery(false), 500);
@@ -355,6 +375,8 @@ export function SettingsPanel() {
   const set = (patch: Partial<AIConfig>) => setDraft((d) => (d ? { ...d, ...patch } : d));
   const setCC = (patch: Partial<AIConfig['claudeCode']>) => setDraft((d) => (d ? { ...d, claudeCode: { ...d.claudeCode, ...patch } } : d));
   const cc = draft.engine === 'claudecode';
+  const ccWindows = ccHosts?.os === 'windows';
+  const ccRuntime = ccWindows ? draft.claudeCode.runtime ?? '' : '';
   const dest = classifyDestination(draft);
   const host = urlHost(draft.url);
   const loop = isLoopbackHost(host);
@@ -522,10 +544,46 @@ export function SettingsPanel() {
 
           {cc ? (
             <>
-              <p className="text-muted-foreground">LDAPilot runs the Claude Code CLI installed on this machine (with your Claude login) and gives it LDAPilot's directory tools. Approvals, access levels and redaction apply as with the built-in engine.</p>
-              <Field label="Claude Code CLI path" hint="Leave empty to detect it automatically.">
-                <Input size="sm" mono aria-label="Claude Code CLI path" value={draft.claudeCode.path ?? ''} placeholder="auto-detect" onChange={(e) => setCC({ path: e.target.value.trim() || undefined })} />
-              </Field>
+              <p className="text-muted-foreground">
+                LDAPilot runs the Claude Code CLI installed on this machine{ccWindows ? ' (in Windows or in WSL)' : ''} (with your Claude login) and gives it LDAPilot's directory tools. Approvals, access levels and redaction apply as with the built-in engine.
+              </p>
+              {ccWindows && (
+                <div className="space-y-1">
+                  <span className="text-muted-foreground" id="cc-runtime-label">Claude Code runs in</span>
+                  <SegmentedControl aria-labelledby="cc-runtime-label" options={CC_RUNTIMES} value={ccRuntime} onValueChange={(v) => setCC({ runtime: v || undefined })} />
+                  <span className="block text-muted-foreground">{ccRuntimeHint(ccRuntime)}</span>
+                </div>
+              )}
+              {ccWindows && ccRuntime !== 'windows' && (
+                <Field
+                  label="WSL distribution"
+                  hint={ccHosts?.wsl?.error ? <span className={ccRuntime === 'wsl' ? tone.warningText : undefined}>{ccHosts.wsl.error}</span> : undefined}
+                >
+                  <div className="flex items-center gap-1">
+                    <Select
+                      size="sm"
+                      aria-label="WSL distribution"
+                      className="min-w-0 flex-1"
+                      value={draft.claudeCode.wslDistro ?? ''}
+                      options={distroOptions(ccHosts?.wsl, draft.claudeCode.wslDistro ?? '')}
+                      onChange={(e) => setCC({ wslDistro: e.target.value || undefined })}
+                    />
+                    <button type="button" className={textButton} aria-label="Refresh the list of WSL distributions" disabled={ccHostsLoading} onClick={() => void loadCCHosts()}>
+                      {ccHostsLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                    </button>
+                  </div>
+                </Field>
+              )}
+              {ccRuntime === 'wsl' ? (
+                <Field label="Claude Code path in WSL" hint="Leave empty to find it like a terminal in that distribution does (login shell PATH, ~/.local/bin, npm global, nvm).">
+                  <Input size="sm" mono aria-label="Claude Code path in WSL" value={draft.claudeCode.wslPath ?? ''} placeholder="auto-detect, e.g. /home/you/.local/bin/claude" onChange={(e) => setCC({ wslPath: e.target.value.trim() || undefined })} />
+                </Field>
+              ) : (
+                <Field label={ccWindows ? 'Claude Code CLI path (Windows)' : 'Claude Code CLI path'} hint="Leave empty to detect it automatically.">
+                  <Input size="sm" mono aria-label="Claude Code CLI path" value={draft.claudeCode.path ?? ''} placeholder="auto-detect" onChange={(e) => setCC({ path: e.target.value.trim() || undefined })} />
+                </Field>
+              )}
+              {discovery?.claudeCode && <p className="text-muted-foreground [overflow-wrap:anywhere]" data-cc-location>{locationText(discovery.claudeCode, ccHosts?.os ?? '')}</p>}
               <ModelSection draft={draft} discovery={discovery} loading={discovering} onRefresh={() => void runDiscovery(true)} value={draft.claudeCode.model ?? ''} onChange={(id) => setCC({ model: id || undefined })} />
               <Field label="Maximum cost per message (USD)" hint="Claude Code stops a response that would cost more (default 1.00).">
                 <NumberInput ariaLabel="Maximum cost per message in USD" value={draft.claudeCode.maxBudgetUsd ?? 0} placeholder="1.00" min={0.01} max={100} step={0.05} onChange={(v) => setCC({ maxBudgetUsd: v || undefined })} />
@@ -540,7 +598,7 @@ export function SettingsPanel() {
                 checked={!!draft.claudeCode.useAnthropicEnv}
                 onChange={(v) => setCC({ useAnthropicEnv: v || undefined })}
                 label="Use my environment's Anthropic settings"
-                hint="Passes ANTHROPIC_* and the Claude Code login/backend variables (CLAUDE_CODE_OAUTH_TOKEN, CLAUDE_CODE_USE_BEDROCK/VERTEX/FOUNDRY, CLAUDE_CODE_SKIP_*_AUTH) to Claude Code. Off: only a `claude login` session works."
+                hint={anthropicEnvHint(discovery?.claudeCode?.runtime === 'wsl' || ccRuntime === 'wsl')}
               />
               <p className="text-muted-foreground">Managed (enterprise) Claude Code settings still apply.</p>
             </>

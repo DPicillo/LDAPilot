@@ -72,6 +72,7 @@ interface Views {
   RunSnapshot: AI.RunSnapshot;
   ContextInfo: AI.ContextInfo;
   ModelDiscovery: AI.ModelDiscovery;
+  ClaudeCodeHosts: AI.ClaudeCodeHosts;
   ProviderTestResult: AI.ProviderTestResult;
   ApprovalResult: AI.ApprovalResult;
   SecretValue: AI.SecretValue;

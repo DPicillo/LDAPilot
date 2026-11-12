@@ -181,6 +181,12 @@ func TestAIConfigValidation(t *testing.T) {
 		func(c *AIConfig) { c.Provider, c.Effort = "ollama", "high" },
 		func(c *AIConfig) { c.ClaudeCode.Path = "relative/claude" },
 		func(c *AIConfig) { c.ClaudeCode.MaxBudgetUSD = 1000 },
+		func(c *AIConfig) { c.ClaudeCode.Runtime = "docker" },
+		func(c *AIConfig) { c.ClaudeCode.WSLDistro = "Ubuntu; rm -rf /" },
+		func(c *AIConfig) { c.ClaudeCode.WSLDistro = "My Distro" },
+		func(c *AIConfig) { c.ClaudeCode.WSLPath = `C:\Users\a\claude.exe` },
+		func(c *AIConfig) { c.ClaudeCode.WSLPath = "~/.local/bin/claude" },
+		func(c *AIConfig) { c.ClaudeCode.WSLPath = "/home/u/claude\n--evil" },
 	}
 	for i, mut := range bad {
 		c := base
@@ -204,6 +210,11 @@ func TestAIConfigValidation(t *testing.T) {
 			c.Engine = "claudecode"
 			c.ClaudeCode = ClaudeCodeConfig{Model: "haiku", MaxBudgetUSD: 0.25}
 		},
+		func(c *AIConfig) {
+			c.Engine = "claudecode"
+			c.ClaudeCode = ClaudeCodeConfig{Runtime: "wsl", WSLDistro: "Ubuntu-24.04", WSLPath: "/home/anna/.nvm/versions/node/v22.11.0/bin/claude"}
+		},
+		func(c *AIConfig) { c.ClaudeCode = ClaudeCodeConfig{Runtime: "windows"} },
 	}
 	for i, mut := range good {
 		c := s.GetMasked()

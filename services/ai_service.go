@@ -42,9 +42,15 @@ type AIService struct {
 	initOnce sync.Once
 	// providerOverride replaces the provider factory (tests).
 	providerOverride agent.ProviderFactory
-	// ccLauncher and ccFindCLI replace the Claude Code CLI (tests).
+	// ccLauncher and ccFindCLI replace the Claude Code CLI (tests);
+	// ccResolve the whole search, ccListWSL / ccGOOS the WSL listing.
 	ccLauncher claudecode.Launcher
 	ccFindCLI  func(explicit string) (string, error)
+	ccResolve  func(ctx context.Context, o claudecode.ResolveOptions) (claudecode.CLI, error)
+	ccListWSL  func(ctx context.Context) ([]claudecode.WSLDistro, error)
+	ccGOOS     string
+	// ccCLI caches where the Claude Code CLI is (ai_claudecode_cli.go).
+	ccCLI ccCLICache
 }
 
 // aiError is a facade error: "<code>: <message>"; it unwraps to the

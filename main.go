@@ -4,7 +4,9 @@ import (
 	"context"
 	"embed"
 	"log"
+	"os"
 
+	"github.com/dpicillo/LDAPilot/internal/ai/mcprelay"
 	"github.com/dpicillo/LDAPilot/internal/config"
 	"github.com/dpicillo/LDAPilot/internal/ldap"
 	"github.com/dpicillo/LDAPilot/services"
@@ -40,6 +42,13 @@ var (
 )
 
 func main() {
+	// Claude Code inside WSL starts LDAPilot.exe as the stdio relay to the
+	// run's tool server (internal/ai/mcprelay): relay and exit before any
+	// part of the app (config, window) starts.
+	if len(os.Args) >= 2 && os.Args[1] == mcprelay.Flag {
+		os.Exit(mcprelay.Main(os.Args[2:]))
+	}
+
 	// Initialize config store
 	store, err := config.NewStore()
 	if err != nil {

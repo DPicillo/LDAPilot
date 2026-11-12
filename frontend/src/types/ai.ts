@@ -585,6 +585,44 @@ export interface ModelDiscovery {
   effectiveModel?: string;
   modelMissing?: boolean;
   version?: string;
+  /** where the Claude Code CLI was found (engine claudecode) */
+  claudeCode?: ClaudeCodeLocation;
+}
+
+/** Where the Claude Code CLI runs (Go: ai.ClaudeCodeLocation). */
+export interface ClaudeCodeLocation {
+  /** native | wsl */
+  runtime: string;
+  /** the executable; in WSL its Linux path */
+  path: string;
+  distro?: string;
+  /** WSL 1 or 2 (0 = unknown) */
+  wslVersion?: number;
+  /** WSL: login (interactive login shell) | plain */
+  envSource?: string;
+}
+
+/** Where the Claude Code CLI can run on this machine (Go: ai.ClaudeCodeHosts). */
+export interface ClaudeCodeHosts {
+  /** runtime.GOOS: windows | linux | darwin */
+  os: string;
+  /** Windows only */
+  wsl?: WSLStatus;
+}
+
+export interface WSLStatus {
+  available: boolean;
+  /** why no distribution is listed (WSL not installed, …) */
+  error?: string;
+  distros: WSLDistro[] | null;
+}
+
+export interface WSLDistro {
+  name: string;
+  default?: boolean;
+  /** as wsl.exe reports it (localized) */
+  state?: string;
+  version?: number;
 }
 
 export interface ProviderTestResult {
@@ -611,6 +649,12 @@ export interface AccessEntry {
 }
 
 export interface ClaudeCodeConfig {
+  /** Windows only: "" (automatic: Windows first, else WSL) | windows | wsl */
+  runtime?: string;
+  /** WSL: distribution ("" = the default one) */
+  wslDistro?: string;
+  /** WSL: Linux path of the CLI ("" = detect) */
+  wslPath?: string;
   path?: string;
   model?: string;
   maxBudgetUsd?: number;
