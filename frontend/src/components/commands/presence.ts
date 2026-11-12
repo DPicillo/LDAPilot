@@ -8,6 +8,8 @@
  * surface that re-resolves never loops on reads.
  */
 import { AttributesPresent, LoginAttributesOf } from '../../lib/wails-binary'
+import { onAccountChanged } from '../../lib/wails-account'
+import { readLoginAttributesShared } from '../../lib/loginRead'
 import { notifyCommandsChanged } from '../ui/commands'
 import { KIND_ATTRIBUTES, kindNeedsAttributes } from '../ui/objectKind'
 import { readKey } from './accountState'
@@ -121,3 +123,32 @@ export function ensureLoginAttributes(profileId: string, rows: readonly { dn: st
 export function prefetchLoginAttributes(profileId: string, rows: readonly { dn: string; objectClass?: readonly string[] | null }[]): void {
   setTimeout(() => void ensureLoginAttributes(profileId, rows).catch(() => {}), 0)
 }
+
+// --- A first password, a removed one (ldapilot:account-changed) -----------------------------
+
+/**
+ * An account or password action can give an LDAP person its first login
+ * attribute (Set Password… makes a contact a user) or take its last one
+ * (Remove Value): what the menus and the rows remembered about the entry is
+ * read again, so they show the new kind without a refresh. The tree row
+ * follows in stores/treeStore (the same shared read), an open tab with its
+ * reload.
+ */
+onAccountChanged(({ profileId, dn }) => {
+  const key = readKey(profileId, dn)
+  const known = Array.isArray(logins.get(key)) || presence.get(key)?.state === 'done'
+  // The menus' own read (photo, certificate, login names) is repeated by the next menu.
+  presence.delete(key)
+  if (!known) return
+  readLoginAttributesShared(profileId, dn)
+    .then((names) => {
+      if (names) logins.set(key, names)
+      else logins.delete(key)
+    })
+    .catch(() => logins.delete(key))
+    .finally(() => {
+      loginVersion++
+      loginListeners.forEach((l) => l())
+      notifyCommandsChanged()
+    })
+})

@@ -12,7 +12,7 @@ import {
 import {
   accountOptions, availableMethods, defaultAccountFlags, defaultSchemeFor, defaultSelection, deviatesFromPolicy, groupSchemes,
   hasAdvancedMethods, isAdvancedSelection, loadRememberedSelection, methodDescription, methodOptionLabel, passwordSubmitBlock,
-  passwordSummaryLine, policyLine, resultOutcome, resultSummary, saveRememberedSelection, schemeLabelOptions,
+  passwordDialogText, passwordSummaryLine, policyLine, resultOutcome, resultSummary, saveRememberedSelection, schemeLabelOptions,
   schemeOptionLabel, schemeSupportFor, selectionNotices, selectMethod, selectScheme, sendsCleartext, storedSchemeText, verifyHint, SERVER_LABELS,
   type DialogNotice, type PasswordSelection, type ResultOutcome,
 } from '../../lib/passwordMethod'
@@ -47,6 +47,8 @@ interface PasswordDialogProps {
   onChanged?: () => void;
   /** Connection of the entry (an editor tab, a results row); default: the active connection. */
   profileId?: string;
+  /** 'set': the first password of an LDAP person without a login (Set Password…); default: a reset. */
+  verb?: 'reset' | 'set';
 }
 
 const GENERATOR_STORAGE_KEY = 'ldapilot.password.generator';
@@ -79,7 +81,7 @@ function isTransportNotice(n: DialogNotice): boolean {
  * "Details". Resets the server would refuse anyway (AD without TLS) are
  * blocked with the reason and a way to fix the connection.
  */
-export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp }: PasswordDialogProps) {
+export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp, verb = 'reset' }: PasswordDialogProps) {
   const activeProfileId = useConnectionStore((s) => s.activeProfileId);
   const profileId = profileProp ?? activeProfileId;
 
@@ -117,6 +119,7 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
   const pwId = `pw-new${useId().replace(/:/g, '')}`;
   const detailsId = `pw-details${useId().replace(/:/g, '')}`;
   const name = accountDisplayName(dn);
+  const text = passwordDialogText(verb);
 
   const loadContext = useCallback(async () => {
     if (!profileId) {
@@ -281,19 +284,19 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
       if (outcome === 'success') {
         // A working password supersedes earlier "stored in cleartext" / "will not work" toasts of this entry.
         dismissPasswordWarnings(profileId, dn);
-        toast.success(resultSummary(res, name));
+        toast.success(resultSummary(res, name, verb));
         onClose();
       } else if (outcome === 'warning') {
         setResult(res);
-        toast.info(`${resultSummary(res, name)} - see the notes in the dialog`);
+        toast.info(`${resultSummary(res, name, verb)} - see the notes in the dialog`);
       } else {
         setResult(res);
         toast.error(`Password for ${name} written, but it may not work`, [res.verifyError, ...res.warnings].filter(Boolean).join('\n'));
       }
     } catch (err: any) {
-      const msg = err?.message || String(err) || 'Failed to reset the password';
+      const msg = err?.message || String(err) || text.failed(name);
       setError(msg);
-      toast.error(`Password reset for ${name} failed`, msg);
+      toast.error(text.failed(name), msg);
     } finally {
       inFlight.current = false;
       setLoading(false);
@@ -346,7 +349,7 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
       onOpenChange={(o) => !o && !loading && onClose()}
       size="md"
       icon={<KeyRound size={16} strokeWidth={1.75} aria-hidden className="text-primary" />}
-      title="Reset Password"
+      title={text.title}
       description={<Dn dn={dn} />}
       dismissible={loading ? 'never' : 'when-clean'}
       dirty={dirty && !result}
@@ -365,7 +368,7 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
             disabled={!ready || confirmPlain}
             title={block?.reason}
           >
-            {result ? 'Reset Again' : 'Reset Password'}
+            {result ? text.again : text.submit}
           </Button>
         </>
       }
@@ -389,7 +392,7 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
             {block && (
               <InlineAlert
                 tone="danger"
-                title="The password cannot be reset over this connection"
+                title={text.blocked}
                 body={<span className="break-words">{block.reason} {block.fix}</span>}
                 actions={<Button size="sm" variant="secondary" leftIcon={Settings2} onClick={editConnection}>Edit Connection…</Button>}
               />
@@ -592,7 +595,7 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
       {confirmPlain && (
         // The one unencrypted-send confirmation (DEF-21): consent box, Cancel · Continue.
         <UnencryptedSendDialog
-          what={`This connection has no LDAPS/StartTLS. ${unencryptedWhat(resetCleartextParts(sel))}`}
+          what={`This connection has no LDAPS/StartTLS. ${unencryptedWhat(resetCleartextParts(sel), text.sends)}`}
           dn={dn}
           onCancel={() => setConfirmPlain(false)}
           onConfirm={() => { setConfirmPlain(false); void handleSubmit(true); }}

@@ -88,6 +88,25 @@ export function kindNeedsAttributes(objectClass: readonly string[] | undefined |
 /** The attributes kindNeedsAttributes asks a presence read for. */
 export const KIND_ATTRIBUTES = ['uid', 'userPassword', 'authPassword', 'krbPrincipalName', 'sambaNTPassword']
 
+/** What the password dialog does for an entry: reset a user's password, or set a first one. */
+export type PasswordVerb = 'reset' | 'set'
+
+/**
+ * The password verb of an entry, or null when it has none. A user's password
+ * is reset. An LDAP person that is a contact only because it has no login
+ * attribute yet (no uid, no password: resolveObjectKind's contact rule) gets
+ * its first one set: not every directory gives its users a uid, and without
+ * the verb such a user could never get the password that makes it a user.
+ * Not on Active Directory (a `contact` object cannot have a password and
+ * userPassword is an ordinary attribute there) and not while the server
+ * type is unknown.
+ */
+export function passwordVerb(kind: ObjectKind | undefined, objectClass: readonly string[] | undefined | null, serverType: string | null | undefined): PasswordVerb | null {
+  if (kind === 'user') return 'reset'
+  if (kind === 'contact' && kindNeedsAttributes(objectClass) && !!serverType && serverType !== 'ad') return 'set'
+  return null
+}
+
 export const OBJECT_KIND_ICON: Record<ObjectKind, IconType> = {
   user: User,
   group: Users,

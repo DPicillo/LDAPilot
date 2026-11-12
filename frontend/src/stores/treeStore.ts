@@ -25,6 +25,7 @@ import { create } from 'zustand'
 import type { TreeNode } from '../types/ldap'
 import * as wails from '../lib/wails'
 import { readAccountStatusShared } from '../lib/wails-account'
+import { readLoginAttributesShared } from '../lib/loginRead'
 import type { AccountStatus } from '../types/account'
 import {
   ACCOUNT_CHANGED,
@@ -798,4 +799,32 @@ onEntryEvent<EntryRefDetail>(ENTRY_RESTORED, (d) => {
 
 onEntryEvent<EntryRefDetail & { status?: AccountStatus }>(ACCOUNT_CHANGED, (d) => {
   if (d.profileId && d.dn) statusJobs.add(jobKey(d.profileId, d.dn), d);
+});
+
+// A first password makes an LDAP person without a login a user (Set Password…), removing its
+// last login attribute a contact again: the row's kind (icon, verbs, the Contents list's Type)
+// follows the account action. Only rows the listing read these names for carry them.
+const loginJobs = createCoalescer<EntryRefDetail>(300, (batch) => {
+  void runLimited([...batch.values()], 4, refreshLoginAttributes);
+});
+
+async function refreshLoginAttributes({ profileId, dn }: EntryRefDetail) {
+  const listOf = (state: TreeState) => {
+    const lists = viewOf(state, profileId).childNodes;
+    return { lists, key: findDNKey(lists, getParentDN(dn)) };
+  };
+  const shown = listOf(useTreeStore.getState());
+  const node = shown.key ? shown.lists[shown.key].find((n) => normalizeDN(n.dn) === normalizeDN(dn)) : undefined;
+  if (!node || !Array.isArray(node.loginAttributes)) return;
+  const loginAttributes = await readLoginAttributesShared(profileId, node.dn).catch(() => undefined);
+  if (!loginAttributes) return; // not readable: the next listing brings them
+  useTreeStore.setState((state) => {
+    const { lists, key } = listOf(state);
+    const list = key ? patchNodeInList(lists[key], dn, { loginAttributes }) : undefined;
+    return key && list && list !== lists[key] ? patchView(state, profileId, { childNodes: { ...lists, [key]: list } }) : state;
+  });
+}
+
+onEntryEvent<EntryRefDetail>(ACCOUNT_CHANGED, (d) => {
+  if (d.profileId && d.dn) loginJobs.add(jobKey(d.profileId, d.dn), d);
 });

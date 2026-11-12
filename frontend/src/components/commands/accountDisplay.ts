@@ -13,6 +13,7 @@
  * "Checking account status…" placeholder and the Enable/Disable title stays.
  */
 import type { AccountStatusKind } from '../ui/accountStatus'
+import type { PasswordVerb } from '../ui/objectKind'
 
 export type StatusReadState = 'pending' | 'failed' | 'na' | undefined
 
@@ -109,6 +110,11 @@ export function promisedToggle(title: string | undefined): 'enable' | 'disable' 
 /** Title of the must-change verb. */
 export function mustChangeTitle(s: AccountDisplayState): string {
   return s.mustChangeKnown && s.mustChange ? 'Clear "Must Change Password"' : 'Require Password Change at Next Logon'
+}
+
+/** Title of the password verb (ui/objectKind passwordVerb): an LDAP person without a login gets its first password set. */
+export function passwordVerbTitle(verb: PasswordVerb | null): string {
+  return verb === 'set' ? 'Set Password…' : 'Reset Password…'
 }
 
 // --- Multi-entry Enable / Disable (BulkEnableDialog) ---------------------------------

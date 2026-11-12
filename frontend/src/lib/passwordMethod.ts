@@ -655,11 +655,29 @@ export function storedSchemeText(scheme: string, label?: string): string {
 }
 
 /**
+ * The dialog's words: 'reset' for a user's password, 'set' for the first
+ * password of an LDAP person without a login (Set Password…).
+ */
+export function passwordDialogText(verb: 'reset' | 'set' = 'reset') {
+  const set = verb === 'set';
+  return {
+    title: set ? 'Set Password' : 'Reset Password',
+    submit: set ? 'Set Password' : 'Reset Password',
+    /** The submit button once a result with notes is shown. */
+    again: set ? 'Set Again' : 'Reset Again',
+    blocked: set ? 'The password cannot be set over this connection' : 'The password cannot be reset over this connection',
+    failed: (name: string) => (set ? `Setting the password for ${name} failed` : `Password reset for ${name} failed`),
+    /** Subject of the unencrypted-send confirmation (lib/unencryptedConsent unencryptedWhat). */
+    sends: set ? 'This sends the new password' : 'The reset sends the new password',
+  };
+}
+
+/**
  * One-line summary of a password change result; with name it says whose
  * password ("Password reset for ux-p-user1 (stored as …, account stays
- * disabled)").
+ * disabled)"; "Password set for …" after Set Password…).
  */
-export function resultSummary(res: PasswordChangeResult, name?: string): string {
+export function resultSummary(res: PasswordChangeResult, name?: string, verb: 'reset' | 'set' = 'reset'): string {
   const parts: string[] = [];
   if (res.storedScheme) parts.push(res.storedScheme === 'CLEARTEXT' ? 'stored in cleartext' : `stored as ${storedSchemeText(res.storedScheme, res.storedSchemeLabel)}`);
   if (res.operations.some((op) => /pwdLastSet=0|pwdReset=TRUE/.test(op))) {
@@ -672,7 +690,8 @@ export function resultSummary(res: PasswordChangeResult, name?: string): string 
   if (keptDisabled) parts.push('account stays disabled');
   if (res.verified) parts.push('verified by bind');
   else if (res.unconfirmed) parts.push('scheme support not confirmed');
-  const head = name ? `Password reset for ${name}` : 'Password reset';
+  const done = verb === 'set' ? 'Password set' : 'Password reset';
+  const head = name ? `${done} for ${name}` : done;
   return parts.length > 0 ? `${head} (${parts.join(', ')})` : head;
 }
 

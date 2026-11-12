@@ -43,7 +43,7 @@ import { kindNeedsAttributes } from '../ui/objectKind'
 import { deriveRowStatus } from '../ui/accountStatus'
 import { createListRegistry, createSourceTracker, type SelectionSource as Source } from './selectionSource'
 import { isNamingContextHead } from './namingContexts'
-import { prefetchPresence, presentAttributes } from './presence'
+import { knownLoginAttributes, prefetchPresence, presentAttributes } from './presence'
 
 const source = createSourceTracker('tab')
 /** Highlighted row of the search results (SearchResults reports it). */
@@ -144,9 +144,10 @@ function refine(item: SelectionItem, profileId: string | null, opts: { single?: 
     const entry = useEditorStore.getState().entries[`${profileId}:${out.dn}`]
     if (entry) out = { ...out, presentAttributes: entry.attributes.map((a) => a.name) }
     else {
-      const p = presentAttributes(profileId, out.dn)
-      if (Array.isArray(p)) out = { ...out, presentAttributes: p }
-      else if (p === undefined && opts.single !== false && useConnectionStore.getState().connectionStatuses[profileId] === true) prefetchPresence(profileId, out.dn)
+      // What the rows know (the results' batched read, read again after an account action), else the menus' own read.
+      const known = knownLoginAttributes(profileId, out.dn)
+      if (known) out = { ...out, presentAttributes: known }
+      else if (presentAttributes(profileId, out.dn) === undefined && opts.single !== false && useConnectionStore.getState().connectionStatuses[profileId] === true) prefetchPresence(profileId, out.dn)
     }
   }
   return out

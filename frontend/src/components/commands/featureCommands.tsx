@@ -60,13 +60,13 @@ import { ExportDialog } from '../export/ExportDialog'
 import { useDialogStore } from '../ui/Dialog'
 import { ConfirmDialog, type ConfirmDialogProps } from '../ui/ConfirmDialog'
 import { toast } from '../ui/Toast'
-import { hasAccountSemantics, isContainerKind } from '../ui/objectKind'
+import { hasAccountSemantics, isContainerKind, passwordVerb } from '../ui/objectKind'
 import { createParent, ncHeadSelected } from '../ui/coreCommands'
-import { isKind, many, one, registerCommandHandlers, registerCommands, type Command, type CommandContext, type SelectionItem } from '../ui/commands'
+import { isKind, kindOf, many, one, registerCommandHandlers, registerCommands, type Command, type CommandContext, type SelectionItem } from '../ui/commands'
 import { registerSelectionContext } from './selectionContext'
 import { registerTreeCommands } from '../tree/treeCommands'
 import { registerAICommands } from '../ai/aiCommands'
-import { CHECKING_STATUS, mustChangeTitle, promisedToggle, toggleEnabledTitle, unlockSlot } from './accountDisplay'
+import { CHECKING_STATUS, mustChangeTitle, passwordVerbTitle, promisedToggle, toggleEnabledTitle, unlockSlot } from './accountDisplay'
 import { accountDisplay, afterAccountChange } from './accountState'
 import { CERT_ATTRS, PHOTO_ATTRS, hasAnyAttribute, prefetchPresence, presentAttributes } from './presence'
 import { chooseBinaryValue } from '../editor/BinaryValuePicker'
@@ -90,6 +90,12 @@ const MEMBER_KINDS = ['user', 'computer', 'service', 'contact', 'group'] as cons
 /** Entries with an account status (users, service accounts, AD computers; not LDAP devices or contacts). */
 const isAccount = (s: SelectionItem) => hasAccountSemantics(s.kind, s.objectClass)
 const oneUser = (ctx: CommandContext) => one(ctx) && isKind(ctx, 'user') && isAccount(ctx.selection[0])
+/**
+ * The password verb of the single selected entry: a user's password is reset; an LDAP person
+ * without a login (a contact by the kind rule, not on AD) gets its first one set, which makes it
+ * a user. Null: no password verb.
+ */
+const passwordVerbOf = (ctx: CommandContext) => (one(ctx) ? passwordVerb(kindOf(ctx), ctx.selection[0].objectClass, ctx.serverType) : null)
 
 function readOnlyProfile(profileId: string): boolean {
   return !!useConnectionStore.getState().profiles.find((p) => p.id === profileId)?.readOnly
@@ -285,6 +291,8 @@ function resetPassword(ctx: CommandContext) {
     dn,
     // The item's own connection (a results row / tab of another connection).
     profileId,
+    // Set Password… of an LDAP person without a login: the same dialog, named after what it does.
+    verb: passwordVerbOf(ctx) ?? 'reset',
     onChanged: () => {
       refreshOpenTab(profileId, dn)
       void afterAccountChange(profileId, dn)
@@ -545,14 +553,17 @@ function featureCommands(): Command[] {
     },
     {
       id: 'account.resetPassword',
-      title: 'Reset Password…',
+      // Users: Reset Password…. An LDAP person without a login: Set Password… (its only account verb).
+      title: (ctx) => passwordVerbTitle(passwordVerbOf(ctx)),
       icon: KeyRound,
       group: 'account',
       section: 'account',
       order: 2,
       write: true,
-      when: oneUser,
-      keywords: ['password', 'change', 'set password'],
+      // The kind of a row can arrive while its menu is open (the login attribute read).
+      stableTitle: true,
+      when: (ctx) => passwordVerbOf(ctx) !== null,
+      keywords: ['password', 'change', 'set password', 'reset password', 'login'],
     },
     // New feature commands --------------------------------------------------------------
     {

@@ -271,12 +271,15 @@ export function EntryEditor({ tabId }: EntryEditorProps) {
         dn: tab.dn,
         profileId: tab.profileId,
         objectClass: objectClasses,
+        // The loaded entry tells user or contact, not an older tree row: after Set Password…
+        // the header shows the account verbs with the reload.
+        presentAttributes: entry?.attributes.map((a) => a.name),
         status: account.status ? accountStatusKinds(account.status) : undefined,
         label: tab.label,
       }],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab?.dn, tab?.profileId, tab?.label, objectClasses, account.status, activeProfileId, connected, offline, isReadOnly, serverType]);
+  }, [tab?.dn, tab?.profileId, tab?.label, entry, objectClasses, account.status, activeProfileId, connected, offline, isReadOnly, serverType]);
 
   const navigateTo = useCallback((dn: string, reveal = false) => {
     if (!tab) return;
@@ -299,7 +302,7 @@ export function EntryEditor({ tabId }: EntryEditorProps) {
       connected,
       readOnly: isReadOnly,
       serverType,
-      selection: [{ dn: t.dn, profileId: t.profileId, objectClass: objectClasses, label: t.label }],
+      selection: [{ dn: t.dn, profileId: t.profileId, objectClass: objectClasses, presentAttributes: entry?.attributes.map((a) => a.name), label: t.label }],
     });
   }
 
