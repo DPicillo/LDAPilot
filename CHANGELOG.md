@@ -2,6 +2,12 @@
 
 All notable changes to LDAPilot are listed here. Versions follow [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [Unreleased]
+
+### Passwords
+- **SASL pass-through authentication** (`userPassword: {SASL}user`, follow-up to #1): such a reference is stored unchanged by every write path (attribute table, Edit Entry, New / Copy Entry, bulk modify, LDIF import, Edit as LDIF) under every storage policy, as it has been since 0.5.0; this is now tested and said where it matters — the hint next to password fields and the connection's Password storage section name `{SCHEME}` values that are kept, and a stored `{SASL}` value is labelled "Pass-through authentication".
+- **Reset Password** no longer hashes such a value without a word: typing a `{SASL}` reference or an already hashed value shows what it is and offers **Store as Typed**, and Enter no longer submits such a text (hashing it takes a click on Reset Password); resetting an account that uses pass-through authentication warns that the reset replaces the reference with a local password.
+
 ## [0.5.0] - 2026-11-01
 
 The biggest release so far: a new design, account and password administration for Active Directory, OpenLDAP and 389 Directory Server, bulk changes with dry runs, and a rebuilt AI assistant that only writes after you approve. Every entry point (346 of them) was walked through on all three lab servers and the findings were fixed in four rounds; the open points left after that walkthrough were built and integrated before the release (see "Added after the walkthrough").

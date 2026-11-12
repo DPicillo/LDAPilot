@@ -5,6 +5,10 @@ import {
 } from 'lucide-react'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { GetPasswordContext, SetPassword } from '../../lib/wails-password'
+import { ModifyEntryWithOptions } from '../../lib/wails-pwpolicy'
+import {
+  passThroughResetNote, reportHeadline, reportOutcome, reportSuccessDetail, reportSummary, typedStoredValue,
+} from '../../lib/passwordPolicy'
 import {
   accountOptions, availableMethods, defaultAccountFlags, defaultSchemeFor, defaultSelection, deviatesFromPolicy, groupSchemes,
   hasAdvancedMethods, isAdvancedSelection, loadRememberedSelection, methodDescription, methodOptionLabel, passwordSubmitBlock,
@@ -159,6 +163,13 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
   );
   const passwordsMatch = newPassword === confirmPassword;
   const ready = !!ctx && !ctx.readOnly && !!profileId && !block && newPassword.length > 0 && passwordsMatch && !loading;
+  // A stored value typed as the password ({SASL}user of pass-through authentication, a hash):
+  // the reset would hash the text itself. Not on AD: unicodePwd takes every text as a password.
+  const typedStored = ctx && ctx.serverType !== 'ad' ? typedStoredValue(newPassword) : null;
+  const passThroughNote = ctx ? passThroughResetNote(ctx.currentScheme) : '';
+  // Hashing such a text takes a click on Reset Password: Enter in a field must never do it.
+  const hashAsPassword = useRef(false);
+  useEffect(() => { hashAsPassword.current = false; }, [newPassword]);
 
   function handleMethodChange(method: PasswordSelection['method']) {
     if (!ctx) return;
@@ -233,6 +244,7 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
 
   async function handleSubmit(allowUnencrypted = false) {
     if (!ready || !ctx || !options || !profileId || inFlight.current) return;
+    if (typedStored && !hashAsPassword.current) return;
     if (!ctx.tls && sendsCleartext(sel) && !allowUnencrypted) {
       setConfirmPlain(true);
       return;
@@ -288,6 +300,44 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
     }
   }
 
+  /**
+   * Writes the typed text to userPassword exactly as typed: the generic
+   * write path keeps a stored value ({SASL}user, a hash), SetPassword would
+   * hash it. asIs: stored as typed or refused, whatever the storage policy;
+   * such a value is no cleartext password, so nothing needs a confirmation.
+   */
+  async function handleStoreAsTyped() {
+    if (!ctx || ctx.readOnly || !profileId || !typedStored || !passwordsMatch || inFlight.current) return;
+    inFlight.current = true;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const report = await ModifyEntryWithOptions(profileId, dn, [{ operation: 'replace', attribute: 'userPassword', values: [newPassword] }], { asIs: true });
+      void afterAccountChange(profileId, dn);
+      onChanged?.();
+      const outcome = reportOutcome(report);
+      if (!report || outcome === 'none' || outcome === 'ok') {
+        dismissPasswordWarnings(profileId, dn);
+        const detail = reportSuccessDetail(report);
+        toast.success(`Stored as typed for ${name}${detail ? `: ${detail}` : ''}`);
+        onClose();
+        return;
+      }
+      // Written, but not stored as sent (a server that does not know the scheme hashes it) or with warnings.
+      const detail = [`${reportSummary(report)}.`, ...report.warnings].join('\n\n');
+      setError(`${reportHeadline(report)}\n\n${detail}`);
+      (outcome === 'error' ? toast.error : toast.warning)(`userPassword of ${name}: ${reportHeadline(report)}`, detail);
+    } catch (err: any) {
+      const msg = err?.message || String(err) || 'Failed to write userPassword';
+      setError(msg);
+      toast.error(`Storing userPassword of ${name} failed`, msg);
+    } finally {
+      inFlight.current = false;
+      setLoading(false);
+    }
+  }
+
   const dirty = newPassword !== '' || confirmPassword !== '';
 
   return (
@@ -305,7 +355,16 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
       footer={
         <>
           <DialogCancelButton disabled={loading}>{result ? 'Close' : 'Cancel'}</DialogCancelButton>
-          <Button type="submit" variant="primary" leftIcon={KeyRound} loading={loading} disabled={!ready || confirmPlain} title={block?.reason}>
+          <Button
+            // No submit button while a stored value is typed: Enter then has nothing to activate.
+            type={typedStored ? 'button' : 'submit'}
+            onClick={typedStored ? () => { hashAsPassword.current = true; if (!confirmPlain) void handleSubmit(); } : undefined}
+            variant="primary"
+            leftIcon={KeyRound}
+            loading={loading}
+            disabled={!ready || confirmPlain}
+            title={block?.reason}
+          >
             {result ? 'Reset Again' : 'Reset Password'}
           </Button>
         </>
@@ -336,6 +395,7 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
               />
             )}
             {ctx.readOnly && <InlineAlert tone="warning" body="This connection profile is read-only; the password cannot be changed." />}
+            {passThroughNote && <InlineAlert tone="warning" body={passThroughNote} />}
 
             {/* New Password */}
             <div className="space-y-1">
@@ -375,7 +435,29 @@ export function PasswordDialog({ dn, onClose, onChanged, profileId: profileProp 
                   </button>
                 }
               />
-              <StrengthMeter assessment={assessment} empty={!newPassword} />
+              {typedStored ? (
+                // No password to rate: say what the text is and offer to store it unchanged.
+                <InlineAlert
+                  tone="warning"
+                  className="mt-1.5"
+                  title={typedStored.title}
+                  body={typedStored.text}
+                  actionsBelow
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void handleStoreAsTyped()}
+                      disabled={ctx.readOnly || !passwordsMatch || loading}
+                      title={passwordsMatch ? undefined : 'Type the value a second time under "Confirm password" first'}
+                    >
+                      Store as Typed
+                    </Button>
+                  }
+                />
+              ) : (
+                <StrengthMeter assessment={assessment} empty={!newPassword} />
+              )}
             </div>
 
             <Field label="Confirm password" required error={confirmPassword && !passwordsMatch ? 'Passwords do not match' : undefined}>

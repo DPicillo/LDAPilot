@@ -5,6 +5,7 @@ import {
   isHashedPasswordValue, isPasswordWriteAttribute, isUserPasswordAttribute, normalizePolicySetting, passwordSchemeBadge,
   passwordTag, planNeedsPrompt, defaultClientScheme, policyNotices, reportOutcome, reportSummary, targetHasPasswordValues, describePolicyDefault,
   classifyPasswordValue, bulkPasswordOutcome, reportTitle, schemeSupportSummary, AS_IS_NOTICE, PASSWORD_MASK,
+  typedStoredValue, passThroughResetNote, KEPT_VALUES_NOTE,
 } from '../src/lib/passwordPolicy.ts';
 import {
   defaultSelection, deviatesFromPolicy, methodDescription, policyLine, policySelection, selectionNotices, sendsCleartext,
@@ -127,6 +128,51 @@ test('policy notices', () => {
   assert.equal(asIs[0].text, AS_IS_NOTICE);
   assert.ok(asIs.every((n) => n.level === 'warning' && !n.text.includes('hashed on the client')));
   assert.equal(asIs.length, 2);
+});
+
+test('the policy hint says that {SCHEME} values are stored as typed', () => {
+  for (const policy of ['client', 'server', 'ask'] as const) {
+    const [first] = policyNotices(eff({ policy }));
+    assert.equal(first.text, `summary ${KEPT_VALUES_NOTE}`, policy);
+  }
+  assert.match(KEPT_VALUES_NOTE, /\{SASL\}/);
+  // AD passes every value through; "store exactly as in the file" has its own text
+  assert.equal(policyNotices(eff({ policy: 'ad' }))[0].text, 'summary');
+  assert.ok(policyNotices(eff({}), { asIs: true }).every((n) => !n.text.includes(KEPT_VALUES_NOTE)));
+});
+
+// SASL pass-through authentication (issue #1): "{SASL}user" is no password
+// but the name OpenLDAP hands to saslauthd; it must reach the server as typed.
+test('{SASL} pass-through references are kept and named', () => {
+  for (const v of ['{SASL}username', '{SASL}user@EXAMPLE.ORG', '{sasl}username']) {
+    assert.equal(isHashedPasswordValue(v), true, v);
+    const badge = passwordSchemeBadge(v);
+    assert.deepEqual([badge?.text, badge?.cleartext], ['{SASL}', false], v);
+    assert.match(badge!.title, /pass-through/i, v);
+    assert.ok(!/username|EXAMPLE/.test(badge!.title), v);
+  }
+  // other schemes keep their tooltip
+  assert.equal(passwordSchemeBadge(SSHA)?.title, 'Stored with the {SSHA} scheme');
+});
+
+test('a stored value typed as a new password is recognised', () => {
+  const sasl = typedStoredValue('{SASL}username');
+  assert.deepEqual([sasl?.scheme, sasl?.passThrough], ['SASL', true]);
+  assert.match(sasl!.title, /\{SASL\} pass-through reference, not a password/);
+  assert.ok(!`${sasl!.title} ${sasl!.text}`.includes('username'));
+  assert.equal(typedStoredValue('{sasl}user@EXAMPLE.ORG')?.passThrough, true);
+  const hash = typedStoredValue(SSHA);
+  assert.deepEqual([hash?.scheme, hash?.passThrough], ['SSHA', false]);
+  assert.match(hash!.title, /\{SSHA\} value, not a password/);
+  assert.ok(!`${hash!.title} ${hash!.text}`.includes('W6ph5'));
+  // passwords: anything that is not a plausible value of a known scheme
+  for (const v of ['', 'secret', '{Summer}2026!', '{CLEAR}x', '{SSHA}garbage', '{SASL}']) assert.equal(typedStoredValue(v), null, v);
+});
+
+test('Reset Password says when it would replace a pass-through reference', () => {
+  assert.match(passThroughResetNote('SASL'), /pass-through/);
+  assert.match(passThroughResetNote('sasl'), /\{SASL\}/);
+  for (const s of ['SSHA', 'CRYPT-SHA512', 'CLEARTEXT', '', undefined]) assert.equal(passThroughResetNote(s), '', String(s));
 });
 
 test('report outcome and summary', () => {

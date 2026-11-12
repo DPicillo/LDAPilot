@@ -142,7 +142,7 @@ export function PasswordStorageSettings({ form, update, connected, serverType, d
         )}
 
         <p className="text-xs text-muted-foreground leading-snug">
-          Applies to every userPassword write. Values with a known {'{SCHEME}'} prefix are kept as they are.
+          Applies to every userPassword write. Values with a known {'{SCHEME}'} prefix (a hash such as {'{SSHA}'}…, a pass-through reference such as {'{SASL}'}user) are kept as they are.
           {form.tlsMode === 'none' && ' Without TLS, sending a cleartext password asks first.'}
         </p>
 

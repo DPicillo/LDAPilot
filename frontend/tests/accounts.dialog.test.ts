@@ -45,3 +45,43 @@ test('PasswordDialog: no submit while the cleartext confirmation is open; the co
   assert.ok(clear > 0 && clear < send, 'confirmPlain is cleared before the password is sent');
   assert.ok(src.includes('inFlight.current'), 'one write at a time');
 });
+
+// Issue #1 follow-up: "{SASL}user" (pass-through authentication) and hashes
+// are stored unchanged by every generic write path, but Reset Password
+// hashes the text it is given. The dialog names such a text and stores it
+// through the generic path instead.
+test('PasswordDialog: a typed stored value ({SASL}user, a hash) is stored as typed, not through SetPassword', () => {
+  const src = read('../src/components/editor/PasswordDialog.tsx');
+  // Not on AD: the reset writes unicodePwd there, where every text is a password.
+  assert.ok(src.includes("ctx.serverType !== 'ad' ? typedStoredValue(newPassword) : null"), 'offered off AD only');
+  const start = src.indexOf('async function handleStoreAsTyped(');
+  assert.ok(start >= 0, 'the dialog has a Store as Typed handler');
+  const body = src.slice(start, src.indexOf('\n  }\n', start));
+  assert.ok(
+    body.includes("ModifyEntryWithOptions(profileId, dn, [{ operation: 'replace', attribute: 'userPassword', values: [newPassword] }], { asIs: true })"),
+    'one replace of userPassword, stored exactly as typed',
+  );
+  assert.ok(!body.includes('SetPassword('), 'SetPassword would hash the text');
+  assert.ok(body.includes('passwordsMatch'), 'typed twice, like every password field');
+  assert.ok(body.includes('inFlight.current'), 'one write at a time');
+  assert.ok(src.includes('Store as Typed'), 'the alert offers the button');
+  // A reset of a pass-through account says what it replaces.
+  assert.ok(src.includes('passThroughResetNote(ctx.currentScheme)'));
+});
+
+// Found in the walkthrough against the lab OpenLDAP: with "{SASL}user" typed
+// twice, Enter in the confirmation field submitted the form, i.e. the hashing
+// reset, although the warning was on screen. While the warning is shown the
+// reset needs a click on its button; Enter does nothing.
+test('PasswordDialog: Enter never hashes a typed stored value', () => {
+  const src = read('../src/components/editor/PasswordDialog.tsx');
+  const start = src.indexOf('async function handleSubmit(');
+  const body = src.slice(start, src.indexOf('\n  }\n', start));
+  const guard = body.indexOf('if (typedStored && !hashAsPassword.current) return;');
+  assert.ok(guard >= 0, 'handleSubmit refuses a typed stored value unless Reset Password was clicked');
+  assert.ok(guard < body.indexOf('await SetPassword('), 'the guard comes before the write');
+  // No submit button while the warning is shown: Enter in a field has nothing to activate.
+  assert.ok(src.includes("type={typedStored ? 'button' : 'submit'}"), 'the footer button is no submit button then');
+  assert.ok(src.includes('hashAsPassword.current = true'), 'only the click sets the flag');
+  assert.match(src, /useEffect\(\(\) => \{ hashAsPassword\.current = false; \}, \[newPassword\]\)/, 'a changed text needs a new click');
+});

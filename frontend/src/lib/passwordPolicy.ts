@@ -191,6 +191,9 @@ export function passwordSchemeBadge(value: string, binary = false): SchemeBadge 
     if (v) return { text: `{CRYPT}${v.prefix}`, cleartext: false, title: `{CRYPT} ${v.name}` };
     return { text: '{CRYPT}', cleartext: false, title: '{CRYPT} (system crypt(3), e.g. DES)' };
   }
+  if (isPassThroughScheme(tag)) {
+    return { text: `{${tag}}`, cleartext: false, title: `Pass-through authentication ({${tag}}): OpenLDAP lets saslauthd check the password; no password is stored in this entry` };
+  }
   return { text: `{${tag}}`, cleartext: false, title: `Stored with the {${tag}} scheme` };
 }
 
@@ -296,9 +299,17 @@ export interface PolicyNotice {
 export const AS_IS_NOTICE = 'Passwords are stored exactly as in the file: values without a known {SCHEME} prefix are sent and stored as written (no hashing), so the server keeps them in cleartext unless it hashes cleartext values itself. The connection\'s password storage policy does not apply.';
 
 /**
- * Notices shown next to a password field: the policy in one sentence and
- * what an unencrypted connection means for it. With asIs (LDIF opt-out) the
- * policy does not apply: the notices say that values are stored as written.
+ * What every policy but AD's does with a value that is no cleartext
+ * password: hashes of a known scheme and pass-through references ({SASL})
+ * are never hashed again (Go classifyPasswordValue, pwValueHashed).
+ */
+export const KEPT_VALUES_NOTE = 'Values that already carry a known {SCHEME} prefix, such as {SSHA}… or {SASL}user, are stored as typed.';
+
+/**
+ * Notices shown next to a password field: the policy in one sentence (and
+ * that {SCHEME} values are kept) and what an unencrypted connection means
+ * for it. With asIs (LDIF opt-out) the policy does not apply: the notices
+ * say that values are stored as written.
  */
 export function policyNotices(eff: EffectivePasswordPolicy, opts: { asIs?: boolean } = {}): PolicyNotice[] {
   if (opts.asIs) {
@@ -306,7 +317,9 @@ export function policyNotices(eff: EffectivePasswordPolicy, opts: { asIs?: boole
     if (!eff.tls) out.push({ level: 'warning', text: 'The connection is not encrypted: cleartext passwords are sent over the network; you will be asked to confirm.' });
     return out;
   }
-  const out: PolicyNotice[] = [{ level: eff.policy === 'ad' ? 'warning' : 'info', text: eff.summary }];
+  const out: PolicyNotice[] = eff.policy === 'ad'
+    ? [{ level: 'warning', text: eff.summary }]
+    : [{ level: 'info', text: `${eff.summary} ${KEPT_VALUES_NOTE}` }];
   for (const w of eff.warnings ?? []) out.push({ level: 'warning', text: w });
   if (!eff.tls) {
     out.push(eff.policy === 'client'
@@ -465,4 +478,60 @@ export function reportSummary(report: PasswordWriteReport): string {
 export function reportSuccessDetail(report: PasswordWriteReport | null | undefined): string {
   if (!report) return '';
   return [reportSummary(report), reportKeptDisabled(report) ? 'account stays disabled' : ''].filter(Boolean).join(', ');
+}
+
+// --- Stored values that are no passwords -----------------------------------
+
+/**
+ * {SASL}: pass-through authentication. "{SASL}user@REALM" is no hash but the
+ * name OpenLDAP hands to SASL (saslauthd) to check the password of a bind;
+ * the entry stores no password. scheme is a tag or Go's PasswordSchemeOf.
+ */
+function isPassThroughScheme(scheme: string): boolean {
+  return scheme.toUpperCase() === 'SASL';
+}
+
+/** A text typed as a new password that is a stored value (typedStoredValue). */
+export interface TypedStoredValue {
+  /** Upper-cased scheme tag: 'SASL', 'SSHA' */
+  scheme: string;
+  /** A pass-through reference ({SASL}user), not a hash */
+  passThrough: boolean;
+  title: string;
+  text: string;
+}
+
+/**
+ * What Reset Password says about a typed "password" that is a value every
+ * other write path stores unchanged (a known scheme with a plausible value,
+ * classifyPasswordValue 'hashed'): the dialog would hash the text itself.
+ * Null for a password. Names the scheme, never the rest of the value.
+ */
+export function typedStoredValue(value: string): TypedStoredValue | null {
+  const { kind, tag } = classifyPasswordValue(value);
+  if (kind !== 'hashed') return null;
+  if (isPassThroughScheme(tag)) {
+    return {
+      scheme: tag,
+      passThrough: true,
+      title: `{${tag}} pass-through reference, not a password`,
+      text: `OpenLDAP hands logons of this account to saslauthd under the name after {${tag}}; a server that does not know {${tag}} hashes the text instead, and the result says so. Reset Password would hash this text as a password and the reference would be lost; Store as Typed sends it to userPassword unchanged.`,
+    };
+  }
+  return {
+    scheme: tag,
+    passThrough: false,
+    title: `{${tag}} value, not a password`,
+    text: `This text already carries the storage scheme {${tag}}. Reset Password would hash it again, so the account's password would be this text itself; Store as Typed sends it to userPassword unchanged.`,
+  };
+}
+
+/**
+ * Warning of Reset Password for an account whose stored userPassword is a
+ * pass-through reference (currentScheme: Go PasswordSchemeOf): the reset
+ * ends the delegation. '' otherwise.
+ */
+export function passThroughResetNote(currentScheme: string | undefined): string {
+  if (!currentScheme || !isPassThroughScheme(currentScheme)) return '';
+  return `This account uses pass-through authentication: its userPassword is a {${currentScheme.toUpperCase()}} reference and another system checks the password. A reset replaces the reference with a password stored in this directory.`;
 }

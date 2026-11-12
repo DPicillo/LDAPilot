@@ -88,7 +88,7 @@ LDAPilot is an open-source alternative to classic LDAP clients such as Apache Di
 
 ### 🔑 Passwords
 - **Per-connection password storage policy** (GitHub issue #1): every write path that touches `userPassword` follows it — automatic (OpenLDAP: client-side `{CRYPT}` SHA-512-crypt; 389DS: the server hashes; AD: `unicodePwd`), a fixed client-side scheme, server-side hashing, or ask each time
-- **Hashing schemes** — `{SSHA}`, `{SSHA256}`, `{SSHA512}`, `{PBKDF2-SHA256/512}`, `{ARGON2}`, `{CRYPT}` SHA-256 / SHA-512-crypt and bcrypt (weak legacy schemes are marked); already hashed values are recognised and kept
+- **Hashing schemes** — `{SSHA}`, `{SSHA256}`, `{SSHA512}`, `{PBKDF2-SHA256/512}`, `{ARGON2}`, `{CRYPT}` SHA-256 / SHA-512-crypt and bcrypt (weak legacy schemes are marked); already hashed values and pass-through references such as `{SASL}user` (saslauthd) are recognised and stored unchanged
 - **RFC 3062 Password Modify** extended operation, AD `unicodePwd` resets with "must change at next logon" and unlock in the same request
 - The stored scheme is **read back after every write**: cleartext values or hashes the server cannot verify are reported with a fix (Remove Value / Reset Password…); cleartext passwords over an unencrypted connection need an explicit confirmation (never for `unicodePwd`)
 - **Reset Password dialog** with generator, strength meter that knows the account names and the password policy, and the account options (must change, unlock, enable)
