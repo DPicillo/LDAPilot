@@ -39,15 +39,49 @@ export function findOwningRoot<T extends { dn: string }>(roots: T[], dn: string)
  * ordinary preloaded child such as CN=Users, which would hide the domain.
  */
 export function owningTreeRoot<T extends { dn: string; children?: T[] }>(roots: readonly T[], dn: string, isNcHead: (dn: string) => boolean): T | null {
+  // Only dn and its ancestors can own it, so below the roots only the ancestor chain
+  // is followed: a root's preloaded children may be 40,000 groups (asking isNcHead for
+  // each of them blocked the editor for a minute).
+  const rdns = splitDN(dn);
+  const ancestorAt = (depth: number) => rdns.slice(rdns.length - depth).join(',');
   const candidates: T[] = [];
-  const walk = (list: readonly T[] | undefined, top: boolean) => {
+  const follow = (n: T, depth: number) => {
+    const level = depth + 1; // depth of n's children
+    if (!n.children?.length || level > rdns.length) return;
+    const want = ancestorAt(level);
+    const key = normalizeDN(want);
+    const child = n.children.find((c) => c.dn === want) ?? n.children.find((c) => normalizeDN(c.dn) === key);
+    if (!child) return;
+    if (isNcHead(child.dn)) candidates.push(child);
+    follow(child, level);
+  };
+  for (const root of roots) {
+    candidates.push(root);
+    if (isDNAtOrBelow(dn, root.dn)) follow(root, splitDN(root.dn).length);
+  }
+  return findOwningRoot(candidates, dn);
+}
+
+const forestDomainCache = new WeakMap<readonly TreeNode[], Set<string>>();
+
+/**
+ * Normalized DNs of the domains an AD forest tree shows (globe icon, DC= DN) among
+ * the roots and their preloaded children; computed once per roots array.
+ */
+export function forestDomainKeys(roots: readonly TreeNode[]): Set<string> {
+  let keys = forestDomainCache.get(roots);
+  if (keys) return keys;
+  const found = new Set<string>();
+  const walk = (list: readonly TreeNode[] | undefined) => {
     for (const n of list ?? []) {
-      if (top || isNcHead(n.dn)) candidates.push(n);
-      walk(n.children, false);
+      if (n.icon === 'globe' && /^dc=/i.test(n.dn.trim())) found.add(normalizeDN(n.dn));
+      walk(n.children);
     }
   };
-  walk(roots, true);
-  return findOwningRoot(candidates, dn);
+  walk(roots);
+  keys = found;
+  forestDomainCache.set(roots, keys);
+  return keys;
 }
 
 /**

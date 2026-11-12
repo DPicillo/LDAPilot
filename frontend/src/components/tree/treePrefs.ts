@@ -16,11 +16,12 @@ import { nodeKind, type ObjectKind } from '../ui/objectKind'
 export type TreeSortMode = 'default' | 'alpha' | 'type'
 
 /**
- * Default: by name, as ADUC / LDAP browsers do, so a new child lands in its
- * place instead of at the end (OpenLDAP's server order is creation order).
- * A stored choice (also "Server order") is kept.
+ * Default: by type, then name (containers first, then groups, accounts, …),
+ * so OUs are not buried between thousands of users or groups, and a new child
+ * lands in its place instead of at the end (OpenLDAP's server order is
+ * creation order). A stored choice (also "Server order") is kept.
  */
-export const DEFAULT_SORT_MODE: TreeSortMode = 'alpha'
+export const DEFAULT_SORT_MODE: TreeSortMode = 'type'
 
 export const SORT_MODE_LABELS: Record<TreeSortMode, string> = {
   default: 'Server order',

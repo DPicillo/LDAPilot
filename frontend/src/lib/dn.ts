@@ -78,29 +78,40 @@ function indexOfUnescaped(s: string, ch: string): number {
   return -1;
 }
 
+const utf8Encoder = new TextEncoder();
+const utf8Decoder = new TextDecoder();
+
 /** Removes RFC 4514 escaping from an attribute value (`\,` and `\2c` forms; hex escapes decoded as UTF-8). */
 export function unescapeDNValue(value: string): string {
+  // Most names have no escape, and every row of a tree or list comes through here:
+  // encoding each character cost 36 – 100 µs per name (seconds for 40,000 entries).
+  if (!value.includes('\\')) return value;
   const bytes: number[] = [];
-  const enc = new TextEncoder();
+  let plain = ''; // characters since the last escape, encoded in one go
+  const flush = () => {
+    if (!plain) return;
+    for (const b of utf8Encoder.encode(plain)) bytes.push(b);
+    plain = '';
+  };
   for (let i = 0; i < value.length; i++) {
     const ch = value[i];
-    if (ch === '\\' && i + 1 < value.length) {
-      const hex = value.slice(i + 1, i + 3);
-      if (/^[0-9a-fA-F]{2}$/.test(hex)) {
-        bytes.push(parseInt(hex, 16));
-        i += 2;
-      } else {
-        const s = String.fromCodePoint(value.codePointAt(i + 1)!);
-        bytes.push(...enc.encode(s));
-        i += s.length;
-      }
+    if (ch !== '\\' || i + 1 >= value.length) {
+      plain += ch;
+      continue;
+    }
+    flush();
+    const hex = value.slice(i + 1, i + 3);
+    if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+      bytes.push(parseInt(hex, 16));
+      i += 2;
     } else {
-      const s = String.fromCodePoint(value.codePointAt(i)!);
-      bytes.push(...enc.encode(s));
-      i += s.length - 1;
+      const s = String.fromCodePoint(value.codePointAt(i + 1)!);
+      for (const b of utf8Encoder.encode(s)) bytes.push(b);
+      i += s.length;
     }
   }
-  return new TextDecoder().decode(Uint8Array.from(bytes));
+  flush();
+  return utf8Decoder.decode(Uint8Array.from(bytes));
 }
 
 /** Attribute type and unescaped value of an RDN ("cn=Doe\, John" → cn, "Doe, John"). */

@@ -21,8 +21,8 @@
  *
  * Children come from the tree store (loaded when missing); the attribute
  * columns from ONE one-level search (not one read per entry), repeated when
- * the children are reloaded. Sorted by name by default (the tree's Type sort
- * mode sorts by type).
+ * the children are reloaded. Sorted like the tree: by type, then name by
+ * default; the tree's Name and Server order modes sort by name.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from 'react'
 import { Columns3, FolderOpen, RefreshCw } from 'lucide-react'
@@ -114,7 +114,7 @@ function attrValues(entry: LDAPEntry | undefined, name: string): string[] {
   return name.toLowerCase() === 'objectclass' ? a.values.filter((v) => v.toLowerCase() !== 'top') : a.values
 }
 
-/** Name by default (also for the tree's "server order"); the tree's Type mode sorts by type. */
+/** The tree's sort mode: Type (the default) sorts by type, then name; Name and "Server order" by name. */
 const SORT_FOR_MODE: Record<TreeSortMode, SortState> = {
   default: { id: 'name', dir: 'asc' },
   alpha: { id: 'name', dir: 'asc' },

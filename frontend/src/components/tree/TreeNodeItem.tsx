@@ -17,7 +17,7 @@
  * (containers, also empty ones); hovering a collapsed container while
  * dragging expands it.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from 'react'
 import { ChevronDown, ChevronRight, ChevronsDown, List } from 'lucide-react'
 import type { TreeNode } from '../../types/ldap'
 import { getIconForHint, getIconForObjectClass } from '../../lib/ldap-icons'
@@ -71,6 +71,25 @@ export function TreeNodeIcon({ node, status }: { node: TreeNode; status?: Accoun
   return <Icon size={14} strokeWidth={1.75} aria-hidden className={cn('shrink-0', OBJECT_KIND_COLOR[kind])} />
 }
 
+/**
+ * What a row does, as one stable object (DirectoryTree keeps it current through a ref):
+ * memoized rows never hold stale callbacks.
+ */
+export interface TreeRowActions {
+  toggle: (node: TreeNode) => void
+  select: (node: TreeNode, e: MouseEvent) => void
+  /** Double-click pins (the click before it opened the preview). */
+  open: (node: TreeNode, pin: boolean) => void
+  contextMenu: (node: TreeNode, e: MouseEvent) => void
+  /** Drag start: the DNs to move (empty = not draggable, e.g. a naming-context head). */
+  dragStart: (node: TreeNode) => string[]
+  dragEnd: () => void
+  /** Can the entries being dragged be dropped here? */
+  canDrop: (node: TreeNode) => boolean
+  /** Drop: `text` is the drag's text/plain data (DirectoryTree checks it against its drag session). */
+  drop: (node: TreeNode, text: string) => void
+}
+
 interface TreeNodeRowProps {
   node: TreeNode
   label: string
@@ -86,20 +105,18 @@ interface TreeNodeRowProps {
   status?: AccountStatusKind
   itemProps: TreeItemProps
   style?: CSSProperties
-  onToggle: () => void
-  onSelect: (e: MouseEvent) => void
-  onOpen: (pin: boolean) => void
-  onContextMenu: (e: MouseEvent) => void
-  /** Drag start: the DNs to move (empty = not draggable, e.g. a naming-context head). */
-  onDragStartRow?: () => string[]
-  onDragEndRow?: () => void
-  /** Can the entries being dragged be dropped here? */
-  canDrop?: () => boolean
-  /** Drop: `text` is the drag's text/plain data (DirectoryTree checks it against its drag session). */
-  onDropRow?: (text: string) => void
+  actions: TreeRowActions
+  /** Rows can be dragged (not on read-only connections). */
+  draggableRow: boolean
+  /** The row takes dropped entries (containers). */
+  droppable: boolean
 }
 
-export function TreeNodeRow({
+/**
+ * Memoized (sameRowProps): a scroll re-renders the tree, but a row only renders again
+ * when what it shows changes.
+ */
+export const TreeNodeRow = memo(function TreeNodeRow({
   node,
   label,
   depth,
@@ -111,21 +128,16 @@ export function TreeNodeRow({
   status,
   itemProps,
   style,
-  onToggle,
-  onSelect,
-  onOpen,
-  onContextMenu,
-  onDragStartRow,
-  onDragEndRow,
-  canDrop,
-  onDropRow,
+  actions,
+  draggableRow,
+  droppable,
 }: TreeNodeRowProps) {
   const [dragOver, setDragOver] = useState(false)
   const expandTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const statusText = status ? STATUS_TEXT[status] : undefined
   const statusTip = status ? STATUS_TOOLTIP[status] : undefined
   const contextHead = isContextHead(node)
-  const draggable = !!onDragStartRow && !contextHead
+  const draggable = draggableRow && !contextHead
 
   const stopExpandTimer = () => {
     if (expandTimer.current) clearTimeout(expandTimer.current)
@@ -135,7 +147,7 @@ export function TreeNodeRow({
 
   const handleDragStart = useCallback(
     (e: DragEvent) => {
-      const dns = onDragStartRow?.() ?? []
+      const dns = actions.dragStart(node)
       if (dns.length === 0) {
         e.preventDefault()
         return
@@ -148,12 +160,12 @@ export function TreeNodeRow({
       }
       e.dataTransfer.effectAllowed = 'move'
     },
-    [onDragStartRow],
+    [actions, node],
   )
   const handleDragOver = useCallback(
     (e: DragEvent) => {
       // The drag session decides (WebKit does not always list custom types during dragover).
-      if (!onDropRow || !canDrop?.()) return
+      if (!droppable || !actions.canDrop(node)) return
       e.preventDefault()
       e.stopPropagation()
       e.dataTransfer.dropEffect = 'move'
@@ -161,11 +173,11 @@ export function TreeNodeRow({
       if (node.hasChildren && !isExpanded && !expandTimer.current) {
         expandTimer.current = setTimeout(() => {
           expandTimer.current = null
-          onToggle()
+          actions.toggle(node)
         }, DRAG_EXPAND_MS)
       }
     },
-    [onDropRow, canDrop, dragOver, node.hasChildren, isExpanded, onToggle],
+    [droppable, actions, node, dragOver, isExpanded],
   )
   const handleDropEvent = useCallback(
     (e: DragEvent) => {
@@ -173,9 +185,9 @@ export function TreeNodeRow({
       e.stopPropagation()
       setDragOver(false)
       stopExpandTimer()
-      if (onDropRow && canDrop?.()) onDropRow(e.dataTransfer.getData('text/plain'))
+      if (droppable && actions.canDrop(node)) actions.drop(node, e.dataTransfer.getData('text/plain'))
     },
-    [onDropRow, canDrop],
+    [droppable, actions, node],
   )
 
   // Roots and naming-context heads show a short name: their DN is always the tooltip.
@@ -193,25 +205,25 @@ export function TreeNodeRow({
       style={{ ...style, paddingLeft: ROW_INDENT(depth), ['--row-bg' as string]: rowBg(isSelected, treeFocused) }}
       draggable={draggable}
       onDragStart={draggable ? handleDragStart : undefined}
-      onDragEnd={draggable ? onDragEndRow : undefined}
-      onDragOver={onDropRow ? handleDragOver : undefined}
+      onDragEnd={draggable ? actions.dragEnd : undefined}
+      onDragOver={droppable ? handleDragOver : undefined}
       onDragLeave={() => {
         setDragOver(false)
         stopExpandTimer()
       }}
-      onDrop={onDropRow ? handleDropEvent : undefined}
+      onDrop={droppable ? handleDropEvent : undefined}
       onClick={(e) => {
         e.stopPropagation()
-        onSelect(e)
+        actions.select(node, e)
       }}
       onDoubleClick={(e) => {
         e.stopPropagation()
-        onOpen(true)
+        actions.open(node, true)
       }}
       onContextMenu={(e) => {
         e.preventDefault()
         e.stopPropagation()
-        onContextMenu(e)
+        actions.contextMenu(node, e)
       }}
     >
       <span
@@ -220,7 +232,7 @@ export function TreeNodeRow({
         onClick={(e) => {
           if (!node.hasChildren) return
           e.stopPropagation()
-          onToggle()
+          actions.toggle(node)
         }}
         onDoubleClick={(e) => e.stopPropagation()}
       >
@@ -263,6 +275,22 @@ export function TreeNodeRow({
       )}
     </div>
   )
+}, sameRowProps)
+
+/** Row props equal for rendering: the keyboard props' handlers only call stable setters, so they are not compared. */
+function sameRowProps(a: TreeNodeRowProps, b: TreeNodeRowProps): boolean {
+  for (const key of Object.keys(b) as (keyof TreeNodeRowProps)[]) {
+    if (key === 'itemProps') {
+      for (const k of Object.keys(b.itemProps)) {
+        const v = b.itemProps[k]
+        if (typeof v !== 'function' && a.itemProps[k] !== v) return false
+      }
+      if (Object.keys(a.itemProps).length !== Object.keys(b.itemProps).length) return false
+    } else if (key === 'style') {
+      if (a.style?.transform !== b.style?.transform) return false
+    } else if (a[key] !== b[key]) return false
+  }
+  return true
 }
 
 /**

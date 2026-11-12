@@ -47,7 +47,8 @@ export function rememberAccountStatus(profileId: string, status: AccountStatus |
 }
 
 export function cachedAccountStatus(profileId: string | null | undefined, dn: string | undefined): AccountStatus | undefined {
-  if (!profileId || !dn) return undefined
+  // Lists ask for every row: no DN normalization while nothing is remembered.
+  if (!profileId || !dn || cache.size === 0) return undefined
   const st = cache.get(key(profileId, dn))
   return st?.applicable ? st : undefined
 }

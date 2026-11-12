@@ -94,7 +94,7 @@ import { useTreeKeyboard, type TreeKeyboardItem } from '../ui/useTreeKeyboard'
 import { primaryStatus, type AccountStatusKind } from '../ui/accountStatus'
 import { getCommandContext, resolveCommands, runCommand, useCommandRegistryVersion, type CommandSource, type SelectionItem } from '../ui/commands'
 import { toast } from '../ui/Toast'
-import { LargeContainerRow, TreeNodeRow } from './TreeNodeItem'
+import { LargeContainerRow, TreeNodeRow, type TreeRowActions } from './TreeNodeItem'
 import { TreeContextMenu, type EntryMenuState } from './TreeContextMenu'
 import { DEFAULT_SORT_MODE, SORT_MODE_LABELS, isContextHead, nodeLabel, sortTreeNodes, useTreePrefs, type TreeSortMode } from './treePrefs'
 import { showInTree } from './treeCommands'
@@ -717,6 +717,47 @@ export function DirectoryTree() {
     [activeProfileId, isReadOnly, nodes, headDNs],
   )
 
+  // --- Row actions --------------------------------------------------------------------------
+
+  // One stable object for every row (memoized rows, TreeNodeItem); it reads this render's
+  // state through the ref, so a row skipped by memo never acts on stale state.
+  const rowActionsRef = useRef<TreeRowActions>(null!)
+  rowActionsRef.current = {
+    toggle: (node) => activeProfileId && toggleExpand(activeProfileId, node.dn),
+    select: (node, e) => {
+      const ctrl = e.ctrlKey || e.metaKey
+      if (e.shiftKey) {
+        selectRangeTo(node.dn, null, ctrl)
+        markInternal()
+      } else {
+        tree.select(node.dn, ctrl ? 'toggle' : 'replace')
+        // A plain click opens the one preview tab (UX-3; View ▸ Single-Click Opens Preview).
+        if (!ctrl && activeProfileId && useUIStore.getState().singleClickPreview) openEntry(activeProfileId, node.dn, { preview: true })
+      }
+    },
+    open: (node) => activeProfileId && openEntry(activeProfileId, node.dn),
+    contextMenu: (node, e) => openMenuAt(node.dn, { clientX: e.clientX, clientY: e.clientY }),
+    dragStart: (node) => dragStart(node.dn),
+    dragEnd: () => {
+      dragSession.current = null
+    },
+    canDrop: (node) => canDropOn(node),
+    drop: (node, text) => dropOn(node, text),
+  }
+  const rowActions = useMemo<TreeRowActions>(
+    () => ({
+      toggle: (n) => rowActionsRef.current.toggle(n),
+      select: (n, e) => rowActionsRef.current.select(n, e),
+      open: (n, pin) => rowActionsRef.current.open(n, pin),
+      contextMenu: (n, e) => rowActionsRef.current.contextMenu(n, e),
+      dragStart: (n) => rowActionsRef.current.dragStart(n),
+      dragEnd: () => rowActionsRef.current.dragEnd(),
+      canDrop: (n) => rowActionsRef.current.canDrop(n),
+      drop: (n, text) => rowActionsRef.current.drop(n, text),
+    }),
+    [],
+  )
+
   // --- Filter ------------------------------------------------------------------------------
 
   const closeTreeFilter = useCallback(() => {
@@ -1028,7 +1069,6 @@ export function DirectoryTree() {
               const { node, depth } = row
               const loaded = childNodes[node.dn]
               const kinds: AccountStatusKind[] = [...(cachedAccountStatusKinds(activeProfileId, node.dn) ?? node.status ?? [])]
-              const dropTarget = !isReadOnly && isDropContainer(node)
               return (
                 <TreeNodeRow
                   key={row.id}
@@ -1043,27 +1083,9 @@ export function DirectoryTree() {
                   status={primaryStatus(kinds)}
                   itemProps={tree.getItemProps(item)}
                   style={style}
-                  onToggle={() => activeProfileId && toggleExpand(activeProfileId, node.dn)}
-                  onSelect={(e) => {
-                    const ctrl = e.ctrlKey || e.metaKey
-                    if (e.shiftKey) {
-                      selectRangeTo(node.dn, null, ctrl)
-                      markInternal()
-                    } else {
-                      tree.select(node.dn, ctrl ? 'toggle' : 'replace')
-                      // A plain click opens the one preview tab (UX-3; View ▸ Single-Click Opens Preview).
-                      if (!ctrl && activeProfileId && useUIStore.getState().singleClickPreview) openEntry(activeProfileId, node.dn, { preview: true })
-                    }
-                  }}
-                  // Double-click pins (the click before it opened the preview).
-                  onOpen={() => activeProfileId && openEntry(activeProfileId, node.dn)}
-                  onContextMenu={(e) => openMenuAt(node.dn, { clientX: e.clientX, clientY: e.clientY })}
-                  onDragStartRow={isReadOnly ? undefined : () => dragStart(node.dn)}
-                  onDragEndRow={() => {
-                    dragSession.current = null
-                  }}
-                  canDrop={dropTarget ? () => canDropOn(node) : undefined}
-                  onDropRow={dropTarget ? (text) => dropOn(node, text) : undefined}
+                  actions={rowActions}
+                  draggableRow={!isReadOnly}
+                  droppable={!isReadOnly && isDropContainer(node)}
                 />
               )
             })}

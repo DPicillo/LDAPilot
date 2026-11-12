@@ -1,7 +1,9 @@
 # LDAPilot Test Lab
 
 Three directory servers for developing and testing LDAPilot, each seeded with
-realistic data and the edge cases an LDAP admin tool has to cope with.
+realistic data and the edge cases an LDAP admin tool has to cope with, plus an
+optional large OpenLDAP for performance work (see
+[Large OpenLDAP](#large-openldap-performance)).
 
 | Server | Container | Ports (host) | Base DN |
 |---|---|---|---|
@@ -143,11 +145,51 @@ two OUs (`gPLink`), a KDS root key and a gMSA (`gmsa-web$`), tombstones in
 tombstones: LDAPilot restores them with the attributes a tombstone keeps and
 lists what was lost.
 
+## Large OpenLDAP (performance)
+
+A fourth server for performance work, **not** started by a plain `docker compose up`
+(compose profile `perf`, own container, ports, volume and network):
+
+```bash
+docker compose --profile perf up -d --build openldap-perf   # first start: ~1 min bulk load
+docker compose logs openldap-perf | grep '\[perf\]'          # "loaded in … s"
+```
+
+| Server | Container | Ports (host) | Base DN | Admin |
+|---|---|---|---|---|
+| OpenLDAP 2.6 (Debian trixie) | `ldapilot-openldap-perf` | 10389 (StartTLS), 10636 (LDAPS) | `dc=perf,dc=ldapilot,dc=lab` | `cn=admin,dc=perf,dc=ldapilot,dc=lab` / `admin` |
+
+Also `cn=readonly,dc=perf,dc=ldapilot,dc=lab` / `readonly` (an ordinary bind: ACLs apply;
+size and time limits are unlimited for every bind), `cn=admin,cn=config` / `config`, every user
+with the password `password`. The certificate is self-signed (`perf.ldapilot.lab`, `localhost`).
+
+```
+dc=perf,dc=ldapilot,dc=lab
+├── ou=Groups        40,000 groupOfNames directly below (one flat container: the reported case)
+├── ou=People       100,000 inetOrgPerson directly below (30 % also posixAccount)
+├── ou=Departments   50 OUs × ou=Teams (posixGroup) / ou=Projects (groupOfNames) /
+│                    ou=Roles (groupOfUniqueNames): the other 60,000 groups
+├── ou=Sites         800 OUs with two devices each
+└── ou=Contacts      2,000 contacts ("Last, First": a comma in every RDN)
+```
+
+Group sizes follow a long tail (most 1–30 members, 1 % 500–2,000). The data comes from
+`openldap-perf/generate.go` (deterministic for a seed) and is loaded with `slapadd` on the first
+start; `PERF_USERS`, `PERF_GROUPS`, `PERF_ROOT_GROUPS`, `PERF_SITES`, `PERF_CONTACTS` and
+`PERF_SEED` in the compose file change the size (then `docker compose --profile perf down -v`
+and up again). slapd logs every operation with its duration (`loglevel stats`).
+
+To test the "40,000 groups on the root level" case, create a profile with the base DN
+`ou=Groups,dc=perf,dc=ldapilot,dc=lab`. Backend timings without the UI:
+`go test -tags perflab -run TestPerfLab -v ./internal/ldap` (see `internal/ldap/perflab_test.go`
+for the settings); measurements and findings in `docs/perf-large-directories.md`.
+
 ## Managing the Lab
 
 ```bash
 docker compose down              # stop, keep data
 docker compose down -v           # stop and delete all data (next start re-seeds)
+docker compose --profile perf stop openldap-perf     # only the large OpenLDAP
 docker compose --profile admin up -d phpldapadmin   # phpLDAPadmin on http://localhost:8080
 ```
 

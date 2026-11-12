@@ -20,6 +20,7 @@
  * ColumnChooser moves columns up/down).
  */
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -27,6 +28,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type FocusEvent as ReactFocusEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react'
@@ -46,12 +48,12 @@ import { InlineAlert } from './InlineAlert'
 import { Popover } from './Popover'
 import { getZoom } from './layer'
 import { contextMenuPoint, isContextMenuKey } from './Menu'
-import { fileTimeToDate, formatDateTime, formatRelative, generalizedTimeToDate, primaryStatus, type AccountStatus, type AccountStatusKind } from './accountStatus'
+import { formatDateTime, formatRelative, primaryStatus, type AccountStatus, type AccountStatusKind } from './accountStatus'
 import type { CommandSource } from './commands'
 import { isEditableTarget } from './shortcuts'
+import { sortRowsBy, toDate, type CellValue } from './tableSort'
 
 export type CellRenderer = 'text' | 'dn' | 'date' | 'uac' | 'image' | 'badge' | 'status'
-type CellValue = string | number | Date | null | undefined | string[] | (AccountStatus | AccountStatusKind)[]
 
 export interface DataTableColumn<T> {
   id: string
@@ -193,26 +195,6 @@ function rowHeightPx(): number {
   }
 }
 
-function toDate(v: CellValue): Date | null {
-  if (v instanceof Date) return v
-  if (typeof v === 'number') return new Date(v)
-  if (typeof v !== 'string' || !v) return null
-  // Pure digits are a Windows FILETIME (0 / max = never), never a year.
-  if (/^-?\d{1,19}$/.test(v.trim())) return fileTimeToDate(v)
-  return generalizedTimeToDate(v) ?? (Number.isNaN(Date.parse(v)) ? null : new Date(v))
-}
-
-function compare(a: CellValue, b: CellValue): number {
-  if (a == null && b == null) return 0
-  if (a == null) return 1
-  if (b == null) return -1
-  if (a instanceof Date || b instanceof Date) return (toDate(a)?.getTime() ?? 0) - (toDate(b)?.getTime() ?? 0)
-  if (typeof a === 'number' && typeof b === 'number') return a - b
-  const sa = Array.isArray(a) ? a.map(String).join(', ') : String(a)
-  const sb = Array.isArray(b) ? b.map(String).join(', ') : String(b)
-  return sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' })
-}
-
 function uacText(v: CellValue): string {
   const n = typeof v === 'number' ? v : Number(Array.isArray(v) ? v[0] : v)
   if (!Number.isFinite(n)) return ''
@@ -221,7 +203,113 @@ function uacText(v: CellValue): string {
   return [base, ...names].filter(Boolean).join(' · ')
 }
 
-export function DataTable<T>({
+/** Row event handlers, read through a ref: memoized rows never hold stale closures. */
+interface RowHandlers<T> {
+  focus: (e: ReactFocusEvent<HTMLTableRowElement>, k: string) => void
+  click: (e: ReactMouseEvent, k: string, r: T) => void
+  doubleClick: (r: T) => void
+  contextMenu: (e: ReactMouseEvent, k: string, r: T) => void
+  check: (k: string, checked: boolean) => void
+}
+
+interface DataRowProps<T> {
+  row: T
+  rowKey: string
+  index: number
+  itemIndex?: number
+  selected: boolean
+  focused: boolean
+  hasFocus: boolean
+  selection: 'none' | 'single' | 'multi'
+  /** Multi selection: undefined = every row, false = a disabled checkbox. */
+  selectable?: boolean
+  measuring: boolean
+  measureRows?: boolean
+  columnChooser?: boolean
+  hasContextMenu: boolean
+  cols: DataTableColumn<T>[]
+  renderCell: (c: DataTableColumn<T>, r: T) => ReactNode
+  rowRef: (el: HTMLTableRowElement | null) => void
+  handlers: { current: RowHandlers<T> }
+  /** The table's props object: a new one whenever the parent renders (cells may read outside state). */
+  epoch: unknown
+}
+
+/**
+ * One body row. Memoized: a scroll re-renders the table, but a row only renders again
+ * when its own props change (40,000-row lists scrolled at 17 fps re-rendering ≈ 55 rows
+ * per frame).
+ */
+const DataRow = memo(function DataRow<T>({
+  row: r,
+  rowKey: k,
+  index: i,
+  itemIndex,
+  selected,
+  focused,
+  hasFocus,
+  selection,
+  selectable,
+  measuring,
+  measureRows,
+  columnChooser,
+  hasContextMenu,
+  cols,
+  renderCell,
+  rowRef,
+  handlers,
+}: DataRowProps<T>) {
+  return (
+    <tr
+      ref={rowRef}
+      data-index={measuring ? (itemIndex ?? i) : undefined}
+      role="row"
+      aria-rowindex={(itemIndex ?? i) + 2}
+      aria-selected={selection === 'none' ? undefined : selected}
+      tabIndex={focused ? 0 : -1}
+      data-key={k}
+      onFocus={(e) => handlers.current.focus(e, k)}
+      onClick={(e) => handlers.current.click(e, k, r)}
+      onDoubleClick={() => handlers.current.doubleClick(r)}
+      onContextMenu={hasContextMenu ? (e) => handlers.current.contextMenu(e, k, r) : undefined}
+      className={cn(
+        'h-table-row group outline-hidden focus-ring-inset cursor-default',
+        measureRows && '[&>td]:align-top',
+        selected ? (hasFocus ? 'row-selected' : 'row-selected-inactive') : 'hover:bg-accent',
+      )}
+    >
+      {selection === 'multi' && (
+        <td role="gridcell" className="px-2 border-b border-border w-8" onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            tabIndex={-1}
+            aria-label={`Select row ${i + 1}`}
+            checked={selected}
+            disabled={selectable === undefined ? undefined : !selectable}
+            onCheckedChange={(c) => handlers.current.check(k, c)}
+          />
+        </td>
+      )}
+      {cols.map((c) => (
+        <td
+          key={c.id}
+          role="gridcell"
+          className={cn(
+            'px-2 border-b border-border whitespace-nowrap overflow-hidden max-w-0',
+            c.align === 'right' && 'text-right',
+            c.align === 'center' && 'text-center',
+            c.mono && 'font-mono',
+          )}
+        >
+          {renderCell(c, r)}
+        </td>
+      ))}
+      {columnChooser && <td role="presentation" className="border-b border-border" />}
+    </tr>
+  )
+}) as <T>(props: DataRowProps<T> & { key?: string }) => ReactNode
+
+export function DataTable<T>(props: DataTableProps<T>) {
+  const {
   columns,
   rows,
   rowKey,
@@ -257,7 +345,7 @@ export function DataTable<T>({
   rowSelectable,
   className,
   ...aria
-}: DataTableProps<T>) {
+  } = props
   const scrollRef = useRef<HTMLDivElement>(null)
   // The visible width: the empty state stays inside it however wide the columns are (RW1-S-03).
   const [viewW, setViewW] = useState(0)
@@ -321,7 +409,7 @@ export function DataTable<T>({
   )
 
   const orderedCols = useMemo(() => orderColumns(columns, order), [columns, order])
-  const visibleCols = orderedCols.filter((c) => !hidden.has(c.id))
+  const visibleCols = useMemo(() => orderedCols.filter((c) => !hidden.has(c.id)), [orderedCols, hidden])
   const moveColumn = (id: string, dir: -1 | 1) => {
     const ids = orderedCols.map((c) => c.id)
     const i = ids.indexOf(id)
@@ -336,8 +424,7 @@ export function DataTable<T>({
     if (!sort) return rows
     const col = columns.find((c) => c.id === sort.id)
     if (!col) return rows
-    const out = [...rows].sort((a, b) => compare(valueOf(col, a), valueOf(col, b)))
-    return sort.dir === 'desc' ? out.reverse() : out
+    return sortRowsBy(rows, (r) => valueOf(col, r), sort.dir)
   }, [rows, sort, columns, valueOf])
 
   // Grouped tables: header items + the rows of expanded groups (displayRows = what the keyboard walks).
@@ -628,7 +715,7 @@ export function DataTable<T>({
     if (focusKey && indexOfKey(focusKey) < 0) setFocusKey(null)
   }, [keys, focusKey, indexOfKey])
 
-  const renderCell = (c: DataTableColumn<T>, r: T): ReactNode => {
+  const renderCell = useCallback((c: DataTableColumn<T>, r: T): ReactNode => {
     if (c.cell) {
       const custom = c.cell(r)
       if (custom !== undefined) return custom
@@ -690,7 +777,7 @@ export function DataTable<T>({
         return <TruncatedText text={s} />
       }
     }
-  }
+  }, [valueOf, onOpenDn])
 
   const multi = selection === 'multi'
   const allSelected = multi && selectableKeys.length > 0 && selectableKeys.every((k) => sel.has(k))
@@ -708,88 +795,67 @@ export function DataTable<T>({
   // Tab stop inside the body when the stored row is not rendered: the first rendered row.
   const proxyKey = !storedMounted && renderedRowIdx.length ? keys[renderedRowIdx[0]] : null
 
-  const renderRow = (r: T, i: number, style?: React.CSSProperties, itemIndex?: number) => {
+  // The rows' handlers see this render's state; the memoized rows call them through the ref.
+  const rowHandlers = useRef<RowHandlers<T>>(null!)
+  rowHandlers.current = {
+    focus: (e, k) => {
+      // Tab onto the proxy row while the stored row is scrolled away: continue from the stored row.
+      if (k === proxyKey && focusKey && focusKey !== k && e.currentTarget.matches(':focus-visible')) {
+        focusRow(focusKey)
+        return
+      }
+      // A row the user focused (click) cancels an older pending focus target.
+      if (pendingFocus.current !== null && pendingFocus.current !== k) pendingFocus.current = null
+      if (focusKey !== k) setFocusKey(k)
+    },
+    click: (e, k, r) => {
+      onRowClick(e, k)
+      onRowClickProp?.(r, e)
+    },
+    doubleClick: (r) => onOpen?.(r, { pin: true }),
+    contextMenu: (e, k, r) => {
+      if (!onContextMenu) return
+      e.preventDefault()
+      if (!sel.has(k) && selection !== 'none') {
+        anchorKey.current = k
+        setSel(new Set([k]))
+      }
+      setFocusKey(k)
+      onContextMenu({ clientX: e.clientX, clientY: e.clientY }, sel.has(k) ? rowsFor(sel) : [r])
+    },
+    check: (k, c) => {
+      const next = new Set(sel)
+      if (c) next.add(k)
+      else next.delete(k)
+      anchorKey.current = k
+      setSel(next)
+    },
+  }
+
+  const renderRow = (r: T, i: number, itemIndex?: number) => {
     const k = keys[i]
-    const selected = sel.has(k)
-    const focused = k === storedFocus || k === proxyKey
     return (
-      <tr
+      <DataRow<T>
         key={k}
-        ref={rowRefFor(k)}
-        data-index={measuring ? (itemIndex ?? i) : undefined}
-        role="row"
-        aria-rowindex={(itemIndex ?? i) + 2}
-        aria-selected={selection === 'none' ? undefined : selected}
-        tabIndex={focused ? 0 : -1}
-        data-key={k}
-        style={style}
-        onFocus={(e) => {
-          // Tab onto the proxy row while the stored row is scrolled away: continue from the stored row.
-          if (k === proxyKey && focusKey && focusKey !== k && e.currentTarget.matches(':focus-visible')) {
-            focusRow(focusKey)
-            return
-          }
-          // A row the user focused (click) cancels an older pending focus target.
-          if (pendingFocus.current !== null && pendingFocus.current !== k) pendingFocus.current = null
-          if (focusKey !== k) setFocusKey(k)
-        }}
-        onClick={(e) => {
-          onRowClick(e, k)
-          onRowClickProp?.(r, e)
-        }}
-        onDoubleClick={() => onOpen?.(r, { pin: true })}
-        onContextMenu={
-          onContextMenu
-            ? (e) => {
-                e.preventDefault()
-                if (!sel.has(k) && selection !== 'none') {
-                  anchorKey.current = k
-                  setSel(new Set([k]))
-                }
-                setFocusKey(k)
-                onContextMenu({ clientX: e.clientX, clientY: e.clientY }, sel.has(k) ? rowsFor(sel) : [r])
-              }
-            : undefined
-        }
-        className={cn(
-          'h-table-row group outline-hidden focus-ring-inset cursor-default',
-          measureRows && '[&>td]:align-top',
-          selected ? (hasFocus ? 'row-selected' : 'row-selected-inactive') : 'hover:bg-accent',
-        )}
-      >
-        {multi && (
-          <td role="gridcell" className="px-2 border-b border-border w-8" onClick={(e) => e.stopPropagation()}>
-            <Checkbox
-              tabIndex={-1}
-              aria-label={`Select row ${i + 1}`}
-              checked={selected}
-              disabled={rowSelectable ? !rowSelectable(r) : undefined}
-              onCheckedChange={(c) => {
-                const next = new Set(sel)
-                if (c) next.add(k)
-                else next.delete(k)
-                anchorKey.current = k
-                setSel(next)
-              }}
-            />
-          </td>
-        )}
-        {visibleCols.map((c) => (
-          <td
-            key={c.id}
-            role="gridcell"
-            className={cn(
-              'px-2 border-b border-border whitespace-nowrap overflow-hidden max-w-0',
-              c.align === 'right' && 'text-right',
-              c.align === 'center' && 'text-center',
-              c.mono && 'font-mono',
-            )}
-          >
-            {renderCell(c, r)}
-          </td>
-        ))}
-        {columnChooser && <td role="presentation" className="border-b border-border" />}
-      </tr>
+        row={r}
+        rowKey={k}
+        index={i}
+        itemIndex={itemIndex}
+        selected={sel.has(k)}
+        focused={k === storedFocus || k === proxyKey}
+        hasFocus={hasFocus}
+        selection={selection}
+        selectable={multi && rowSelectable ? rowSelectable(r) : undefined}
+        measuring={!!measuring}
+        measureRows={measureRows}
+        columnChooser={columnChooser}
+        hasContextMenu={!!onContextMenu}
+        cols={visibleCols}
+        renderCell={renderCell}
+        rowRef={rowRefFor(k)}
+        handlers={rowHandlers}
+        epoch={props}
+      />
     )
   }
 
@@ -822,7 +888,7 @@ export function DataTable<T>({
     </tr>
   )
   const renderItem = (it: GridItem<T>, itemIndex: number) =>
-    it.type === 'group' ? renderGroup(it, itemIndex) : renderRow(it.row, it.index, undefined, itemIndex)
+    it.type === 'group' ? renderGroup(it, itemIndex) : renderRow(it.row, it.index, itemIndex)
 
   const vItems = virtualized ? virt.getVirtualItems() : []
   const padTop = virtualized && vItems.length ? vItems[0].start : 0

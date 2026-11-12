@@ -105,6 +105,36 @@ services:
     networks:
       - ldapilot-net
 
+  # Large OpenLDAP for performance work (100,000 users, 100,000 groups, 40,000 of
+  # them in one container). Not started by a plain "docker compose up":
+  #   docker compose --profile perf up -d --build openldap-perf
+  openldap-perf:
+    build: ./openldap-perf
+    image: ldapilot/openldap-perf:dev
+    container_name: ldapilot-openldap-perf
+    hostname: perf.ldapilot.lab
+    environment:
+      PERF_BASE_DN: "dc=perf,dc=ldapilot,dc=lab"
+      PERF_ADMIN_PASSWORD: "admin"
+      PERF_CONFIG_PASSWORD: "config"
+      PERF_USERS: "100000"
+      PERF_GROUPS: "100000"
+      PERF_ROOT_GROUPS: "40000" # directly below ou=Groups
+    ports:
+      - "10389:389"
+      - "10636:636"
+    volumes:
+      - perf-data:/var/lib/ldap
+    ulimits:
+      nofile: # slapd sizes its tables by the limit; Docker's default is huge
+        soft: 4096
+        hard: 4096
+    profiles:
+      - perf
+    restart: unless-stopped
+    networks:
+      - perf-net
+
 volumes:
   ldap-data:
     name: ldapilot-ldap-data
@@ -116,7 +146,11 @@ volumes:
     name: ldapilot-samba-data
   samba-config:
     name: ldapilot-samba-config
+  perf-data:
+    name: ldapilot-perf-data
 
 networks:
   ldapilot-net:
     name: ldapilot-net
+  perf-net:
+    name: ldapilot-perf-net

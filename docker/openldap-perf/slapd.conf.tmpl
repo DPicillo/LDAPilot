@@ -1,0 +1,52 @@
+# slapd.conf of the LDAPilot performance lab; entrypoint.sh fills in the
+# @PLACEHOLDERS@ and converts it to cn=config (slaptest -F) on every start.
+include /etc/ldap/schema/core.schema
+include /etc/ldap/schema/cosine.schema
+include /etc/ldap/schema/inetorgperson.schema
+include /etc/ldap/schema/nis.schema
+
+pidfile  /run/slapd/slapd.pid
+argsfile /run/slapd/slapd.args
+
+modulepath /usr/lib/ldap
+moduleload back_mdb
+
+TLSCertificateFile    /var/lib/ldap/tls/server.crt
+TLSCertificateKeyFile /var/lib/ldap/tls/server.key
+TLSCACertificateFile  /var/lib/ldap/tls/server.crt
+TLSVerifyClient never
+
+# A listing of 100,000 children must come back in full for every bind, not only
+# for the rootdn (OpenLDAP's default is 500 entries).
+sizelimit unlimited
+timelimit unlimited
+
+# cn=config for the admin account (LDAPilot reads the password policy settings there).
+database config
+rootdn "cn=admin,cn=config"
+rootpw @CONFIG_PW@
+
+database mdb
+suffix    "@BASE_DN@"
+rootdn    "cn=admin,@BASE_DN@"
+rootpw    @ADMIN_PW@
+directory /var/lib/ldap
+maxsize   8589934592
+# Bulk-loaded test data: no fsync per write.
+dbnosync
+checkpoint 4096 5
+
+index objectClass eq
+index entryUUID,entryCSN eq
+index cn,uid,mail,sn,givenName,displayName eq,sub
+index member,uniqueMember,memberUid eq
+index uidNumber,gidNumber,employeeNumber eq
+
+access to attrs=userPassword
+  by self write
+  by anonymous auth
+  by * none
+access to *
+  by self read
+  by users read
+  by anonymous read

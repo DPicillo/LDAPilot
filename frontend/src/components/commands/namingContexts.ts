@@ -8,7 +8,8 @@
  */
 import { useTreeStore } from '../../stores/treeStore'
 import { normalizeDN } from '../../lib/dn'
-import type { ServerInfo, TreeNode } from '../../types/ldap'
+import { forestDomainKeys } from '../../lib/treesearch'
+import type { ServerInfo } from '../../types/ldap'
 import { cachedServerInfo } from '../ui/commands'
 
 const ncSets = new WeakMap<ServerInfo, Set<string>>()
@@ -26,15 +27,15 @@ function ncSet(info: ServerInfo): Set<string> {
   return s
 }
 
-function forestDomain(nodes: TreeNode[] | undefined, key: string): boolean {
-  return !!nodes?.some((n) => (n.icon === 'globe' && /^dc=/i.test(n.dn.trim()) && normalizeDN(n.dn) === key) || forestDomain(n.children, key))
-}
+const NO_ROOTS: never[] = []
 
 export function isNamingContextHead(profileId: string | null | undefined, dn: string): boolean {
   if (!profileId || !dn) return false
   const key = normalizeDN(dn)
   const info = cachedServerInfo(profileId)
-  const roots = useTreeStore.getState().rootNodes[profileId] ?? []
-  if (info) return ncSet(info).has(key) || forestDomain(roots, key)
-  return roots.some((r) => normalizeDN(r.dn) === key) || forestDomain(roots, key)
+  const roots = useTreeStore.getState().rootNodes[profileId] ?? NO_ROOTS
+  // The forest domains are collected once per roots array (walking 40,000 preloaded
+  // children for every call made the editor's breadcrumb root quadratic).
+  if (info) return ncSet(info).has(key) || forestDomainKeys(roots).has(key)
+  return roots.some((r) => normalizeDN(r.dn) === key) || forestDomainKeys(roots).has(key)
 }
