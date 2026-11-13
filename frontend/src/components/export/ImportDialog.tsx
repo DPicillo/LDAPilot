@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
-import { ArrowLeft, ChevronDown, ChevronRight, Download, Eye, FileText, FileUp, FolderInput, Play, Undo2, Wand2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, Download, Eye, FileText, FileUp, FolderInput, Info, Play, SlidersHorizontal, Undo2, Wand2 } from 'lucide-react'
 import { useConnectionStore } from '../../stores/connectionStore'
 import * as bulkApi from '../../lib/wails-bulk'
 import { applyResultReport, fileLevelSyntaxErrors, ldifPreviewReport, recordJumpLine, reportFilename } from '../../lib/bulk'
@@ -21,6 +21,12 @@ import { Checkbox } from '../ui/Checkbox'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { InlineAlert } from '../ui/InlineAlert'
 import { ldifRecordDNs, ldifRecordsAt, ldifSkeleton, rebaseLDIF } from './ldifRebase'
+import { Disclosure } from '../ui/Disclosure'
+import { ensureServerType } from '../ui/commands'
+import {
+  adjustmentGroups, adjustmentItemsText, existingText, importOptionsOf, readImportChoices, serverAttributesHint, writeImportChoices,
+  type ImportChoices,
+} from './ldifImportOptions'
 
 interface ImportDialogProps {
   onClose: () => void;
@@ -73,7 +79,31 @@ const STATUS_STYLE: Record<LDIFRecordStatus, { label: string; tone: BadgeTone }>
   warning: { label: 'warning', tone: 'warning' },
   error: { label: 'will fail', tone: 'danger' },
   invalid: { label: 'syntax error', tone: 'danger' },
+  skip: { label: 'skipped', tone: 'neutral' },
 };
+
+const EXISTING_OPTIONS = [
+  { value: 'skip' as const, label: 'Skip' },
+  { value: 'update' as const, label: 'Update' },
+  { value: 'fail' as const, label: 'Report as error' },
+];
+const OMIT_SEND_OPTIONS = [
+  { value: 'omit' as const, label: 'Leave out' },
+  { value: 'send' as const, label: 'Send them' },
+];
+
+/** One choice of the import options: label, control and the explanation below. */
+function OptionRow({ id, label, hint, children }: { id: string; label: string; hint?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span id={id} className="text-sm text-foreground sm:w-[25rem] shrink-0">{label}</span>
+        {children}
+      </div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
 
 const CHANGE_TYPES = ['add', 'modify', 'delete', 'modrdn'] as const;
 
@@ -94,7 +124,10 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
 
   const [content, setContent] = useState(initialContent);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [continueOnError, setContinueOnError] = useState(false);
+  // What the import adapts, decided once for the file (remembered on this device).
+  const [choices, setChoicesState] = useState<ImportChoices>(readImportChoices);
+  const continueOnError = choices.continueOnError;
+  const [serverType, setServerType] = useState<string | null>(null);
   const [dryRun, setDryRun] = useState(true);
   const [step, setStep] = useState<Step>('edit');
   const [preview, setPreview] = useState<LDIFPreview | null>(null);
@@ -104,6 +137,9 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<RecordFilter>('all');
   const [visible, setVisible] = useState(PAGE);
+  // Records of a large dry run read after the first ones (per filter).
+  const [more, setMore] = useState<Partial<Record<RecordFilter, LDIFRecordPreview[]>>>({});
+  const [loadingMore, setLoadingMore] = useState(false);
   const [confirmApply, setConfirmApply] = useState<'direct' | 'preview' | null>(null);
   // "Store passwords exactly as in the file": opt-out of the connection's
   // password storage policy for userPassword values of this file
@@ -113,11 +149,30 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
   const textRef = useRef<HTMLTextAreaElement>(null);
   const pendingLine = useRef<number | null>(null);
 
+  const setChoices = (patch: Partial<ImportChoices>) => {
+    setChoicesState((c) => {
+      const next = { ...c, ...patch };
+      writeImportChoices(next);
+      return next;
+    });
+  };
+  const tlsMode = useConnectionStore((s) => s.profiles.find((p) => p.id === profileId)?.tlsMode);
+  useEffect(() => {
+    if (!profileId) return;
+    let alive = true;
+    void ensureServerType(profileId).then((t) => alive && setServerType(t), () => {});
+    return () => {
+      alive = false;
+    };
+  }, [profileId]);
+
   const busy = step === 'previewing' || step === 'applying';
   // Read-only connections: dry runs only (Apply is disabled with the reason).
   const dryRunOnly = dryRun || readOnly;
   const tooLarge = content.length > MAX_EDITABLE;
   const hasPasswords = useMemo(() => targetHasPasswordValues({ ldif: content }), [content]);
+  // unicodePwd needs TLS: said before the run (the dry run refuses the records too).
+  const unicodePwdWithoutTLS = useMemo(() => tlsMode === 'none' && /^unicodePwd(;[^:]*)?::?[ <]/im.test(content), [content, tlsMode]);
   const lineCount = useMemo(() => (content ? content.split('\n').length : 0), [content]);
 
   useEffect(() => {
@@ -165,9 +220,10 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
     setStep('previewing');
     try {
       const res = await bulkApi.PreviewLDIFChanges(profileId, text, {
-        runId, continueOnError, skipEmptyPlaceholders: false, ignoreNoOps: false, passwords: { asIs: passwordsAsIs },
+        runId, continueOnError, skipEmptyPlaceholders: false, ignoreNoOps: false, passwords: { asIs: passwordsAsIs }, import: importOptionsOf(choices),
       });
       setPreview(res);
+      setMore({});
       const problems = (res.byStatus.error || 0) + (res.byStatus.invalid || 0);
       setFilter(problems > 0 ? (res.byStatus.invalid ? 'invalid' : 'error') : 'all');
       setVisible(PAGE);
@@ -180,9 +236,12 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
 
   async function runApply(fromPreview: boolean) {
     if (!profileId) return;
+    // After a complete dry run its password plan answers the guard, and the
+    // backend still has a large file: neither is sent again.
+    const dry = fromPreview && preview && !preview.stopped ? preview : null;
     let passwords;
     try {
-      passwords = await passwordGuard.check(profileId, { ldif: content }, { asIs: passwordsAsIs });
+      passwords = await passwordGuard.check(profileId, { ldif: content }, { asIs: passwordsAsIs }, {}, dry ? (dry.passwords ?? null) : undefined);
     } catch (err) {
       setError(errorMessage(err));
       return;
@@ -195,11 +254,16 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
     setStopping(false);
     setStep('applying');
     try {
-      const res = await bulkApi.ApplyLDIFChanges(profileId, content, { runId, continueOnError, skipEmptyPlaceholders: false, ignoreNoOps: false, passwords });
+      const options = { runId, continueOnError, skipEmptyPlaceholders: false, ignoreNoOps: false, passwords, import: importOptionsOf(choices) };
+      const kept = dry?.partial && dry.runId ? dry.runId : '';
+      const res = kept
+        ? await bulkApi.ApplyLDIFChanges(profileId, '', { ...options, previewRunId: kept }).catch((err) =>
+            /no longer available/.test(errorMessage(err)) ? bulkApi.ApplyLDIFChanges(profileId, content, options) : Promise.reject(err))
+        : await bulkApi.ApplyLDIFChanges(profileId, content, options);
       setResult(res);
       setStep('done');
       notifyBulkRun(res, {
-        success: `LDIF applied on ${connectionName}: ${res.succeeded} record${res.succeeded !== 1 ? 's' : ''}`,
+        success: `LDIF applied on ${connectionName}: ${res.succeeded} record${res.succeeded !== 1 ? 's' : ''}${res.skipped + res.unchanged ? `, ${res.skipped + res.unchanged} skipped` : ''}`,
         partial: `LDIF on ${connectionName}: ${res.succeeded} applied, ${res.failed} failed${res.notProcessed ? `, ${res.notProcessed} not processed` : ''}`,
       });
       if (res.succeeded > 0) {
@@ -219,7 +283,7 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
 
   async function saveReport() {
     try {
-      const text = step === 'done' && result ? applyResultReport(result, connectionName) : preview ? ldifPreviewReport(preview, connectionName) : '';
+      const text = step === 'done' && result ? applyResultReport(result, connectionName) : preview ? ldifPreviewReport(await bulkApi.allLDIFPreviewRecords(preview), connectionName) : '';
       const path = await bulkApi.SaveReportFile(reportFilename(step === 'done' ? 'ldif-apply-result' : 'ldif-dry-run'), text);
       if (path && path !== 'download') toast.success(`Report saved to ${path}`);
     } catch (err) {
@@ -294,9 +358,29 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
   }
 
   const records = useMemo(
-    () => (preview?.records || []).filter(r => filter === 'all' || r.status === filter),
-    [preview, filter],
+    () => [...(preview?.records || []).filter(r => filter === 'all' || r.status === filter), ...(more[filter] || [])],
+    [preview, filter, more],
   );
+  // Records of the filter in the whole dry run (a large one sends only the first ones).
+  const statusTotal = (f: RecordFilter) => (f === 'all' ? Object.values(preview?.byStatus || {}).reduce((a, n) => a + n, 0) : preview?.byStatus[f] || 0);
+  const filterTotal = preview?.partial ? statusTotal(filter) : records.length;
+
+  async function showMore() {
+    if (records.length >= visible + PAGE || !preview?.partial || !preview.runId || records.length >= filterTotal) {
+      setVisible((v) => v + PAGE);
+      return;
+    }
+    setLoadingMore(true);
+    try {
+      const page = await bulkApi.GetLDIFPreviewRecords(preview.runId, filter, records.length, PAGE * 5);
+      setMore((m) => ({ ...m, [filter]: [...(m[filter] || []), ...page.records] }));
+      setVisible((v) => v + PAGE);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
   const fileErrors = useMemo(() => (preview ? fileLevelSyntaxErrors(preview) : []), [preview]);
   const predictedFailures = preview ? (preview.byStatus.error || 0) : 0;
 
@@ -488,16 +572,69 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
             Content records and change records (add, modify, delete, modrdn/moddn) per RFC 2849. Values: <code className="font-mono">attr: text</code>,{' '}
             <code className="font-mono">attr:: base64</code>, <code className="font-mono">attr:&lt; file:///path</code> (local files up to 10 MiB). Control lines are not supported.
           </p>
-          <div className="flex flex-wrap gap-x-5 gap-y-1.5">
-            <Checkbox checked={continueOnError} onCheckedChange={setContinueOnError} label="Continue on error (otherwise stop at the first failed record)" />
-            <Checkbox
-              checked={dryRunOnly}
-              disabled={readOnly}
-              onCheckedChange={setDryRun}
-              label="Dry run first (recommended)"
-              description={readOnly ? 'Read-only connection: only dry runs.' : undefined}
+          <Disclosure
+            title="Import options"
+            icon={SlidersHorizontal}
+            defaultOpen
+            summary={choicesSummary(choices, serverType)}
+            contentClassName="space-y-2.5 pl-5 pt-1"
+          >
+            <OptionRow id="ldif-existing" label="Entries that already exist" hint={EXISTING_HINT[choices.existing]}>
+              <SegmentedControl aria-labelledby="ldif-existing" options={EXISTING_OPTIONS} value={choices.existing} onValueChange={(v) => setChoices({ existing: v })} />
+            </OptionRow>
+            <OptionRow
+              id="ldif-server-attrs"
+              label="Attributes the server maintains (IDs, timestamps)"
+              hint={choices.serverAttributes === 'send' ? serverAttributesHint(serverType) : 'Left out and named per record (entryUUID, createTimestamp, objectGUID, memberOf, …): the server sets them itself.'}
+            >
+              <SegmentedControl aria-labelledby="ldif-server-attrs" options={OMIT_SEND_OPTIONS} value={choices.serverAttributes} onValueChange={(v) => setChoices({ serverAttributes: v })} />
+            </OptionRow>
+            <OptionRow
+              id="ldif-unknown"
+              label="Attributes and object classes this server does not know"
+              hint={
+                choices.unknownSchema === 'send'
+                  ? 'Sent as written: the server refuses records with them (the dry run says which).'
+                  : "Left out and named per record: types and classes missing from this server's schema, and attributes the entry's object classes do not allow (a file from another kind of directory)."
+              }
+            >
+              <SegmentedControl aria-labelledby="ldif-unknown" options={OMIT_SEND_OPTIONS} value={choices.unknownSchema} onValueChange={(v) => setChoices({ unknownSchema: v })} />
+            </OptionRow>
+            {serverType === 'ad' && (
+              <OptionRow
+                id="ldif-refs"
+                label="References to entries that do not exist (member, manager, …)"
+                hint={
+                  choices.missingReferences === 'send'
+                    ? 'Sent as written: Active Directory refuses records that refer to missing entries.'
+                    : 'Active Directory refuses a reference to a missing entry: such values are left out and named. References to entries the file creates later are set at the end of the run.'
+                }
+              >
+                <SegmentedControl aria-labelledby="ldif-refs" options={OMIT_SEND_OPTIONS} value={choices.missingReferences} onValueChange={(v) => setChoices({ missingReferences: v })} />
+              </OptionRow>
+            )}
+            <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+              <Checkbox
+                checked={continueOnError}
+                onCheckedChange={(v) => setChoices({ continueOnError: v })}
+                label="Continue after a failed record"
+                description="Records below an entry that could not be created are not sent either."
+              />
+              <Checkbox
+                checked={dryRunOnly}
+                disabled={readOnly}
+                onCheckedChange={setDryRun}
+                label="Dry run first (recommended)"
+                description={readOnly ? 'Read-only connection: only dry runs.' : undefined}
+              />
+            </div>
+          </Disclosure>
+          {unicodePwdWithoutTLS && (
+            <InlineAlert
+              tone="warning"
+              body="The file sets unicodePwd, but this connection is not encrypted: Active Directory accepts passwords only over LDAPS or StartTLS, so those records are not sent. Reconnect with TLS, or remove the unicodePwd lines and set the passwords afterwards."
             />
-          </div>
+          )}
           {hasPasswords && (
             <div className={cn('space-y-1.5 border rounded bg-background px-2.5 py-2', passwordsAsIs ? 'border-warning' : 'border-border')}>
               <PasswordPolicyHint profileId={profileId} asIs={passwordsAsIs} />
@@ -545,7 +682,7 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
             ))}
             {preview.version ? <span className="text-muted-foreground">version {preview.version}</span> : null}
           </div>
-          {preview.stopped && <InlineAlert tone="warning" body={`Dry run stopped after ${preview.records.length} of ${preview.total} records.`} />}
+          {preview.stopped && <InlineAlert tone="warning" body={`Dry run stopped after ${statusTotal('all')} of ${preview.total} records.`} />}
           {preview.syntaxErrors.length > 0 && (
             <InlineAlert
               tone="danger"
@@ -571,11 +708,16 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
               }`}
             />
           )}
+          {(preview.notes || []).map((n, i) => (
+            <InlineAlert key={i} tone="info" body={n} />
+          ))}
+          <AdjustmentSummary preview={preview} />
           <SegmentedControl
             aria-label="Show records"
             options={[
-              { value: 'all' as RecordFilter, label: 'All', count: preview.records.length },
+              { value: 'all' as RecordFilter, label: 'All', count: preview.partial ? statusTotal('all') : preview.records.length },
               { value: 'ok' as RecordFilter, label: 'ok', count: preview.byStatus.ok || 0 },
+              ...(preview.byStatus.skip ? [{ value: 'skip' as RecordFilter, label: 'Skipped', count: preview.byStatus.skip }] : []),
               { value: 'warning' as RecordFilter, label: 'Warnings', count: preview.byStatus.warning || 0 },
               { value: 'error' as RecordFilter, label: 'Will fail', count: preview.byStatus.error || 0 },
               { value: 'invalid' as RecordFilter, label: 'Syntax errors', count: preview.byStatus.invalid || 0 },
@@ -591,9 +733,9 @@ export function ImportDialog({ onClose, initialContent = '', profileId: profileP
               <RecordView key={r.index} record={r} onGoToLine={tooLarge ? undefined : goToLine} />
             ))}
             {records.length === 0 && <div className="text-sm text-muted-foreground py-4 text-center">No records in this view</div>}
-            {records.length > visible && (
-              <Button size="sm" className="w-full" onClick={() => setVisible((v) => v + PAGE)}>
-                Show {Math.min(PAGE, records.length - visible)} more of {records.length - visible}
+            {filterTotal > visible && (
+              <Button size="sm" className="w-full" loading={loadingMore} onClick={() => void showMore()}>
+                Show {Math.min(PAGE, filterTotal - visible)} more of {filterTotal - visible}
               </Button>
             )}
           </div>
@@ -672,6 +814,16 @@ function RecordView({ record, onGoToLine }: { record: LDIFRecordPreview; onGoToL
         </div>
       )}
       <BulkMessages errors={record.errors} warnings={record.warnings} notes={record.notes} />
+      {record.adjustments && record.adjustments.length > 0 && (
+        <ul className="space-y-0.5 text-xs text-muted-foreground">
+          {record.adjustments.map((a, i) => (
+            <li key={i} className="flex items-start gap-1.5 break-words">
+              <SlidersHorizontal size={12} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
+              <span>{a.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       {record.diffs && record.diffs.length > 0 && <BulkDiffView diffs={record.diffs} />}
       {record.attributes && record.attributes.length > 0 && (
         <div>
@@ -693,6 +845,58 @@ function RecordView({ record, onGoToLine }: { record: LDIFRecordPreview; onGoToL
         </div>
       )}
     </div>
+  );
+}
+
+const EXISTING_HINT: Record<ImportChoices['existing'], string> = {
+  skip: 'An add record of an entry that exists is skipped; its other records still run.',
+  update: "The entry gets the record's attributes: their values replace the entry's, missing object classes are added, attributes the record does not have stay.",
+  fail: 'An add record of an entry that exists is not sent and reported as failed.',
+};
+
+/** The import options in one line (the Disclosure's summary). */
+function choicesSummary(c: ImportChoices, serverType: string | null): string {
+  const parts = [
+    `existing: ${c.existing === 'fail' ? 'error' : c.existing}`,
+    `server attributes: ${c.serverAttributes === 'send' ? 'send' : 'leave out'}`,
+    `unknown: ${c.unknownSchema === 'send' ? 'send' : 'leave out'}`,
+  ];
+  if (serverType === 'ad') parts.push(`missing references: ${c.missingReferences === 'send' ? 'send' : 'leave out'}`);
+  if (!c.continueOnError) parts.push('stop at the first failure');
+  return parts.join(' · ');
+}
+
+/** What the dry run adapts in the file, per kind and reason, with the number of records. */
+function AdjustmentSummary({ preview }: { preview: LDIFPreview }) {
+  const groups = adjustmentGroups(preview.adjustments);
+  if (groups.length === 0) return null;
+  const records = new Set(preview.records.filter((r) => (r.adjustments || []).length > 0).map((r) => r.index)).size;
+  return (
+    <Disclosure
+      title={`Adapted before sending: ${records} record${records !== 1 ? 's' : ''}`}
+      icon={SlidersHorizontal}
+      defaultOpen={groups.length <= 4}
+      contentClassName="pl-5 pt-1"
+    >
+      <ul className="space-y-1 text-xs">
+        {groups.map((g, i) => (
+          <li key={i} className="flex items-start gap-1.5">
+            <Info size={12} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 break-words">
+              {g.kind === 'existing' ? (
+                <span className="text-foreground">{existingText(g)}</span>
+              ) : (
+                <>
+                  <span className="text-foreground">{g.label}: </span>
+                  <span className="font-mono text-foreground">{adjustmentItemsText(g.items)}</span>
+                  <span className="text-muted-foreground">: {g.reason}</span>
+                </>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Disclosure>
   );
 }
 

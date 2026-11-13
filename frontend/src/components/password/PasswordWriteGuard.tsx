@@ -55,14 +55,18 @@ interface PendingCheck {
  * in the calling component.
  */
 export function usePasswordWriteGuard(): {
-  check: (profileId: string, target: PasswordWriteTarget, base?: PasswordWriteOptions, info?: PasswordCheckInfo) => Promise<PasswordWriteOptions | null>;
+  check: (profileId: string, target: PasswordWriteTarget, base?: PasswordWriteOptions, info?: PasswordCheckInfo, knownPlan?: PasswordWritePlan | null) => Promise<PasswordWriteOptions | null>;
   element: ReactNode;
 } {
   const [pending, setPending] = useState<PendingCheck | null>(null);
 
-  const check = useCallback(async (profileId: string, target: PasswordWriteTarget, base: PasswordWriteOptions = {}, info: PasswordCheckInfo = {}) => {
-    if (!targetHasPasswordValues(target)) return base;
-    const plan = await PlanPasswordWrite(profileId, { ...target, options: base });
+  // knownPlan: the plan of this write with base, computed already (the LDIF
+  // dry run): no second PlanPasswordWrite (a large file crossed the bridge
+  // again for it); null = no password values.
+  const check = useCallback(async (profileId: string, target: PasswordWriteTarget, base: PasswordWriteOptions = {}, info: PasswordCheckInfo = {}, knownPlan?: PasswordWritePlan | null) => {
+    if (knownPlan === null) return base;
+    if (!knownPlan && !targetHasPasswordValues(target)) return base;
+    const plan = knownPlan ?? await PlanPasswordWrite(profileId, { ...target, options: base });
     if (!planNeedsPrompt(plan)) return base;
     const decision = plan!.needsDecision ? await preselectDecision(profileId, target, base, plan!) : 'client';
     return new Promise<PasswordWriteOptions | null>((resolve) => {

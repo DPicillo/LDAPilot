@@ -53,7 +53,7 @@ func TestLDIFPreviewADUniqueValues(t *testing.T) {
 		"dn: CN=Carl2,OU=Sandbox,DC=ad,DC=lab", "changetype: add", "objectClass: user", "sAMAccountName: CARL", "",
 	}, "\n")
 	parsed := ldif.ParseChanges(content, ldif.ParseOptions{})
-	preview, _ := buildLDIFPreview(parsed, newLDIFSimulator(dir, ad), nil)
+	preview, _ := buildLDIFPreview(parsed, newLDIFSimulator(dir, ad, ldifImportSettings{}), nil)
 	got := make([]string, len(preview.Records))
 	for i, r := range preview.Records {
 		got[i] = r.Status + " " + strings.Join(r.Errors, ";") + " | " + strings.Join(r.Warnings, ";")
@@ -76,7 +76,7 @@ func TestLDIFPreviewADUniqueValues(t *testing.T) {
 
 	// Not AD: no checks
 	dir.searches = nil
-	buildLDIFPreview(parsed, newLDIFSimulator(dir, newSchemaContext(nil, models.ServerTypeOpenLDAP)), nil)
+	buildLDIFPreview(parsed, newLDIFSimulator(dir, newSchemaContext(nil, models.ServerTypeOpenLDAP), ldifImportSettings{}), nil)
 	if len(dir.searches) != 0 {
 		t.Errorf("OpenLDAP searched %v", dir.searches)
 	}

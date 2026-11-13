@@ -32,10 +32,39 @@ func NewAuditService(store *config.AuditStore) *AuditService {
 func (s *AuditService) SetContext(ctx context.Context) {
 	s.ctx = ctx
 	if s.store != nil && ctx != nil {
+		batch := newEventBatcher(func(ps []any) { emitAuditEntries(ctx, ps) })
 		s.store.SetListener(func(profileID string, entry config.AuditEntry) {
-			wailsRuntime.EventsEmit(ctx, AuditEntryEvent, profileID, entry)
+			batch.add(auditEvent{profileID: profileID, entry: entry})
 		})
 	}
+}
+
+// auditEvent is a queued audit:entry payload.
+type auditEvent struct {
+	profileID string
+	entry     config.AuditEntry
+}
+
+// emitAuditEntries sends queued audit entries as AuditEntryEvent events,
+// one per run of entries of the same profile: (profileID, entry, entry, …).
+func emitAuditEntries(ctx context.Context, ps []any) {
+	var args []any
+	profile := ""
+	send := func() {
+		if len(args) > 0 {
+			wailsRuntime.EventsEmit(ctx, AuditEntryEvent, args...)
+		}
+	}
+	for _, p := range ps {
+		e := p.(auditEvent)
+		if len(args) == 0 || e.profileID != profile {
+			send()
+			profile = e.profileID
+			args = []any{e.profileID}
+		}
+		args = append(args, e.entry)
+	}
+	send()
 }
 
 // Store returns the underlying audit store (for use by other services).

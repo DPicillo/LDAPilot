@@ -778,13 +778,14 @@ func (c *Client) PlanPasswordAttributes(attrs []models.LDAPAttribute, opts model
 }
 
 // AddEntryWithPasswordPolicy creates an entry like AddEntry, applying the
-// password storage policy with opts to its userPassword values. The report
-// is nil when the entry has no password values.
-func (c *Client) AddEntryWithPasswordPolicy(dn string, attrs []models.LDAPAttribute, opts models.PasswordWriteOptions) (*models.PasswordWriteReport, error) {
+// password storage policy with opts to its userPassword values; controls are
+// sent with the Add request. The report is nil when the entry has no
+// password values.
+func (c *Client) AddEntryWithPasswordPolicy(dn string, attrs []models.LDAPAttribute, opts models.PasswordWriteOptions, controls ...goldap.Control) (*models.PasswordWriteReport, error) {
 	// A new pwdPolicy / PSO / local policy entry may change effective policies.
 	defer c.notePolicyWriteAdd(dn, attrs)
 	if !hasPasswordAttributes(attrs) {
-		return nil, c.addEntry(dn, attrs)
+		return nil, c.addEntry(dn, attrs, controls)
 	}
 	if err := c.CheckWritable(); err != nil {
 		return nil, err
@@ -813,7 +814,7 @@ func (c *Client) AddEntryWithPasswordPolicy(dn string, attrs []models.LDAPAttrib
 		return nil, fmt.Errorf("add entry failed: %w", err)
 	}
 	plan := p.finish()
-	if err := c.addEntry(dn, out); err != nil {
+	if err := c.addEntry(dn, out, controls); err != nil {
 		return nil, err
 	}
 	return c.passwordReport(dn, p, plan, nil), nil

@@ -263,21 +263,21 @@ export function batchPreviewReport(preview: BulkPreview, connection?: string): s
 /** CSV of an apply run (batch modify or LDIF). */
 export function applyResultReport(result: BulkApplyResult, connection?: string): string {
   const rows = (result.items || []).map(it => [
-    it.line ?? '', it.dn, it.operation, it.status, it.passwordWarning ?? '', it.newDn ?? '', it.details ?? '', it.message ?? '', it.durationMs,
+    it.line ?? '', it.dn, it.operation, it.status, it.passwordWarning ?? '', it.newDn ?? '', it.details ?? '', it.message ?? '', it.adjusted ?? '', it.durationMs,
   ]);
-  return withConnection(['line', 'dn', 'operation', 'status', 'password warning', 'new dn', 'details', 'message', 'duration ms'], rows, connection);
+  return withConnection(['line', 'dn', 'operation', 'status', 'password warning', 'new dn', 'details', 'message', 'adjusted', 'duration ms'], rows, connection);
 }
 
 /** CSV of an LDIF dry run: syntax errors and one row per record. */
 export function ldifPreviewReport(preview: LDIFPreview, connection?: string): string {
   const rows: (string | number)[][] = [];
   for (const r of preview.records) {
-    rows.push([r.line, r.dn, r.changeType, r.status, r.summary, [...(r.errors || []), ...(r.warnings || [])].join(' | ')]);
+    rows.push([r.line, r.dn, r.changeType, r.status, r.summary, [...(r.errors || []), ...(r.warnings || [])].join(' | '), (r.adjustments || []).map(a => a.text).join(' | ')]);
   }
   for (const e of fileLevelSyntaxErrors(preview)) {
-    rows.push([e.line, '', '', 'syntax error', '', e.message]);
+    rows.push([e.line, '', '', 'syntax error', '', e.message, '']);
   }
-  return withConnection(['line', 'dn', 'changetype', 'status', 'summary', 'messages'], rows, connection);
+  return withConnection(['line', 'dn', 'changetype', 'status', 'summary', 'messages', 'adjustments'], rows, connection);
 }
 
 /** Syntax errors that do not belong to a record (version line, stray continuation lines). */

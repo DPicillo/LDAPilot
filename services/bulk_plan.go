@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/dpicillo/LDAPilot/internal/ldap"
 	"github.com/dpicillo/LDAPilot/internal/ldif"
@@ -31,15 +32,25 @@ type attrTypeInfo struct {
 // schemaContext answers attribute type questions; it works without schema
 // (all lookups then report found=false).
 type schemaContext struct {
-	attrs map[string]*models.SchemaAttribute // lowercase name and OID
-	isAD  bool
+	attrs map[string]*models.SchemaAttribute // lowercase name, alias and OID
+	// classes are the object classes by lowercase name, alias and OID.
+	classes map[string]*models.SchemaObjectClass
+	// hasSchema is true when the server's schema was read (lookups that find
+	// nothing then mean "not defined on this server").
+	hasSchema bool
+	isAD      bool
+	// rules caches classRules by object class list (LDIF imports ask it
+	// for every add record).
+	rulesMu sync.Mutex
+	rules   map[string]*classRuleSet
 	// namingContexts of the server (RootDSE); nil when unknown.
 	namingContexts []string
 }
 
 func newSchemaContext(schema *models.SchemaInfo, serverType string) *schemaContext {
-	sc := &schemaContext{attrs: map[string]*models.SchemaAttribute{}, isAD: serverType == models.ServerTypeAD}
+	sc := &schemaContext{attrs: map[string]*models.SchemaAttribute{}, classes: map[string]*models.SchemaObjectClass{}, isAD: serverType == models.ServerTypeAD}
 	if schema != nil {
+		sc.hasSchema = len(schema.Attributes) > 0 && len(schema.ObjectClasses) > 0
 		for i := range schema.Attributes {
 			a := &schema.Attributes[i]
 			sc.attrs[strings.ToLower(a.Name)] = a
@@ -47,8 +58,38 @@ func newSchemaContext(schema *models.SchemaInfo, serverType string) *schemaConte
 				sc.attrs[strings.ToLower(a.OID)] = a
 			}
 		}
+		// Aliases never shadow another type's primary name or OID.
+		for i := range schema.Attributes {
+			a := &schema.Attributes[i]
+			for _, alias := range a.Aliases {
+				if k := strings.ToLower(alias); sc.attrs[k] == nil {
+					sc.attrs[k] = a
+				}
+			}
+		}
+		for i := range schema.ObjectClasses {
+			oc := &schema.ObjectClasses[i]
+			sc.classes[strings.ToLower(oc.Name)] = oc
+			if oc.OID != "" {
+				sc.classes[strings.ToLower(oc.OID)] = oc
+			}
+		}
+		for i := range schema.ObjectClasses {
+			oc := &schema.ObjectClasses[i]
+			for _, alias := range oc.Aliases {
+				if k := strings.ToLower(alias); sc.classes[k] == nil {
+					sc.classes[k] = oc
+				}
+			}
+		}
 	}
 	return sc
+}
+
+// findClass returns the object class with the name, alias or OID (nil when
+// unknown).
+func (sc *schemaContext) findClass(name string) *models.SchemaObjectClass {
+	return sc.classes[strings.ToLower(strings.TrimSpace(name))]
 }
 
 // isNamingContext reports whether dn is one of the server's naming contexts

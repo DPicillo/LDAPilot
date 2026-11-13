@@ -23,7 +23,47 @@ type BulkOptions struct {
 	// values of the run (LDIF opt-out AsIs, "ask" decision, confirmation
 	// for unencrypted connections), see PasswordWriteOptions.
 	Passwords PasswordWriteOptions `json:"passwords"`
+	// Import are the choices of an LDIF import for the whole file (LDIF
+	// preview and apply only).
+	Import LDIFImportOptions `json:"import"`
+	// PreviewRunID (LDIF apply with empty content): apply the file of this
+	// large dry run (LDIFPreview.Partial), which the backend kept, instead
+	// of sending it again.
+	PreviewRunID string `json:"previewRunId,omitempty"`
 }
+
+// LDIFImportOptions decide, once for the whole file, what an LDIF import
+// adapts instead of letting the server refuse a record. Empty values are
+// the defaults (the first constant of each group).
+type LDIFImportOptions struct {
+	// ServerAttributes: attributes the server maintains (IDs, timestamps,
+	// back-links, …) in add records. "omit" leaves them out; "send" sends
+	// the ones this server lets an import set (OpenLDAP: with the Relax
+	// Rules control) and leaves out the ones it refuses or assigns itself.
+	ServerAttributes string `json:"serverAttributes,omitempty"`
+	// UnknownSchema: attribute types and object classes of add records that
+	// the server's schema does not define. "omit" leaves them out; "send"
+	// sends them (the server refuses the record).
+	UnknownSchema string `json:"unknownSchema,omitempty"`
+	// MissingReferences (Active Directory, which refuses a DN value of an
+	// entry that does not exist): "omit" leaves out such values of add
+	// records; "send" sends them.
+	MissingReferences string `json:"missingReferences,omitempty"`
+	// Existing: an add record whose entry already exists. "skip" leaves the
+	// entry alone; "update" sets the record's attributes on it (the file's
+	// values replace the entry's, missing object classes are added, other
+	// attributes stay); "fail" reports it as an error.
+	Existing string `json:"existing,omitempty"`
+}
+
+// LDIFImportOptions values.
+const (
+	LDIFImportOmit     = "omit"
+	LDIFImportSend     = "send"
+	LDIFExistingSkip   = "skip"
+	LDIFExistingUpdate = "update"
+	LDIFExistingFail   = "fail"
+)
 
 // Batch modify preview entry statuses.
 const (
@@ -94,6 +134,9 @@ type BulkResultItem struct {
 	Message   string `json:"message,omitempty"`
 	Details   string `json:"details,omitempty"` // summary of the sent changes (passwords masked)
 	NewDN     string `json:"newDn,omitempty"`   // modrdn: resulting DN
+	// Adjusted summarizes what an LDIF import changed in the record before
+	// sending it (attributes left out, existing entry updated or skipped).
+	Adjusted string `json:"adjusted,omitempty"`
 	// PasswordWarning flags a written userPassword that needs attention
 	// (PasswordWarning* constants; "" when none): the read-back after the
 	// write found it stored in cleartext, the new password will not work,
@@ -156,18 +199,56 @@ const (
 	LDIFRecordWarning = "warning"
 	LDIFRecordError   = "error"   // valid syntax, predicted to fail
 	LDIFRecordInvalid = "invalid" // syntax error
+	LDIFRecordSkip    = "skip"    // an add record of an existing entry that is skipped (or already up to date)
 )
+
+// LDIFAdjustment kinds: what an LDIF import changes in a record before
+// sending it.
+const (
+	LDIFAdjustServerOmitted  = "serverOmitted"  // server-maintained attribute left out
+	LDIFAdjustServerSent     = "serverSent"     // server-maintained attribute sent (option "send")
+	LDIFAdjustUnknownOmitted = "unknownOmitted" // attribute type unknown to the server or not allowed by the entry's classes, left out
+	LDIFAdjustClassOmitted   = "classOmitted"   // object class unknown to the server, left out (Values: the classes)
+	LDIFAdjustRefOmitted     = "refOmitted"     // DN value of an entry that does not exist, left out (AD)
+	LDIFAdjustRefDeferred    = "refDeferred"    // DN value of an entry a later record creates, set at the end of the run (AD)
+	LDIFAdjustExisting       = "existing"       // add record of an existing entry: skipped or turned into an update
+)
+
+// LDIFAdjustment is one change an LDIF import makes to a record before
+// sending it, e.g. "entryUUID, entryCSN left out: maintained by the server".
+type LDIFAdjustment struct {
+	Kind string `json:"kind"` // LDIFAdjust*
+	// Attributes are the attribute names concerned (for object classes
+	// "objectClass"); Values the object classes or DN values left out.
+	Attributes []string `json:"attributes"`
+	Values     []string `json:"values,omitempty"`
+	Reason     string   `json:"reason"`
+	// Text is the whole adjustment as one sentence (previews, reports).
+	Text string `json:"text"`
+}
+
+// LDIFAdjustmentTotal counts the records with an adjustment of one kind,
+// attribute and reason over the whole file.
+type LDIFAdjustmentTotal struct {
+	Kind      string `json:"kind"`
+	Attribute string `json:"attribute"`
+	Reason    string `json:"reason"`
+	Records   int    `json:"records"`
+}
 
 // LDIFRecordPreview is the dry run result of one LDIF record.
 type LDIFRecordPreview struct {
-	Index        int               `json:"index"`
-	Line         int               `json:"line"`
-	DN           string            `json:"dn"`
-	ChangeType   string            `json:"changeType"` // LDIFChange*; empty for unparsable records
-	Status       string            `json:"status"`     // LDIFRecord*
-	Errors       []string          `json:"errors"`
-	Warnings     []string          `json:"warnings"`
-	Notes        []string          `json:"notes,omitempty"`      // e.g. how password values are stored
+	Index      int      `json:"index"`
+	Line       int      `json:"line"`
+	DN         string   `json:"dn"`
+	ChangeType string   `json:"changeType"` // LDIFChange*; empty for unparsable records
+	Status     string   `json:"status"`     // LDIFRecord*
+	Errors     []string `json:"errors"`
+	Warnings   []string `json:"warnings"`
+	Notes      []string `json:"notes,omitempty"` // e.g. how password values are stored
+	// Adjustments are what the import changes in the record before sending
+	// it (see LDIFImportOptions).
+	Adjustments  []LDIFAdjustment  `json:"adjustments,omitempty"`
 	Summary      string            `json:"summary"`              // human readable summary of the record
 	Attributes   []LDAPAttribute   `json:"attributes,omitempty"` // add (password values masked)
 	Changes      []AttributeChange `json:"changes,omitempty"`    // modify (password values masked)
@@ -197,7 +278,32 @@ type LDIFPreview struct {
 	// Applicable is true when the file has no syntax errors (records predicted
 	// to fail can still be applied with continue-on-error).
 	Applicable bool `json:"applicable"`
-	Stopped    bool `json:"stopped"`
+	// Adjustments count the records per adjustment (kind, attribute,
+	// reason) in the order they first appear.
+	Adjustments []LDIFAdjustmentTotal `json:"adjustments"`
+	// Notes concern the whole file on this server (e.g. accounts imported
+	// into Active Directory without passwords).
+	Notes []string `json:"notes"`
+	// Passwords is the password plan of every record together (nil without
+	// password values): what applying the file asks (a decision for "ask",
+	// a confirmation on an unencrypted connection).
+	Passwords *PasswordWritePlan `json:"passwords,omitempty"`
+	// Partial is true when Records holds only the first records of each
+	// status (a large file): the others are read with
+	// ExportService.GetLDIFPreviewRecords(RunID, …).
+	Partial bool   `json:"partial,omitempty"`
+	RunID   string `json:"runId,omitempty"`
+	// ServerType is the type of the server the dry run checked against
+	// (models.ServerType*), so the dialog can explain what cannot be adapted.
+	ServerType string `json:"serverType,omitempty"`
+	Stopped    bool   `json:"stopped"`
+}
+
+// LDIFRecordPage is a page of the records of a dry run (one status or all).
+type LDIFRecordPage struct {
+	Records []LDIFRecordPreview `json:"records"`
+	// Total is the number of records with the status (all: of the file).
+	Total int `json:"total"`
 }
 
 // LDIFFile is an LDIF file read through the open dialog.

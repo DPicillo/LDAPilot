@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -8,7 +9,9 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -48,8 +51,12 @@ func (s *ExportService) PreviewLDIFChanges(profileID string, content string, opt
 	if err != nil {
 		return nil, err
 	}
+	set, err := newLDIFImportSettings(client, options.Import)
+	if err != nil {
+		return nil, err
+	}
 	sc := loadSchemaContext(client, profileID)
-	sim := newLDIFSimulator(client, sc)
+	sim := newLDIFSimulator(client, sc, set)
 	if ldifHasPasswords(parsed) {
 		eff, err := client.PasswordPolicy()
 		if err != nil {
@@ -62,6 +69,9 @@ func (s *ExportService) PreviewLDIFChanges(profileID string, content string, opt
 	defer done()
 	progress := newProgressEmitter(s.ctx, options.RunID, "preview", len(parsed.Records))
 
+	sim.prefetch(ctx, parsed.Records, func(done, total int) {
+		progress.emit(0, fmt.Sprintf("checking the directory: %d of %d reads", done, total), 0, 0, 0)
+	})
 	preview, stopped := buildLDIFPreview(parsed, sim, func(i int, rp *models.LDIFRecordPreview) bool {
 		if ctx.Err() != nil {
 			return false
@@ -70,6 +80,12 @@ func (s *ExportService) PreviewLDIFChanges(profileID string, content string, opt
 		return true
 	})
 	preview.Stopped = stopped
+	preview.ServerType = set.serverType
+	preview.Notes = ldifFileNotes(parsed, set)
+	if sim.passwords != nil {
+		preview.Passwords = sim.passwords.merged
+	}
+	keepLDIFPreview(options.RunID, preview, content)
 	return preview, nil
 }
 
@@ -82,14 +98,18 @@ func buildLDIFPreview(parsed *ldif.ParseResult, sim *ldifSimulator, next func(i 
 		SyntaxErrors: make([]models.LDIFSyntaxError, 0, len(parsed.Errors)),
 		ByChangeType: map[string]int{},
 		ByStatus:     map[string]int{},
+		Notes:        []string{},
 	}
 	for _, e := range parsed.Errors {
 		preview.SyntaxErrors = append(preview.SyntaxErrors, models.LDIFSyntaxError{Line: e.Line, Message: e.Msg})
 	}
+	var totals ldifAdjustmentTotals
+	sim.prepare(parsed.Records)
 	stopped := false
 	for i := range parsed.Records {
 		rec := &parsed.Records[i]
 		rp := sim.check(i, rec)
+		totals.add(rp.Adjustments)
 		preview.Records = append(preview.Records, rp)
 		if rp.ChangeType != "" {
 			preview.ByChangeType[rp.ChangeType]++
@@ -102,7 +122,44 @@ func buildLDIFPreview(parsed *ldif.ParseResult, sim *ldifSimulator, next func(i 
 	}
 	preview.Total = len(parsed.Records)
 	preview.Applicable = len(parsed.Errors) == 0 && len(parsed.Records) > 0
+	preview.Adjustments = totals.list()
 	return preview, stopped
+}
+
+// ldifFileNotes are notes about the whole file on the server: an import of
+// accounts into Active Directory without passwords (AD never exports them).
+func ldifFileNotes(parsed *ldif.ParseResult, set ldifImportSettings) []string {
+	notes := []string{}
+	if set.serverType != models.ServerTypeAD {
+		return notes
+	}
+	accounts := 0
+	for i := range parsed.Records {
+		rec := &parsed.Records[i]
+		if rec.ChangeType != models.LDIFChangeAdd || rec.Err != nil {
+			continue
+		}
+		user, pw := false, false
+		for _, a := range rec.Attributes {
+			if strings.EqualFold(a.Name, "objectClass") {
+				for _, v := range a.Values {
+					user = user || strings.EqualFold(v, "user")
+				}
+			}
+			pw = pw || (ldap.IsUnicodePwdAttribute(a.Name) && len(a.Values) > 0)
+		}
+		if user && !pw {
+			accounts++
+		}
+	}
+	if accounts > 0 {
+		n := "1 account is"
+		if accounts > 1 {
+			n = fmt.Sprintf("%d accounts are", accounts)
+		}
+		notes = append(notes, n+" created without a password: Active Directory never returns passwords (unicodePwd can only be written), so an export from AD has none. Set them afterwards with Reset Password, or add unicodePwd lines (needs LDAPS or StartTLS).")
+	}
+	return notes
 }
 
 // entryReader is the read access the LDIF simulator needs (*ldap.Client).
@@ -163,19 +220,76 @@ type ldifSimulator struct {
 	// passwords plans the userPassword values of add and modify records
 	// (nil: the file has none).
 	passwords *ldifPasswordPlanning
+
+	// set are the import options of the run (what add records adapt).
+	set ldifImportSettings
+	// failed: DNs (bulkDNKey) whose add record failed during apply → its
+	// line; later records of the entry or below it are not sent.
+	failed map[string]int
+	// addAt: DNs (bulkDNKey) of the file's add records → record index
+	// (prepare); current is the index of the record being planned.
+	addAt   map[string]int
+	current int
+	// owners caches the AD unique-value lookups (attribute|lower value →
+	// DNs holding it), filled by prefetch.
+	owners map[string][]string
+	// keys caches bulkDNKey (DN parsing dominated the planning of large files).
+	keys map[string]string
 }
 
-func newLDIFSimulator(r entryReader, sc *schemaContext) *ldifSimulator {
+// key is bulkDNKey of dn, cached for the run.
+func (s *ldifSimulator) key(dn string) string {
+	if k, ok := s.keys[dn]; ok {
+		return k
+	}
+	k := bulkDNKey(dn)
+	if len(s.keys) < 1<<21 {
+		s.keys[dn] = k
+	}
+	return k
+}
+
+func newLDIFSimulator(r entryReader, sc *schemaContext, set ldifImportSettings) *ldifSimulator {
 	if sc == nil {
 		sc = newSchemaContext(nil, "")
 	}
-	return &ldifSimulator{r: r, sc: sc, known: map[string]*ldifSimEntry{}, exists: map[string]bool{}, unique: map[string]string{}}
+	if opts, err := normalizeLDIFImportOptions(set.opts); err == nil {
+		set.opts = opts
+	}
+	return &ldifSimulator{r: r, sc: sc, set: set, known: map[string]*ldifSimEntry{}, exists: map[string]bool{}, unique: map[string]string{}, failed: map[string]int{}, owners: map[string][]string{}, keys: map[string]string{}}
 }
+
+// ldifWrite is what apply sends for a record, as planned by the simulator.
+type ldifWrite struct {
+	action string // ldifWrite* constants
+	// attrs and controls of an add (adapted), changes of an update.
+	attrs    []models.LDAPAttribute
+	controls []goldap.Control
+	changes  []models.AttributeChange
+	// entry is the existing entry an update was planned against.
+	entry *models.LDAPEntry
+	// deferred are value adds sent at the end of the run (DN values of
+	// entries a later record creates, Active Directory).
+	deferred []models.AttributeChange
+	// undo reverts the simulated effect of the record when its write fails.
+	undo func()
+}
+
+const (
+	ldifWriteSend      = ""          // send the record (as adapted)
+	ldifWriteUpdate    = "update"    // add record of an existing entry: modify it
+	ldifWriteSkip      = "skip"      // add record of an existing entry: leave it alone
+	ldifWriteUnchanged = "unchanged" // add record of an existing entry that has the values already
+	ldifWriteBlocked   = "blocked"   // not sent (rp.Errors say why)
+)
 
 // serverDN maps a DN as seen after the earlier records to the DN of the
 // same entry on the server; gone is true when the entry was deleted or
 // moved away by an earlier record.
 func (s *ldifSimulator) serverDN(dn string) (string, bool) {
+	if len(s.ops) == 0 {
+		return dn, false
+	}
 	parsed, err := goldap.ParseDN(dn)
 	if err != nil {
 		return dn, false
@@ -214,14 +328,14 @@ func replaceDNSuffix(dn *goldap.DN, suffixLen int, newSuffix *goldap.DN) *goldap
 
 // entryExists reports whether dn exists after the earlier records.
 func (s *ldifSimulator) entryExists(dn string) (bool, error) {
-	if st, ok := s.known[bulkDNKey(dn)]; ok {
+	if st, ok := s.known[s.key(dn)]; ok {
 		return st.exists, nil
 	}
 	sdn, gone := s.serverDN(dn)
 	if gone {
 		return false, nil
 	}
-	key := bulkDNKey(sdn)
+	key := s.key(sdn)
 	if v, ok := s.exists[key]; ok {
 		return v, nil
 	}
@@ -300,7 +414,7 @@ func (s *ldifSimulator) hasChildren(dn string) (bool, error) {
 
 // loadEntry returns the current (simulated) entry of an existing dn.
 func (s *ldifSimulator) loadEntry(dn string) (*models.LDAPEntry, error) {
-	key := bulkDNKey(dn)
+	key := s.key(dn)
 	if st, ok := s.known[key]; ok && st.entry != nil {
 		return st.entry, nil
 	}
@@ -343,7 +457,7 @@ func (s *ldifSimulator) moveKnown(oldDN, newDN *goldap.DN) {
 			cp.DN = moved.String()
 			next.entry = &cp
 		}
-		updates[bulkDNKey(moved.String())] = next
+		updates[s.key(moved.String())] = next
 		s.known[key] = &ldifSimEntry{exists: false}
 	}
 	for k, v := range updates {
@@ -359,18 +473,214 @@ func bulkParentDN(dn string) string {
 
 // check validates one record and updates the simulated state.
 func (s *ldifSimulator) check(index int, rec *ldif.ChangeRecord) models.LDIFRecordPreview {
+	rp, _ := s.plan(index, rec)
+	return rp
+}
+
+// failedLineAbove returns the line of a failed add record of dn or of an
+// entry above it (apply), 0 when there is none.
+func (s *ldifSimulator) failedLineAbove(dn string) (int, string) {
+	if len(s.failed) == 0 {
+		return 0, ""
+	}
+	parsed, err := goldap.ParseDN(dn)
+	if err != nil {
+		return 0, ""
+	}
+	for i := 0; i < len(parsed.RDNs); i++ {
+		cur := (&goldap.DN{RDNs: parsed.RDNs[i:]}).String()
+		if line, ok := s.failed[s.key(cur)]; ok {
+			return line, cur
+		}
+	}
+	return 0, ""
+}
+
+// refState answers planLDIFAdd whether a referenced DN exists, or is
+// created by a later add record of the file.
+func (s *ldifSimulator) refState(dn string) ldifRefState {
+	if _, err := goldap.ParseDN(dn); err != nil {
+		return ldifRefUnknown
+	}
+	ok, err := s.entryExists(dn)
+	switch {
+	case err != nil:
+		return ldifRefUnknown
+	case ok:
+		return ldifRefExists
+	}
+	if at, later := s.addAt[s.key(dn)]; later && at > s.current {
+		return ldifRefLater
+	}
+	return ldifRefMissing
+}
+
+// ldifPrefetchWorkers is the number of reads prefetch runs in parallel on
+// the connection (go-ldap multiplexes them).
+const ldifPrefetchWorkers = 8
+
+// ldifPrefetchMax caps the reads of one prefetch.
+const ldifPrefetchMax = 300000
+
+// prefetch reads in parallel what the sequential planning of records asks
+// the server: whether the DNs the records name exist (the records' DNs,
+// parents of adds, new superiors and new DNs of renames; on Active
+// Directory the DN values of adds) and, on Active Directory, who holds the
+// sAMAccountName / userPrincipalName of the adds. The answers are the
+// server's state before the run, which is what the planning asks for (it
+// tracks the file's own changes itself). progress is called with the
+// number of reads done and the total.
+func (s *ldifSimulator) prefetch(ctx context.Context, records []ldif.ChangeRecord, progress func(done, total int)) {
+	seen := map[string]bool{}
+	var dns []string
+	addDN := func(dn string) {
+		if dn == "" || len(dns) >= ldifPrefetchMax {
+			return
+		}
+		if _, err := goldap.ParseDN(dn); err != nil {
+			return
+		}
+		key := s.key(dn)
+		if seen[key] || s.exists[key] {
+			return
+		}
+		seen[key] = true
+		dns = append(dns, dn)
+	}
+	type ownerQuery struct{ base, attr, value string }
+	var owners []ownerQuery
+	finder, _ := s.r.(valueOwnerReader)
+	for i := range records {
+		rec := &records[i]
+		if rec.Err != nil {
+			continue
+		}
+		addDN(rec.DN)
+		switch rec.ChangeType {
+		case models.LDIFChangeAdd:
+			addDN(bulkParentDN(rec.DN))
+			if !s.sc.isAD {
+				continue
+			}
+			for _, a := range rec.Attributes {
+				if !a.Binary && s.sc.lookup(a.Name).syntax == syntaxDN {
+					for _, v := range a.Values {
+						addDN(v)
+					}
+				}
+			}
+			if base := s.sc.namingContextOf(rec.DN); finder != nil && base != "" {
+				for _, u := range adUniqueAttributes {
+					for _, a := range rec.Attributes {
+						if strings.EqualFold(a.Name, u.name) && len(a.Values) > 0 && !a.Binary {
+							owners = append(owners, ownerQuery{base, u.name, a.Values[0]})
+						}
+					}
+				}
+			}
+		case models.LDIFChangeModRDN:
+			addDN(rec.NewSuperior)
+			newParent := rec.NewSuperior
+			if newParent == "" {
+				newParent = bulkParentDN(rec.DN)
+			}
+			if newParent != "" {
+				addDN(rec.NewRDN + "," + newParent)
+			}
+		}
+	}
+	total := len(dns) + len(owners)
+	if total == 0 {
+		return
+	}
+	var mu sync.Mutex
+	done := 0
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < ldifPrefetchWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				if ctx.Err() != nil {
+					continue
+				}
+				if j < len(dns) {
+					found, err := s.r.EntryExists(dns[j])
+					mu.Lock()
+					if err == nil {
+						s.exists[s.key(dns[j])] = found
+					}
+				} else {
+					q := owners[j-len(dns)]
+					holders, err := finder.DNsWithValue(q.base, q.attr, q.value, 5)
+					mu.Lock()
+					if err == nil {
+						s.owners[strings.ToLower(q.attr)+"|"+strings.ToLower(q.value)] = holders
+					}
+				}
+				done++
+				d := done
+				mu.Unlock()
+				if progress != nil && d%200 == 0 {
+					progress(d, total)
+				}
+			}
+		}()
+	}
+	for j := 0; j < total && ctx.Err() == nil; j++ {
+		jobs <- j
+	}
+	close(jobs)
+	wg.Wait()
+}
+
+// prepare records where the file adds which entry (refState), before the
+// first record is planned.
+func (s *ldifSimulator) prepare(records []ldif.ChangeRecord) {
+	s.addAt = make(map[string]int, len(records))
+	for i := range records {
+		if rec := &records[i]; rec.Err == nil && rec.ChangeType == models.LDIFChangeAdd {
+			if _, dup := s.addAt[s.key(rec.DN)]; !dup {
+				s.addAt[s.key(rec.DN)] = i
+			}
+		}
+	}
+}
+
+// plan validates one record, updates the simulated state and returns what
+// apply sends for it (the adapted add, an update, a skip, or nothing).
+func (s *ldifSimulator) plan(index int, rec *ldif.ChangeRecord) (models.LDIFRecordPreview, ldifWrite) {
 	rp := models.LDIFRecordPreview{
 		Index: index, Line: rec.Line, DN: rec.DN, ChangeType: rec.ChangeType,
 		Errors: []string{}, Warnings: []string{},
 	}
+	var w ldifWrite
+	s.current = index
 	if rec.Err != nil {
 		rp.Status = models.LDIFRecordInvalid
 		rp.Errors = append(rp.Errors, rec.Err.Error())
-		return rp
+		w.action = ldifWriteBlocked
+		return rp, w
 	}
 	rp.Summary = summarizeRecord(rec)
 	for _, u := range rec.URLs {
 		rp.Warnings = append(rp.Warnings, "value loaded from "+u)
+	}
+
+	// A record of an entry whose add failed earlier in this run (or below it).
+	if line, dn := s.failedLineAbove(rec.DN); line > 0 {
+		what := "the entry"
+		if !dnEqual(dn, rec.DN) {
+			what = "the parent entry " + dn
+		}
+		rp.Errors = append(rp.Errors, fmt.Sprintf("not sent: %s was not created (the add record at line %d failed)", what, line))
+		rp.Status = models.LDIFRecordError
+		w.action = ldifWriteBlocked
+		if rec.ChangeType == models.LDIFChangeAdd {
+			s.failed[s.key(rec.DN)] = rec.Line
+		}
+		return rp, w
 	}
 
 	exists, err := s.entryExists(rec.DN)
@@ -383,7 +693,7 @@ func (s *ldifSimulator) check(index int, rec *ldif.ChangeRecord) models.LDIFReco
 	case models.LDIFChangeAdd:
 		rp.Attributes = maskAttributes(rec.Attributes)
 		if exists {
-			rp.Errors = append(rp.Errors, "entry already exists")
+			s.planExisting(&rp, &w, rec)
 			break
 		}
 		// A naming context (suffix) entry has no parent entry.
@@ -399,11 +709,23 @@ func (s *ldifSimulator) check(index int, rec *ldif.ChangeRecord) models.LDIFReco
 				}
 			}
 		}
+		p := planLDIFAdd(rec.Attributes, s.set, s.sc, false, s.refState)
+		rp.Errors = append(rp.Errors, p.errors...)
+		rp.Adjustments = p.adjustments
+		w.attrs, w.controls, w.deferred = p.attrs, ldifRelaxControls(p.relax), p.deferred
+		if ldifUnicodePwdBlocked(p.errors) {
+			w.action = ldifWriteBlocked
+		}
 		if s.sc.isAD {
-			s.checkUniqueValues(&rp, rec)
+			s.checkUniqueValues(&rp, &ldif.ChangeRecord{DN: rec.DN, Attributes: p.attrs})
+		}
+		key := s.key(rec.DN)
+		w.undo = func() {
+			s.known[key] = &ldifSimEntry{exists: false}
+			s.failed[key] = rec.Line
 		}
 		if len(rp.Errors) == 0 {
-			s.known[bulkDNKey(rec.DN)] = &ldifSimEntry{exists: true, entry: &models.LDAPEntry{DN: rec.DN, Attributes: rec.Attributes}}
+			s.known[key] = &ldifSimEntry{exists: true, entry: &models.LDAPEntry{DN: rec.DN, Attributes: p.attrs}}
 		}
 
 	case models.LDIFChangeDelete:
@@ -419,10 +741,11 @@ func (s *ldifSimulator) check(index int, rec *ldif.ChangeRecord) models.LDIFReco
 			break
 		}
 		if parsed, err := goldap.ParseDN(rec.DN); err == nil {
+			w.undo = s.snapshot(parsed)
 			s.moveKnown(parsed, nil)
 			s.ops = append(s.ops, ldifSubtreeOp{oldDN: parsed})
 		}
-		s.known[bulkDNKey(rec.DN)] = &ldifSimEntry{exists: false}
+		s.known[s.key(rec.DN)] = &ldifSimEntry{exists: false}
 
 	case models.LDIFChangeModify:
 		rp.Changes = maskChanges(rec.Changes)
@@ -439,8 +762,10 @@ func (s *ldifSimulator) check(index int, rec *ldif.ChangeRecord) models.LDIFReco
 		rp.Errors = append(rp.Errors, sim.errors...)
 		rp.Warnings = append(rp.Warnings, sim.warnings...)
 		rp.Diffs = sim.diffs
+		key := s.key(rec.DN)
+		w.undo = func() { s.known[key] = &ldifSimEntry{exists: true} } // read again
 		if len(sim.errors) == 0 {
-			s.known[bulkDNKey(rec.DN)] = &ldifSimEntry{exists: true, entry: sim.after}
+			s.known[key] = &ldifSimEntry{exists: true, entry: sim.after}
 		}
 
 	case models.LDIFChangeModRDN:
@@ -487,22 +812,130 @@ func (s *ldifSimulator) check(index int, rec *ldif.ChangeRecord) models.LDIFReco
 			rp.Warnings = append(rp.Warnings, "cannot read the entry: "+err.Error())
 			entry = nil
 		}
+		oldParsed, err1 := goldap.ParseDN(rec.DN)
+		newParsed, err2 := goldap.ParseDN(newDN)
+		if err1 == nil && err2 == nil {
+			undoOld, undoNew := s.snapshot(oldParsed), s.snapshot(newParsed)
+			w.undo = func() { undoNew(); undoOld() }
+		}
 		s.applyRename(rec, newDN, entry)
 	}
 
 	if s.passwords != nil && len(rp.Errors) == 0 {
-		s.passwords.annotate(&rp, rec)
+		switch w.action {
+		case ldifWriteSkip, ldifWriteUnchanged, ldifWriteBlocked:
+		case ldifWriteUpdate:
+			s.passwords.annotateChanges(&rp, w.changes)
+		default:
+			if rec.ChangeType == models.LDIFChangeAdd {
+				s.passwords.annotateAttributes(&rp, w.attrs)
+			} else {
+				s.passwords.annotate(&rp, rec)
+			}
+		}
 	}
 
 	switch {
 	case len(rp.Errors) > 0:
 		rp.Status = models.LDIFRecordError
+	case w.action == ldifWriteSkip || w.action == ldifWriteUnchanged:
+		rp.Status = models.LDIFRecordSkip
 	case len(rp.Warnings) > 0:
 		rp.Status = models.LDIFRecordWarning
 	default:
 		rp.Status = models.LDIFRecordOK
 	}
-	return rp
+	return rp, w
+}
+
+// planExisting plans an add record whose entry exists already, following
+// the "existing" import option: an error, a skip, or an update that gives
+// the entry the record's attributes.
+func (s *ldifSimulator) planExisting(rp *models.LDIFRecordPreview, w *ldifWrite, rec *ldif.ChangeRecord) {
+	existing := func(reason, text string) {
+		rp.Adjustments = append(rp.Adjustments, models.LDIFAdjustment{Kind: models.LDIFAdjustExisting, Attributes: []string{}, Reason: reason, Text: text})
+	}
+	switch s.set.opts.Existing {
+	case models.LDIFExistingFail:
+		rp.Errors = append(rp.Errors, "entry already exists (choose Skip or Update under Entries that already exist)")
+		w.action = ldifWriteBlocked
+		return
+	case models.LDIFExistingSkip:
+		w.action = ldifWriteSkip
+		existing("The entry exists already: skipped", "The entry exists already: skipped")
+		return
+	}
+	entry, err := s.loadEntry(rec.DN)
+	if err != nil {
+		rp.Errors = append(rp.Errors, "the entry exists already but cannot be read for the update: "+err.Error())
+		return
+	}
+	p := planLDIFAdd(rec.Attributes, s.set, s.sc, true, s.refState)
+	rp.Errors = append(rp.Errors, p.errors...)
+	w.deferred = p.deferred
+	changes := ldifUpdateChanges(entry, p.attrs, s.sc)
+	sim := simulateChanges(entry, changes, simulateMode{dropNoOps: true}, s.sc)
+	rp.Errors = append(rp.Errors, sim.errors...)
+	rp.Warnings = append(rp.Warnings, sim.warnings...)
+	rp.Diffs = sim.diffs
+	rp.Adjustments = p.adjustments
+	if ldifUnicodePwdBlocked(p.errors) {
+		w.action = ldifWriteBlocked
+		return
+	}
+	if len(sim.changes) == 0 {
+		w.action = ldifWriteUnchanged
+		existing("The entry exists already with these values: nothing to change", "The entry exists already with these values: nothing to change")
+		return
+	}
+	w.action = ldifWriteUpdate
+	w.changes = sim.changes
+	w.entry = entry
+	rp.Changes = maskChanges(sim.changes)
+	rp.Summary = "update the existing entry: " + summarizeRecord(&ldif.ChangeRecord{ChangeType: models.LDIFChangeModify, Changes: sim.changes})
+	existing("The entry exists already: updated with the record's attributes",
+		fmt.Sprintf("The entry exists already: updated with the record's attributes (%d change%s)", len(sim.changes), plural(len(sim.changes))))
+	key := s.key(rec.DN)
+	w.undo = func() { s.known[key] = &ldifSimEntry{exists: true} }
+	if len(rp.Errors) == 0 {
+		s.known[key] = &ldifSimEntry{exists: true, entry: sim.after}
+	}
+}
+
+// snapshot records the simulated state at and below dn and the number of
+// subtree operations; the returned function restores them (a delete or
+// rename whose write failed).
+func (s *ldifSimulator) snapshot(dn *goldap.DN) func() {
+	saved := map[string]*ldifSimEntry{}
+	for key, st := range s.known {
+		if parsed, err := goldap.ParseDN(key); err == nil && (dn.EqualFold(parsed) || dn.AncestorOfFold(parsed)) {
+			saved[key] = st
+		}
+	}
+	nops := len(s.ops)
+	return func() {
+		for key := range s.known {
+			if _, ok := saved[key]; ok {
+				continue
+			}
+			if parsed, err := goldap.ParseDN(key); err == nil && (dn.EqualFold(parsed) || dn.AncestorOfFold(parsed)) {
+				delete(s.known, key)
+			}
+		}
+		for key, st := range saved {
+			s.known[key] = st
+		}
+		if len(s.ops) > nops {
+			s.ops = s.ops[:nops]
+		}
+	}
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // checkUniqueValues predicts AD's unique-value checks for an add record:
@@ -540,13 +973,17 @@ func (s *ldifSimulator) checkUniqueValues(rp *models.LDIFRecordPreview, rec *ldi
 		if finder == nil || base == "" {
 			continue
 		}
-		owners, err := finder.DNsWithValue(base, u.name, value, 5)
+		owners, cached := s.owners[key]
+		var err error
+		if !cached {
+			owners, err = finder.DNsWithValue(base, u.name, value, 5)
+		}
 		if err != nil {
 			rp.Warnings = append(rp.Warnings, "cannot check whether "+u.name+" is in use: "+err.Error())
 			continue
 		}
 		for _, owner := range owners {
-			if st, ok := s.known[bulkDNKey(owner)]; ok && !st.exists {
+			if st, ok := s.known[s.key(owner)]; ok && !st.exists {
 				continue // deleted by an earlier record
 			}
 			if !dnEqual(owner, rec.DN) {
@@ -596,8 +1033,8 @@ func (s *ldifSimulator) applyRename(rec *ldif.ChangeRecord, newDN string, entry 
 	}
 	s.moveKnown(oldParsed, newParsed)
 	s.ops = append(s.ops, ldifSubtreeOp{rename: true, oldDN: oldParsed, newDN: newParsed})
-	s.known[bulkDNKey(rec.DN)] = &ldifSimEntry{exists: false}
-	s.known[bulkDNKey(newDN)] = &ldifSimEntry{exists: true, entry: renamed}
+	s.known[s.key(rec.DN)] = &ldifSimEntry{exists: false}
+	s.known[s.key(newDN)] = &ldifSimEntry{exists: true, entry: renamed}
 }
 
 // renameAttributes applies the naming value changes of a modrdn.
@@ -719,6 +1156,13 @@ func maskAttributes(attrs []models.LDAPAttribute) []models.LDAPAttribute {
 // notProcessed. Every write is audited (CREATE, MODIFY, DELETE, RENAME).
 // Progress is sent as "bulk:progress" events with phase "apply".
 func (s *ExportService) ApplyLDIFChanges(profileID string, content string, options models.BulkOptions) (*models.BulkApplyResult, error) {
+	if content == "" && options.PreviewRunID != "" {
+		kept, ok := keptLDIFContent(options.PreviewRunID)
+		if !ok {
+			return nil, fmt.Errorf("the dry run is no longer available; run it again")
+		}
+		content = kept
+	}
 	parsed := parseLDIFChanges(content)
 	if n := len(parsed.Errors); n > 0 {
 		return nil, fmt.Errorf("the LDIF has %d syntax error(s), nothing was applied; first: %v", n, parsed.Errors[0])
@@ -733,6 +1177,15 @@ func (s *ExportService) ApplyLDIFChanges(profileID string, content string, optio
 	if err := client.CheckWritable(); err != nil {
 		return nil, err
 	}
+	set, err := newLDIFImportSettings(client, options.Import)
+	if err != nil {
+		return nil, err
+	}
+	// Every record is planned again against the current directory, exactly
+	// like in the dry run, so the adaptations match it.
+	sim := newLDIFSimulator(client, loadSchemaContext(client, profileID), set)
+	sim.prepare(parsed.Records)
+	var deferred []ldifDeferredWrite
 
 	ctx, done := bulkRuns.start(options.RunID)
 	defer done()
@@ -740,41 +1193,338 @@ func (s *ExportService) ApplyLDIFChanges(profileID string, content string, optio
 
 	res := &models.BulkApplyResult{RunID: options.RunID, Total: len(parsed.Records), Items: make([]models.BulkResultItem, 0, len(parsed.Records))}
 	tag := ldifRunTag(options.RunID)
+	sim.prefetch(ctx, parsed.Records, func(done, total int) {
+		progress.emit(0, fmt.Sprintf("checking the directory: %d of %d reads", done, total), 0, 0, 0)
+	})
+
+	// Add records run concurrently (up to ldifApplyWindow requests on the
+	// connection): each waits for the records of its entry and its parents
+	// that are still running, deletes and renames wait for all of them. Runs
+	// that stop at the first failure and Active Directory (unique values and
+	// references between the file's entries) run one record at a time.
+	window := 1
+	if options.ContinueOnError && set.serverType != models.ServerTypeAD {
+		window = ldifApplyWindow
+	}
+	run := newLDIFApplyRun(len(parsed.Records), window)
 	for i := range parsed.Records {
 		rec := &parsed.Records[i]
-		if ctx.Err() != nil {
-			markRecordsNotProcessed(res, parsed.Records[i:], "stopped by user")
+		if ctx.Err() != nil || run.stopped() {
 			break
+		}
+		if window == 1 || rec.ChangeType == models.LDIFChangeDelete || rec.ChangeType == models.LDIFChangeModRDN {
+			run.waitAll()
+		} else {
+			run.waitFor(rec.DN)
 		}
 		start := time.Now()
-		item, opErr := s.applyRecord(client, profileID, rec, options.Passwords, tag)
-		item.DurationMs = time.Since(start).Milliseconds()
-		addResultItem(res, item)
-		progress.emit(i+1, rec.DN, res.Succeeded, res.Failed, 0)
-
-		if stop, reason := shouldStop(item, opErr, options); stop && i+1 < len(parsed.Records) {
-			markRecordsNotProcessed(res, parsed.Records[i+1:], reason)
-			break
+		run.mu.Lock()
+		rp, w := sim.plan(i, rec)
+		run.mu.Unlock()
+		finish := func(item models.BulkResultItem, opErr error) {
+			run.mu.Lock()
+			defer run.mu.Unlock()
+			if w.action == ldifWriteSend || w.action == ldifWriteUpdate {
+				switch {
+				case opErr != nil && w.undo != nil:
+					w.undo()
+				case opErr == nil && len(rp.Errors) > 0:
+					sim.written(rec, w) // predicted to fail, but the server took it
+				}
+				if opErr == nil && len(w.deferred) > 0 {
+					deferred = append(deferred, ldifDeferredWrite{rec: rec, changes: w.deferred})
+				}
+			}
+			if w.action != ldifWriteSkip && w.action != ldifWriteUnchanged { // their message says it
+				item.Adjusted = ldifAdjustedSummary(rp.Adjustments)
+			}
+			item.DurationMs = time.Since(start).Milliseconds()
+			run.done(i, item)
+			progress.emit(run.count, rec.DN, run.succeeded, run.failed, run.skipped)
+			if stop, reason := shouldStop(item, opErr, options); stop {
+				run.stop(reason)
+			}
+		}
+		switch w.action {
+		case ldifWriteSkip, ldifWriteUnchanged:
+			item := models.BulkResultItem{Line: rec.Line, DN: rec.DN, Operation: rec.ChangeType, Status: models.BulkResultSkipped, Message: ldifExistingText(rp.Adjustments)}
+			if w.action == ldifWriteUnchanged {
+				item.Status = models.BulkResultUnchanged
+			}
+			finish(item, nil)
+		case ldifWriteBlocked:
+			run.mu.Lock()
+			if w.undo != nil {
+				w.undo()
+			}
+			run.mu.Unlock()
+			finish(models.BulkResultItem{Line: rec.Line, DN: rec.DN, Operation: rec.ChangeType, Status: models.BulkResultFailed, Message: strings.Join(rp.Errors, "; ")}, nil)
+		default:
+			if window == 1 || rec.ChangeType != models.LDIFChangeAdd || w.action != ldifWriteSend || len(w.deferred) > 0 {
+				run.waitAll()
+				finish(s.applyRecord(client, profileID, rec, w, options.Passwords, tag))
+				continue
+			}
+			run.dispatch(rec.DN, func() { finish(s.applyRecord(client, profileID, rec, w, options.Passwords, tag)) })
 		}
 	}
+	run.waitAll()
+	for i := range parsed.Records {
+		if item, ok := run.item(i); ok {
+			addResultItem(res, item)
+			continue
+		}
+		rec := &parsed.Records[i]
+		reason := run.reason
+		if reason == "" {
+			reason = "stopped by user"
+		}
+		res.Stopped = true
+		if res.StopReason == "" {
+			res.StopReason = reason
+		}
+		addResultItem(res, models.BulkResultItem{Line: rec.Line, DN: rec.DN, Operation: rec.ChangeType, Status: models.BulkResultNotProcessed, Message: reason})
+	}
+	if run.reason != "" {
+		res.Stopped, res.StopReason = true, run.reason
+	}
+	sort.SliceStable(deferred, func(a, b int) bool { return deferred[a].rec.Line < deferred[b].rec.Line })
+	s.applyDeferred(ctx, client, profileID, sim, deferred, tag, res)
 	return res, nil
 }
 
-// applyRecord writes one record and audits it with the run's tag
-// (ldifAuditDetails). userPassword values of add and modify records follow
-// the password storage policy with pw (pw.AsIs: "store passwords exactly as
-// in the file").
-func (s *ExportService) applyRecord(client *ldap.Client, profileID string, rec *ldif.ChangeRecord, pw models.PasswordWriteOptions, tag string) (models.BulkResultItem, error) {
+// ldifExistingText is the text of the "existing entry" adjustment.
+func ldifExistingText(adjs []models.LDIFAdjustment) string {
+	for _, a := range adjs {
+		if a.Kind == models.LDIFAdjustExisting {
+			return a.Text
+		}
+	}
+	return ""
+}
+
+// ldifApplyWindow is the number of add requests an LDIF apply keeps
+// running on the connection at the same time.
+const ldifApplyWindow = 8
+
+// ldifApplyRun schedules the writes of an apply: the results by record,
+// the counters for progress events, the stop reason, and the add records
+// still running (by DN) that later records of the same entry or below it
+// wait for.
+type ldifApplyRun struct {
+	mu       sync.Mutex // also guards the simulator while writes run
+	items    []models.BulkResultItem
+	has      []bool
+	count    int
+	reason   string
+	inflight map[string]chan struct{}
+	sem      chan struct{}
+	wg       sync.WaitGroup
+
+	succeeded, failed, skipped int
+}
+
+func newLDIFApplyRun(n, window int) *ldifApplyRun {
+	return &ldifApplyRun{items: make([]models.BulkResultItem, n), has: make([]bool, n), inflight: map[string]chan struct{}{}, sem: make(chan struct{}, window)}
+}
+
+// done records the result of record i (mu held).
+func (r *ldifApplyRun) done(i int, item models.BulkResultItem) {
+	r.items[i], r.has[i] = item, true
+	r.count++
+	switch item.Status {
+	case models.BulkResultSuccess:
+		r.succeeded++
+	case models.BulkResultFailed:
+		r.failed++
+	default:
+		r.skipped++
+	}
+}
+
+func (r *ldifApplyRun) item(i int) (models.BulkResultItem, bool) {
+	return r.items[i], r.has[i]
+}
+
+// stop ends the run after the running writes (mu held).
+func (r *ldifApplyRun) stop(reason string) {
+	if r.reason == "" {
+		r.reason = reason
+	}
+}
+
+func (r *ldifApplyRun) stopped() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reason != ""
+}
+
+// dispatch runs write in the background once a slot is free; records of
+// dn or below it wait for it (waitFor).
+func (r *ldifApplyRun) dispatch(dn string, write func()) {
+	key := bulkDNKey(dn)
+	ch := make(chan struct{})
+	r.mu.Lock()
+	r.inflight[key] = ch
+	r.mu.Unlock()
+	r.sem <- struct{}{}
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		write()
+		r.mu.Lock()
+		if r.inflight[key] == ch {
+			delete(r.inflight, key)
+		}
+		r.mu.Unlock()
+		close(ch)
+		<-r.sem
+	}()
+}
+
+// waitFor waits until no write of dn or of an entry above it is running.
+func (r *ldifApplyRun) waitFor(dn string) {
+	parsed, err := goldap.ParseDN(dn)
+	if err != nil {
+		r.waitAll()
+		return
+	}
+	for i := 0; i < len(parsed.RDNs); i++ {
+		key := strings.ToLower((&goldap.DN{RDNs: parsed.RDNs[i:]}).String())
+		r.mu.Lock()
+		ch := r.inflight[key]
+		r.mu.Unlock()
+		if ch != nil {
+			<-ch
+		}
+	}
+}
+
+// waitAll waits for every running write.
+func (r *ldifApplyRun) waitAll() {
+	r.wg.Wait()
+}
+
+// ldifDeferredWrite are the value adds of a created entry that wait for the
+// entries they refer to.
+type ldifDeferredWrite struct {
+	rec     *ldif.ChangeRecord
+	changes []models.AttributeChange
+}
+
+// applyDeferred adds the deferred DN values at the end of the run, one
+// modify per entry, leaving out values of entries that were not created.
+// Each write is a result item of its own (operation modify).
+func (s *ExportService) applyDeferred(ctx context.Context, client *ldap.Client, profileID string, sim *ldifSimulator, deferred []ldifDeferredWrite, tag string, res *models.BulkApplyResult) {
+	for _, d := range deferred {
+		res.Total++
+		item := models.BulkResultItem{Line: d.rec.Line, DN: d.rec.DN, Operation: models.LDIFChangeModify}
+		if ctx.Err() != nil {
+			item.Status, item.Message = models.BulkResultNotProcessed, "stopped by user: the references were not added"
+			addResultItem(res, item)
+			continue
+		}
+		start := time.Now()
+		var changes []models.AttributeChange
+		var dropped []string
+		for _, ch := range d.changes {
+			kept := ch
+			kept.Values = nil
+			for _, v := range ch.Values {
+				if ok, err := sim.entryExists(v); err == nil && !ok {
+					dropped = append(dropped, v)
+					continue
+				}
+				kept.Values = append(kept.Values, v)
+			}
+			if len(kept.Values) > 0 {
+				changes = append(changes, kept)
+			}
+		}
+		item.Details = "references added at the end of the run: " + describeChangesForAudit(changes)
+		switch {
+		case len(changes) == 0:
+			item.Status, item.Message = models.BulkResultSkipped, "the referenced entries were not created: "+strings.Join(dropped, "; ")
+		default:
+			err := client.ModifyEntry(d.rec.DN, changes)
+			writeAudit(s.auditStore, s.pool, profileID, "MODIFY", d.rec.DN, ldifAuditDetails("modify", tag, ": "+describeChangesForAudit(changes)), err)
+			if err != nil {
+				item.Status, item.Message = models.BulkResultFailed, err.Error()
+			} else {
+				item.Status = models.BulkResultSuccess
+				if len(dropped) > 0 {
+					item.Message = "not added (entries not created): " + strings.Join(dropped, "; ")
+				}
+			}
+		}
+		item.DurationMs = time.Since(start).Milliseconds()
+		addResultItem(res, item)
+	}
+}
+
+// written updates the simulated state after a write the dry run predicted
+// to fail but the server accepted.
+func (s *ldifSimulator) written(rec *ldif.ChangeRecord, w ldifWrite) {
+	key := s.key(rec.DN)
+	switch rec.ChangeType {
+	case models.LDIFChangeAdd:
+		if w.action == ldifWriteUpdate {
+			s.known[key] = &ldifSimEntry{exists: true}
+			return
+		}
+		s.known[key] = &ldifSimEntry{exists: true, entry: &models.LDAPEntry{DN: rec.DN, Attributes: w.attrs}}
+	case models.LDIFChangeModify:
+		s.known[key] = &ldifSimEntry{exists: true}
+	case models.LDIFChangeDelete:
+		if parsed, err := goldap.ParseDN(rec.DN); err == nil {
+			s.moveKnown(parsed, nil)
+			s.ops = append(s.ops, ldifSubtreeOp{oldDN: parsed})
+		}
+		s.known[key] = &ldifSimEntry{exists: false}
+	case models.LDIFChangeModRDN:
+		newParent := rec.NewSuperior
+		if newParent == "" {
+			newParent = bulkParentDN(rec.DN)
+		}
+		newDN := rec.NewRDN
+		if newParent != "" {
+			newDN += "," + newParent
+		}
+		s.applyRename(rec, newDN, nil)
+	}
+}
+
+// applyRecord writes one record as planned by the simulator (w: the
+// adapted add, or the update of an existing entry) and audits it with the
+// run's tag (ldifAuditDetails). userPassword values of add and modify
+// records follow the password storage policy with pw (pw.AsIs: "store
+// passwords exactly as in the file").
+func (s *ExportService) applyRecord(client *ldap.Client, profileID string, rec *ldif.ChangeRecord, w ldifWrite, pw models.PasswordWriteOptions, tag string) (models.BulkResultItem, error) {
 	item := models.BulkResultItem{Line: rec.Line, DN: rec.DN, Operation: rec.ChangeType}
 	var err error
 	var report *models.PasswordWriteReport
-	switch rec.ChangeType {
-	case models.LDIFChangeAdd:
-		item.Details = describeAttributesForAudit(rec.Attributes)
-		report, err = client.AddEntryWithPasswordPolicy(rec.DN, rec.Attributes, pw)
+	switch {
+	case w.action == ldifWriteUpdate:
+		// An add record of an existing entry, sent as a modify of it.
+		item.Operation = models.LDIFChangeModify
+		item.Details = "update of the existing entry: " + describeChangesForAudit(w.changes)
+		guard := client.GuardPermanentLock(rec.DN, w.changes)
+		report, err = client.ModifyEntryWithPasswordPolicy(rec.DN, w.changes, pw)
+		item.Details += describePasswordReport(report)
+		writeAudit(s.auditStore, s.pool, profileID, "MODIFY", rec.DN, ldifAuditDetails("modify", tag, ": "+describeChangesWithBefore(w.changes, auditBeforeFromEntry(w.entry, w.changes))+describePasswordReport(report)), err)
+		if err == nil {
+			err = keepDisabledAfterBulk(&item, passwordReportMessages(report), guard, func(op, dn, details string, err error) {
+				writeAudit(s.auditStore, s.pool, profileID, op, dn, details, err)
+			})
+			item.PasswordWarning = passwordReportWarning(report)
+			return item, err
+		}
+	case rec.ChangeType == models.LDIFChangeAdd:
+		item.Details = describeAttributesForAudit(w.attrs)
+		report, err = client.AddEntryWithPasswordPolicy(rec.DN, w.attrs, pw, w.controls...)
 		item.Details += describePasswordReport(report)
 		writeAudit(s.auditStore, s.pool, profileID, "CREATE", rec.DN, ldifAuditDetails("import", tag, ", "+item.Details), err)
-	case models.LDIFChangeModify:
+	case rec.ChangeType == models.LDIFChangeModify:
 		item.Details = describeChangesForAudit(rec.Changes)
 		guard := client.GuardPermanentLock(rec.DN, rec.Changes)
 		before := auditBefore(client, rec.DN, rec.Changes)
@@ -788,11 +1538,11 @@ func (s *ExportService) applyRecord(client *ldap.Client, profileID string, rec *
 			item.PasswordWarning = passwordReportWarning(report)
 			return item, err
 		}
-	case models.LDIFChangeDelete:
+	case rec.ChangeType == models.LDIFChangeDelete:
 		item.Details = "delete entry"
 		err = client.DeleteEntry(rec.DN)
 		writeAudit(s.auditStore, s.pool, profileID, "DELETE", rec.DN, ldifAuditDetails("delete", tag, ""), err)
-	case models.LDIFChangeModRDN:
+	case rec.ChangeType == models.LDIFChangeModRDN:
 		newParent := rec.NewSuperior
 		if newParent == "" {
 			newParent = bulkParentDN(rec.DN)
@@ -854,21 +1604,37 @@ func ldifAuditDetails(kind, tag, rest string) string {
 type ldifPasswordPlanning struct {
 	policy models.EffectivePasswordPolicy
 	opts   models.PasswordWriteOptions
+	// merged is the plan of every record together (LDIFPreview.Passwords).
+	merged *models.PasswordWritePlan
 }
 
-// annotate adds the plan of rec's password values to rp: actions as notes,
-// warnings (cleartext kept, confirmation needed) as warnings.
+// annotate adds the plan of rec's password values to rp (modify records;
+// add records are planned with their adapted attributes, see
+// annotateAttributes).
 func (p *ldifPasswordPlanning) annotate(rp *models.LDIFRecordPreview, rec *ldif.ChangeRecord) {
-	var plan models.PasswordWritePlan
-	var err error
 	switch rec.ChangeType {
 	case models.LDIFChangeAdd:
-		plan, err = ldap.PlanPasswordAttributes(p.policy, rec.Attributes, p.opts)
+		p.annotateAttributes(rp, rec.Attributes)
 	case models.LDIFChangeModify:
-		plan, err = ldap.PlanPasswordChanges(p.policy, rec.Changes, p.opts)
-	default:
-		return
+		p.annotateChanges(rp, rec.Changes)
 	}
+}
+
+// annotateAttributes adds the plan of the password values of an add.
+func (p *ldifPasswordPlanning) annotateAttributes(rp *models.LDIFRecordPreview, attrs []models.LDAPAttribute) {
+	plan, err := ldap.PlanPasswordAttributes(p.policy, attrs, p.opts)
+	p.addPlan(rp, plan, err)
+}
+
+// annotateChanges adds the plan of the password values of a modify.
+func (p *ldifPasswordPlanning) annotateChanges(rp *models.LDIFRecordPreview, changes []models.AttributeChange) {
+	plan, err := ldap.PlanPasswordChanges(p.policy, changes, p.opts)
+	p.addPlan(rp, plan, err)
+}
+
+// addPlan adds a password plan to rp: actions as notes, warnings (cleartext
+// kept, confirmation needed) as warnings.
+func (p *ldifPasswordPlanning) addPlan(rp *models.LDIFRecordPreview, plan models.PasswordWritePlan, err error) {
 	if err != nil {
 		rp.Errors = append(rp.Errors, err.Error())
 		return
@@ -876,6 +1642,16 @@ func (p *ldifPasswordPlanning) annotate(rp *models.LDIFRecordPreview, rec *ldif.
 	notes, warnings := passwordPlanMessages(plan)
 	rp.Notes = append(rp.Notes, notes...)
 	rp.Warnings = append(rp.Warnings, warnings...)
+	if plan.HasPasswords {
+		if p.merged == nil {
+			m := plan
+			p.merged = &m
+		} else {
+			policy := p.merged.Policy
+			*p.merged = ldap.MergePasswordPlans(*p.merged, plan)
+			p.merged.Policy = policy
+		}
+	}
 }
 
 // ldifHasPasswords reports whether add or modify records carry userPassword

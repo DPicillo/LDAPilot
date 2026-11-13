@@ -850,10 +850,10 @@ func (c *Client) AddEntry(dn string, attrs []models.LDAPAttribute) error {
 	return err
 }
 
-// addEntry sends the Add request as given.
-func (c *Client) addEntry(dn string, attrs []models.LDAPAttribute) error {
+// addEntry sends the Add request as given, with controls.
+func (c *Client) addEntry(dn string, attrs []models.LDAPAttribute, controls []goldap.Control) error {
 	start := time.Now()
-	addReq := goldap.NewAddRequest(dn, nil)
+	addReq := goldap.NewAddRequest(dn, controls)
 	for _, attr := range attrs {
 		values, err := rawValues(attr.Name, attr.Values, attr.Binary)
 		if err != nil {

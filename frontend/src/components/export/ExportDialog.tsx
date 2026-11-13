@@ -8,15 +8,16 @@
  * a filter and an attribute list. LDIF is written parents first with AD values
  * (objectGUID, objectSid, …) as raw bytes; "Importable" (default on,
  * remembered) leaves out server-maintained attributes, so the file can be
- * imported again (ExportService.Export). Preview shows the generated text;
- * Save to File… writes exactly that text through the "Export LDIF" / "Export
- * CSV" save dialog (named after the entry, in the last export folder) and
- * reports "n entries saved to <path>".
+ * imported again (ExportService.Export). Preview shows the first 200 entries;
+ * Save to File… asks for the file in the "Export LDIF" / "Export CSV" save
+ * dialog (named after the entry, in the last export folder) and Go writes the
+ * whole export there (ExportService.SaveExport: the text never crosses the
+ * bridge), then reports "n entries saved to <path>".
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ClipboardCopy, Download, Eye, ListChecks, Plus, X } from 'lucide-react'
 import { useConnectionStore } from '../../stores/connectionStore'
-import { Export, SaveExportFile, savedMessage, type ExportRequest } from '../../lib/wails-export'
+import { Export, SaveExport, savedMessage, type ExportRequest } from '../../lib/wails-export'
 import { firstRDN, parseRDN } from '../../lib/dn'
 import { ScopeBase, ScopeOne, ScopeSub, type SearchScope } from '../../types/ldap'
 import { toast } from '../ui/Toast'
@@ -34,6 +35,8 @@ import { ConnectionTag } from '../bulk/BulkViews'
 import { useFilterCheck } from '../search/useFilterCheck'
 import { suggestNames } from '../search/searchModel'
 import { attributeNames, useSchema } from '../schema/schemaCache'
+import { ensureServerType } from '../ui/commands'
+import { AD_EXPORT_PASSWORDS } from './ldifImportOptions'
 
 type ExportFormat = 'ldif' | 'csv';
 
@@ -56,6 +59,9 @@ const SCOPES = [
 ];
 
 const IMPORTABLE_KEY = 'ldapilot-export-importable';
+
+/** Entries the preview shows: a large export is only written to the file, never shown whole. */
+const PREVIEW_LIMIT = 200;
 
 function readImportable(): boolean {
   try {
@@ -106,7 +112,7 @@ export function ExportDialog({ dn, dns, profileId: profileProp, scope: initialSc
   const [importable, setImportable] = useState(readImportable);
   const [ldifAttrs, setLdifAttrs] = useState<string[]>([]);
   const [busy, setBusy] = useState<'preview' | 'save' | null>(null);
-  const [result, setResult] = useState<{ key: string; content: string; count: number; truncated?: boolean } | null>(null);
+  const [result, setResult] = useState<{ key: string; content: string; count: number; truncated?: boolean; limited?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [csvColumns, setCsvColumns] = useState<string[]>(['cn', 'mail', 'description', 'objectClass']);
   const [columnText, setColumnText] = useState('');
@@ -119,6 +125,15 @@ export function ExportDialog({ dn, dns, profileId: profileProp, scope: initialSc
   }, [schema]);
 
   useEffect(() => writeImportable(importable), [importable]);
+  const [serverType, setServerType] = useState<string | null>(null);
+  useEffect(() => {
+    if (!profileId) return;
+    let alive = true;
+    void ensureServerType(profileId).then((t) => alive && setServerType(t), () => {});
+    return () => {
+      alive = false;
+    };
+  }, [profileId]);
 
   const columns = format === 'csv' ? csvColumns : ldifAttrs;
   const setColumns = format === 'csv' ? setCsvColumns : setLdifAttrs;
@@ -144,14 +159,14 @@ export function ExportDialog({ dn, dns, profileId: profileProp, scope: initialSc
     setColumnText('');
   }
 
-  /** Generates the export text for the current settings (cached until they change). */
+  /** The preview: the first PREVIEW_LIMIT entries of the export (cached until the settings change). */
   async function generate() {
     if (!profileId || (!list && !baseDN.trim())) return null;
     if (current) return current;
     setError(null);
     try {
-      const res = await Export(profileId, request);
-      const r = { key, content: res.content, count: res.count, truncated: res.truncated };
+      const res = await Export(profileId, { ...request, limit: PREVIEW_LIMIT });
+      const r = { key, content: res.content, count: res.count, truncated: res.truncated, limited: res.limited };
       setResult(r);
       return r;
     } catch (err) {
@@ -166,16 +181,18 @@ export function ExportDialog({ dn, dns, profileId: profileProp, scope: initialSc
     setBusy(null);
   }
 
+  /** Writes the whole export to a file in Go: the text of a large export never crosses the bridge. */
   async function handleSave() {
+    if (!profileId || (!list && !baseDN.trim())) return;
     setBusy('save');
+    setError(null);
     try {
-      const r = await generate();
-      if (!r) return;
       const name = list ? `${list.length} entries` : parseRDN(firstRDN(baseDN.trim())).value || 'export';
-      const path = await SaveExportFile(name, format, r.content);
+      const res = await SaveExport(profileId, request, name);
       // '' = the save dialog was cancelled: nothing written, nothing to report.
-      if (path && path !== 'download') {
-        toast.success(savedMessage(r.count, path));
+      if (res.path && res.path !== 'download') {
+        if (res.truncated) toast.warning(savedMessage(res.count, res.path), "The search stopped at the server's size limit: the export is incomplete.");
+        else toast.success(savedMessage(res.count, res.path));
         onClose();
       }
     } catch (err) {
@@ -188,7 +205,9 @@ export function ExportDialog({ dn, dns, profileId: profileProp, scope: initialSc
   async function handleCopy() {
     if (!current) return;
     try {
-      await navigator.clipboard.writeText(current.content);
+      // The preview is only the start of a large export: copy the whole text.
+      const text = current.limited && profileId ? (await Export(profileId, request)).content : current.content;
+      await navigator.clipboard.writeText(text);
       toast.success(`${format.toUpperCase()} copied`);
     } catch (err) {
       toast.error('Could not copy', err instanceof Error ? err.message : String(err));
@@ -269,9 +288,10 @@ export function ExportDialog({ dn, dns, profileId: profileProp, scope: initialSc
             checked={importable}
             onCheckedChange={setImportable}
             label="Importable (exclude operational attributes)"
-            description="Leaves out what the server maintains (objectGUID, objectSid, whenCreated, uSNChanged, memberOf, entryUUID, modifyTimestamp, …) so the file can be imported again; objectClass is always kept."
+            description="Leaves out what the server maintains (objectGUID, objectSid, whenCreated, uSNChanged, memberOf, entryUUID, modifyTimestamp, …); objectClass is always kept. Without it the file keeps every attribute (a full backup): LDAPilot's import leaves those out itself, or sends the IDs and timestamps the target server lets an import set."
           />
         )}
+        {format === 'ldif' && serverType === 'ad' && <InlineAlert tone="info" body={AD_EXPORT_PASSWORDS} />}
 
         {!list && (
           <Field label="Filter" hint="Optional: only entries matching it, e.g. (objectClass=user). Parents left out by a filter are not in the file.">
@@ -331,7 +351,7 @@ export function ExportDialog({ dn, dns, profileId: profileProp, scope: initialSc
             Preview
             {current && (
               <span className="text-xs font-normal tabular-nums">
-                {current.count} {current.count === 1 ? 'entry' : 'entries'}
+                {current.limited ? `first ${current.count} entries` : `${current.count} ${current.count === 1 ? 'entry' : 'entries'}`}
               </span>
             )}
           </span>

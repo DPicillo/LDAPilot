@@ -375,9 +375,12 @@ function OutputLog() {
       })
       .catch(() => {})
     wails.StartLogStream(id).catch(() => {})
+    // One event carries every entry logged within 50 ms (a bulk run logs thousands).
     const off = onWailsEvent('operation:log', (...data: unknown[]) => {
-      const entry = data[0] as LogEntry | undefined
-      if (entry && typeof entry.operation === 'string' && entryForProfile(entry, id)) setLogs((prev) => mergeLogEntries(prev, [toRow(entry)]))
+      const rows = (data as (LogEntry | undefined)[])
+        .filter((e): e is LogEntry => !!e && typeof e.operation === 'string' && entryForProfile(e, id))
+        .map(toRow)
+      if (rows.length) setLogs((prev) => mergeLogEntries(prev, rows))
     })
     return () => {
       alive = false
@@ -543,11 +546,16 @@ function AuditLog({ active }: { active: boolean }) {
   // Live: entries written while the log is shown (this connection, within the range).
   useEffect(() => {
     if (!active || !activeProfileId || !connected) return
+    // (profileId, entry, entry, …): the entries of one connection written within 50 ms.
     return onWailsEvent('audit:entry', (...data: unknown[]) => {
-      const [profileId, entry] = data as [string, AuditEntry | undefined]
-      if (profileId !== activeProfileId || !entry || !inRange(entry.timestamp, from, to)) return
-      // A clear (possibly from another view) leaves only its own record.
-      setEntries((prev) => [{ ...entry, seq: seqRef.current++ }, ...(entry.operation === 'AUDIT_CLEARED' ? [] : prev)])
+      const [profileId, ...list] = data as [string, ...(AuditEntry | undefined)[]]
+      if (profileId !== activeProfileId) return
+      const added = list.filter((e): e is AuditEntry => !!e && inRange(e.timestamp, from, to))
+      if (!added.length) return
+      // A clear (possibly from another view) leaves only its own record and what came after it.
+      const cleared = added.map((e) => e.operation).lastIndexOf('AUDIT_CLEARED')
+      const fresh = (cleared >= 0 ? added.slice(cleared) : added).map((e) => ({ ...e, seq: seqRef.current++ })).reverse()
+      setEntries((prev) => [...fresh, ...(cleared >= 0 ? [] : prev)])
     })
   }, [active, activeProfileId, connected, from, to])
 

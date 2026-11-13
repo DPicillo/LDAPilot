@@ -5,7 +5,7 @@
  */
 import { getBinding } from './wails'
 import type { AttributeChange } from '../types/ldap'
-import type { BulkApplyResult, BulkOptions, BulkPreview, BulkProgress, LDIFFile, LDIFPreview } from '../types/bulk'
+import type { BulkApplyResult, BulkOptions, BulkPreview, BulkProgress, LDIFFile, LDIFPreview, LDIFRecordPage } from '../types/bulk'
 import { BULK_PROGRESS_EVENT } from '../types/bulk'
 
 function notAvailable(): never {
@@ -38,6 +38,25 @@ export async function PreviewLDIFChanges(profileID: string, content: string, opt
   const svc = getBinding('ExportService');
   if (svc?.PreviewLDIFChanges) return svc.PreviewLDIFChanges(profileID, content, options);
   notAvailable();
+}
+
+/** Records of a large dry run (LDIFPreview.partial) by status ('all' or a record status), from offset on (ExportService.GetLDIFPreviewRecords). */
+export async function GetLDIFPreviewRecords(runId: string, status: string, offset: number, limit: number): Promise<LDIFRecordPage> {
+  const svc = getBinding('ExportService');
+  if (svc?.GetLDIFPreviewRecords) return svc.GetLDIFPreviewRecords(runId, status, offset, limit);
+  notAvailable();
+}
+
+/** Every record of a dry run: the preview's own, or all pages of a large one. */
+export async function allLDIFPreviewRecords(preview: LDIFPreview): Promise<LDIFPreview> {
+  if (!preview.partial || !preview.runId) return preview;
+  const records: LDIFPreview['records'] = [];
+  for (;;) {
+    const page = await GetLDIFPreviewRecords(preview.runId, 'all', records.length, 5000);
+    records.push(...page.records);
+    if (page.records.length === 0 || records.length >= page.total) break;
+  }
+  return { ...preview, records, partial: false };
 }
 
 /** Applies an LDIF change file (ExportService.ApplyLDIFChanges). */

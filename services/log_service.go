@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"sync"
 
 	"github.com/dpicillo/LDAPilot/internal/ldap"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -11,6 +12,9 @@ import (
 type LogService struct {
 	ctx  context.Context
 	pool *ldap.Pool
+	// batch coalesces the operation:log events of all profiles.
+	batch     *eventBatcher
+	batchOnce sync.Once
 }
 
 // NewLogService creates a new LogService.
@@ -50,11 +54,14 @@ func (s *LogService) StartLogStream(profileID string) error {
 	if profileID == "" {
 		return nil
 	}
-	s.pool.Logger(profileID).SetListener(func(entry ldap.LogEntry) {
-		if s.ctx != nil {
-			wailsRuntime.EventsEmit(s.ctx, "operation:log", entry)
-		}
+	s.batchOnce.Do(func() {
+		s.batch = newEventBatcher(func(entries []any) {
+			if s.ctx != nil {
+				wailsRuntime.EventsEmit(s.ctx, "operation:log", entries...)
+			}
+		})
 	})
+	s.pool.Logger(profileID).SetListener(func(entry ldap.LogEntry) { s.batch.add(entry) })
 
 	return nil
 }

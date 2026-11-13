@@ -121,3 +121,25 @@ func TestSortParentFirstReferences(t *testing.T) {
 		t.Fatalf("order %s, want %s", strings.Join(got, "|"), want)
 	}
 }
+
+// Back-links (memberOf, directReports) are no dependency: an export with
+// every attribute must not order a group before its members because they
+// name it in memberOf.
+func TestSortParentFirstIgnoresBackLinks(t *testing.T) {
+	entries := []models.LDAPEntry{
+		{DN: "CN=Team,OU=Src,DC=ad,DC=lab", Attributes: []models.LDAPAttribute{{Name: "member", Values: []string{"CN=Anna,OU=Src,DC=ad,DC=lab"}}}},
+		{DN: "CN=Anna,OU=Src,DC=ad,DC=lab", Attributes: []models.LDAPAttribute{{Name: "memberOf", Values: []string{"CN=Team,OU=Src,DC=ad,DC=lab"}}, {Name: "directReports", Values: []string{"CN=Ben,OU=Src,DC=ad,DC=lab"}}}},
+		{DN: "CN=Ben,OU=Src,DC=ad,DC=lab", Attributes: []models.LDAPAttribute{{Name: "manager", Values: []string{"CN=Anna,OU=Src,DC=ad,DC=lab"}}}},
+	}
+	SortParentFirst(entries)
+	got := make([]string, len(entries))
+	for i, e := range entries {
+		got[i] = strings.SplitN(e.DN, ",", 2)[0]
+	}
+	if want := "CN=Anna|CN=Team|CN=Ben"; strings.Join(got, "|") != want {
+		t.Fatalf("order %s, want %s", strings.Join(got, "|"), want)
+	}
+	if !IsBackLinkAttribute("memberOf;range=0-1") || IsBackLinkAttribute("member") {
+		t.Fatal("IsBackLinkAttribute")
+	}
+}

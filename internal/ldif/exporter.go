@@ -117,7 +117,7 @@ func SortParentFirst(entries []models.LDAPEntry) {
 			add(j)
 		}
 		for _, a := range e.Attributes {
-			if a.Binary || strings.EqualFold(a.Name, "objectClass") {
+			if a.Binary || strings.EqualFold(a.Name, "objectClass") || isBackLink(a.Name) {
 				continue
 			}
 			for _, v := range a.Values {
@@ -169,6 +169,25 @@ func SortParentFirst(entries []models.LDAPEntry) {
 	}
 	copy(entries, sorted)
 }
+
+// backLinks are attributes the server derives from other entries' values
+// (memberOf from the groups' member values, directReports from manager):
+// an import never sends them, so they are no ordering dependency (a group
+// and its members would otherwise refer to each other).
+var backLinks = map[string]bool{"memberof": true, "ismemberof": true, "directreports": true, "managedobjects": true, "nsrole": true}
+
+// isBackLink reports whether name is a back-link attribute (options ignored).
+func isBackLink(name string) bool {
+	base := strings.ToLower(name)
+	if i := strings.IndexByte(base, ';'); i >= 0 {
+		base = base[:i]
+	}
+	return backLinks[base]
+}
+
+// IsBackLinkAttribute reports whether name is an attribute the server
+// derives from other entries' values (memberOf, directReports, …).
+func IsBackLinkAttribute(name string) bool { return isBackLink(name) }
 
 // indexHeap is a min-heap of entry indexes ordered by less.
 type indexHeap struct {
@@ -274,7 +293,7 @@ var nonImportableAttributes = map[string]bool{
 	"subschemasubentry": true, "structuralobjectclass": true, "numsubordinates": true,
 	"contextcsn": true, "pwdchangedtime": true, "pwdfailuretime": true, "pwdhistory": true,
 	"pwdgraceusetime": true, "nsuniqueid": true, "nsparentuniqueid": true, "parentid": true,
-	"entryid": true, "nscpentrydn": true, "nsroledn": true, "nsrole": true,
+	"entryid": true, "nscpentrydn": true, "nsrole": true,
 }
 
 // IsImportableAttribute reports whether an attribute may appear in an add

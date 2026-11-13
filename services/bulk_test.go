@@ -306,7 +306,7 @@ func (d *fakeDirectory) ChildDNs(dn string, limit int) ([]string, bool, error) {
 func ldifRecordStatus(t *testing.T, dir entryReader, sc *schemaContext, lines ...string) []string {
 	t.Helper()
 	parsed := ldif.ParseChanges(strings.Join(lines, "\n"), ldif.ParseOptions{})
-	preview, _ := buildLDIFPreview(parsed, newLDIFSimulator(dir, sc), nil)
+	preview, _ := buildLDIFPreview(parsed, newLDIFSimulator(dir, sc, ldifImportSettings{}), nil)
 	out := make([]string, len(preview.Records))
 	for i, r := range preview.Records {
 		out[i] = fmt.Sprintf("%d %s %s%s", r.Line, r.Status, strings.Join(r.Errors, ";"), strings.Join(r.Warnings, ";"))
@@ -494,7 +494,7 @@ func TestLDIFPreviewSimulation(t *testing.T) {
 	}, "\n")
 
 	parsed := ldif.ParseChanges(content, ldif.ParseOptions{})
-	preview, stopped := buildLDIFPreview(parsed, newLDIFSimulator(dir, nil), nil)
+	preview, stopped := buildLDIFPreview(parsed, newLDIFSimulator(dir, nil, ldifImportSettings{opts: models.LDIFImportOptions{Existing: models.LDIFExistingFail}}), nil)
 	if stopped {
 		t.Fatal("stopped")
 	}
@@ -581,7 +581,7 @@ func TestLDIFPreviewKeptRDN(t *testing.T) {
 		"dn: cn=a,dc=x\nchangetype: modrdn\nnewrdn: cn=b\ndeleteoldrdn: 0\n"
 	parsed := ldif.ParseChanges(content, ldif.ParseOptions{})
 
-	preview, _ := buildLDIFPreview(parsed, newLDIFSimulator(dir, testSchema()), nil)
+	preview, _ := buildLDIFPreview(parsed, newLDIFSimulator(dir, testSchema(), ldifImportSettings{}), nil)
 	if r := preview.Records[0]; r.Status != "error" || !strings.Contains(strings.Join(r.Errors, ";"), "single-valued") {
 		t.Errorf("single-valued naming attribute kept: %+v", r)
 	}
@@ -590,7 +590,7 @@ func TestLDIFPreviewKeptRDN(t *testing.T) {
 	}
 
 	ad := newSchemaContext(nil, models.ServerTypeAD)
-	preview, _ = buildLDIFPreview(parsed, newLDIFSimulator(newFakeDirectory(entryOf("cn=a,dc=x", "cn", "a"), entryOf("employeeNumber=7,dc=x")), ad), nil)
+	preview, _ = buildLDIFPreview(parsed, newLDIFSimulator(newFakeDirectory(entryOf("cn=a,dc=x", "cn", "a"), entryOf("employeeNumber=7,dc=x")), ad, ldifImportSettings{}), nil)
 	if r := preview.Records[1]; r.Status != "error" || !strings.Contains(strings.Join(r.Errors, ";"), "Active Directory") {
 		t.Errorf("AD deleteoldrdn 0: %+v", r)
 	}

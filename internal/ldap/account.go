@@ -555,9 +555,12 @@ func (c *Client) ApplyAccountChange(dn string, ch AccountChange) ([]models.Attri
 	}
 }
 
-// relaxRulesOID is the OpenLDAP Relax Rules control. It lets a manager
-// delete pwdFailureTime, which ppolicy declares NO-USER-MODIFICATION.
-const relaxRulesOID = "1.3.6.1.4.1.4203.666.5.12"
+// RelaxRulesOID is the OpenLDAP Relax Rules control. It lets a manager
+// delete pwdFailureTime, which ppolicy declares NO-USER-MODIFICATION, and
+// an LDIF import set the IDs and timestamps OpenLDAP itself maintains
+// (entryUUID, entryCSN, createTimestamp, …). OpenLDAP 2.4 accepts it without
+// listing it in supportedControl.
+const RelaxRulesOID = "1.3.6.1.4.1.4203.666.5.12"
 
 // sendAccountChanges sends changes as one modify. A delete of pwdFailureTime
 // (OpenLDAP) is sent with the Relax Rules control; when the server refuses
@@ -574,7 +577,7 @@ func (c *Client) sendAccountChanges(dn string, changes []models.AttributeChange)
 	if len(reduced) == len(changes) {
 		return changes, c.ModifyEntry(dn, changes)
 	}
-	err := c.ModifyEntry(dn, changes, goldap.NewControlString(relaxRulesOID, false, ""))
+	err := c.ModifyEntry(dn, changes, goldap.NewControlString(RelaxRulesOID, false, ""))
 	if err == nil || len(reduced) == 0 || !(goldap.IsErrorWithCode(err, goldap.LDAPResultConstraintViolation) ||
 		goldap.IsErrorWithCode(err, goldap.LDAPResultInsufficientAccessRights) ||
 		goldap.IsErrorWithCode(err, goldap.LDAPResultUnavailableCriticalExtension)) {

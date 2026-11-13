@@ -27,6 +27,9 @@ type ExportRequest struct {
 	// (operational, NO-USER-MODIFICATION, AD system attributes and
 	// back-links), so the file can be imported again.
 	Importable bool `json:"importable,omitempty"`
+	// Limit (> 0) reads only the first Limit entries: the dialog's
+	// preview of a large export (ExportResult.Limited).
+	Limit int `json:"limit,omitempty"`
 }
 
 // ExportResult is the text of an export and the number of entries in it.
@@ -35,4 +38,15 @@ type ExportResult struct {
 	Count   int    `json:"count"`
 	// Truncated: the search hit a size limit, the export is incomplete.
 	Truncated bool `json:"truncated,omitempty"`
+	// Limited: the request's Limit was reached; there may be more entries.
+	Limited bool `json:"limited,omitempty"`
+}
+
+// ExportFileResult is an export written to a file (ExportService.SaveExport).
+type ExportFileResult struct {
+	// Path is the file written; "" when the save dialog was cancelled.
+	Path      string `json:"path"`
+	Count     int    `json:"count"`
+	Bytes     int64  `json:"bytes"`
+	Truncated bool   `json:"truncated,omitempty"`
 }

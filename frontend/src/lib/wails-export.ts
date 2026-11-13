@@ -20,12 +20,24 @@ export interface ExportRequest {
   attributes?: string[]
   /** LDIF without server-maintained attributes, so it can be imported again. */
   importable?: boolean
+  /** Only the first entries (the dialog's preview); the result says limited. */
+  limit?: number
 }
 
 /** Go models.ExportResult. */
 export interface ExportResult {
   content: string
   count: number
+  truncated?: boolean
+  /** The request's limit was reached: there may be more entries. */
+  limited?: boolean
+}
+
+/** Go models.ExportFileResult: path '' = the save dialog was cancelled. */
+export interface ExportFileResult {
+  path: string
+  count: number
+  bytes: number
   truncated?: boolean
 }
 
@@ -39,6 +51,24 @@ function service(name: string, method: string): (...args: unknown[]) => Promise<
 /** Runs an export and returns its text (ExportService.Export). */
 export function Export(profileID: string, req: ExportRequest): Promise<ExportResult> {
   return service('ExportService', 'Export')(profileID, req)
+}
+
+/**
+ * Runs an export and writes it to a file chosen in the native "Export LDIF"
+ * / "Export CSV" dialog, in the last export folder, without sending the
+ * text through the bridge (ExportService.SaveExport). Outside Wails the text
+ * is offered as a browser download (path 'download').
+ */
+export async function SaveExport(profileID: string, req: ExportRequest, name: string): Promise<ExportFileResult> {
+  const svc = getBinding('ExportService')
+  if (typeof svc?.SaveExport === 'function') {
+    const res: ExportFileResult = (await svc.SaveExport(profileID, { ...req, limit: undefined }, name, lastExportDir())) || { path: '', count: 0, bytes: 0 }
+    if (res.path) rememberExportDir(res.path)
+    return res
+  }
+  const res = await Export(profileID, { ...req, limit: undefined })
+  const path = await SaveExportFile(name, req.format, res.content)
+  return { path, count: res.count, bytes: res.content.length, truncated: res.truncated }
 }
 
 /** Audit entries between from and to (dates or timestamps; '' = open), newest first; limit <= 0 = all. */

@@ -381,6 +381,7 @@ export function BulkResultView({ result, onDownload, showLines, onRetry, run: ru
                     {it.message}
                   </div>
                 )}
+                {it.adjusted && <div className="break-words text-muted-foreground">{it.adjusted}</div>}
               </div>
             </div>
           ))}

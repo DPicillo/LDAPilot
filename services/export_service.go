@@ -1,8 +1,10 @@
 package services
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,57 +98,140 @@ var exportSearchAttributes = []string{"*", "+"}
 // Export runs an export of the Export dialog (see models.ExportRequest) and
 // returns its text: LDIF (parents first, AD values as raw bytes, optionally
 // importable and restricted to attributes) or CSV (formula-safe). Nothing is
-// written; SaveExportFile saves the text.
+// written; SaveExport writes an export to a file without sending it to the
+// frontend, req.Limit makes a preview of the first entries.
 func (s *ExportService) Export(profileID string, req models.ExportRequest) (*models.ExportResult, error) {
 	client, err := s.pool.Get(profileID)
 	if err != nil {
 		return nil, err
 	}
-	var entries []models.LDAPEntry
-	truncated := false
-	if len(req.DNs) > 0 {
-		if entries, err = exportReadEntries(client, req.DNs); err != nil {
-			return nil, err
-		}
-	} else {
-		if strings.TrimSpace(req.BaseDN) == "" {
-			return nil, fmt.Errorf("no base DN")
-		}
-		filter := strings.TrimSpace(req.Filter)
-		if filter == "" {
-			filter = "(objectClass=*)"
-		}
-		if err := ldap.ValidateFilter(filter); err != nil {
-			return nil, err
-		}
-		attrs := exportSearchAttributes
-		if req.Format == "csv" && len(req.Attributes) > 0 {
-			attrs = req.Attributes
-		}
-		res, err := client.Search(models.SearchParams{BaseDN: req.BaseDN, Scope: req.Scope, Filter: filter, Attributes: attrs})
-		if err != nil {
-			return nil, fmt.Errorf("export search below %q failed: %w", req.BaseDN, err)
-		}
-		entries, truncated = res.Entries, res.Truncated
-		ldif.SortParentFirst(entries)
+	entries, truncated, limited, err := exportEntries(client, req)
+	if err != nil {
+		return nil, err
 	}
+	var sb strings.Builder
+	if err := writeExport(&sb, client, req, entries); err != nil {
+		return nil, err
+	}
+	return &models.ExportResult{Content: sb.String(), Count: len(entries), Truncated: truncated, Limited: limited}, nil
+}
 
+// SaveExport runs an export like Export and writes it straight to a file
+// chosen in the "Export LDIF" / "Export CSV" save dialog (shown first, in
+// directory, named after defaultName): a large export never crosses the
+// Wails bridge. Returns Path "" when the dialog was cancelled.
+func (s *ExportService) SaveExport(profileID string, req models.ExportRequest, defaultName, directory string) (*models.ExportFileResult, error) {
+	client, err := s.pool.Get(profileID)
+	if err != nil {
+		return nil, err
+	}
+	path, err := s.exportSaveDialog(defaultName, req.Format, directory)
+	if err != nil || path == "" {
+		return &models.ExportFileResult{}, err
+	}
+	return exportToPath(client, req, path)
+}
+
+// exportToPath writes the export of req to path (buffered, 0600).
+func exportToPath(client *ldap.Client, req models.ExportRequest, path string) (*models.ExportFileResult, error) {
+	req.Limit = 0
+	entries, truncated, _, err := exportEntries(client, req)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write %s: %w", path, err)
+	}
+	w := bufio.NewWriterSize(f, 1<<20)
+	cw := &countingWriter{w: w}
+	err = writeExport(cw, client, req, entries)
+	if err == nil {
+		err = w.Flush()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to write %s: %w", path, err)
+	}
+	return &models.ExportFileResult{Path: path, Count: len(entries), Bytes: cw.n, Truncated: truncated}, nil
+}
+
+// countingWriter counts the bytes written through it.
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// exportEntries reads the entries of an export request: the DNs (parents
+// first) or the search below the base DN. limited is true when req.Limit
+// stopped the reading.
+func exportEntries(client *ldap.Client, req models.ExportRequest) (entries []models.LDAPEntry, truncated, limited bool, err error) {
+	if len(req.DNs) > 0 {
+		dns := req.DNs
+		if req.Limit > 0 && len(dns) > req.Limit {
+			dns, limited = dns[:req.Limit], true
+		}
+		entries, err = exportReadEntries(client, dns)
+		return entries, false, limited, err
+	}
+	if strings.TrimSpace(req.BaseDN) == "" {
+		return nil, false, false, fmt.Errorf("no base DN")
+	}
+	filter := strings.TrimSpace(req.Filter)
+	if filter == "" {
+		filter = "(objectClass=*)"
+	}
+	if err := ldap.ValidateFilter(filter); err != nil {
+		return nil, false, false, err
+	}
+	attrs := exportSearchAttributes
+	switch {
+	case req.Format == "csv" && len(req.Attributes) > 0:
+		attrs = req.Attributes
+	case req.Format != "csv" && req.Importable:
+		// An importable file leaves out every operational attribute: they
+		// are not even read (half the data of an OpenLDAP entry).
+		attrs = []string{"*"}
+	}
+	params := models.SearchParams{BaseDN: req.BaseDN, Scope: req.Scope, Filter: filter, Attributes: attrs}
+	if req.Limit > 0 {
+		params.SizeLimit = req.Limit
+	}
+	res, err := client.Search(params)
+	if err != nil {
+		return nil, false, false, fmt.Errorf("export search below %q failed: %w", req.BaseDN, err)
+	}
+	entries, truncated = res.Entries, res.Truncated
+	if req.Limit > 0 && truncated {
+		truncated, limited = false, true
+	}
+	ldif.SortParentFirst(entries)
+	return entries, truncated, limited, nil
+}
+
+// writeExport formats entries as the request's LDIF or CSV.
+func writeExport(w io.Writer, client *ldap.Client, req models.ExportRequest, entries []models.LDAPEntry) error {
 	if req.Format == "csv" {
 		content, err := ldif.ExportCSV(entries, req.Attributes)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		return &models.ExportResult{Content: content, Count: len(entries), Truncated: truncated}, nil
+		_, err = io.WriteString(w, content)
+		return err
 	}
 	if req.Importable {
 		entries = ldif.StripNonImportable(entries, schemaNonImportable(client))
 	}
 	entries = ldif.KeepAttributes(entries, req.Attributes, req.Importable)
-	content, err := ldif.Export(entries)
-	if err != nil {
-		return nil, err
-	}
-	return &models.ExportResult{Content: content, Count: len(entries), Truncated: truncated}, nil
+	return ldif.ExportToWriter(w, entries)
 }
 
 // schemaNonImportable lists (lower case) the attribute types of the server's
@@ -172,6 +257,19 @@ func schemaNonImportable(client *ldap.Client) map[string]bool {
 // the dialog's default) with defaultName and writes content there. Returns
 // the path, or "" when the dialog was cancelled.
 func (s *ExportService) SaveExportFile(defaultName, format, content, directory string) (string, error) {
+	path, err := s.exportSaveDialog(defaultName, format, directory)
+	if err != nil || path == "" {
+		return "", err
+	}
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		return "", fmt.Errorf("failed to write %s: %w", path, err)
+	}
+	return path, nil
+}
+
+// exportSaveDialog shows the "Export LDIF" / "Export CSV" save dialog in
+// directory (the last export folder) with defaultName; "" when cancelled.
+func (s *ExportService) exportSaveDialog(defaultName, format, directory string) (string, error) {
 	format = strings.ToLower(format)
 	title, filters := "Export LDIF", []runtime.FileFilter{{DisplayName: "LDIF Files (*.ldif)", Pattern: "*.ldif"}}
 	if format == "csv" {
@@ -188,12 +286,6 @@ func (s *ExportService) SaveExportFile(defaultName, format, content, directory s
 	path, err := runtime.SaveFileDialog(s.ctx, opts)
 	if err != nil {
 		return "", fmt.Errorf("save dialog failed: %w", err)
-	}
-	if path == "" {
-		return "", nil
-	}
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		return "", fmt.Errorf("failed to write %s: %w", path, err)
 	}
 	return path, nil
 }

@@ -482,30 +482,35 @@ export function useConnectionWatch() {
     // The Go operation log: last operation for the status bar, network errors
     // and the client's own RECONNECT entries. Never ping in reaction to a
     // RECONNECT entry: the ping would re-dial and log the next one.
+    // One event carries every entry logged within 50 ms (a bulk run logs thousands):
+    // the status bar gets the last operation per profile once per event.
     const off = onWailsEvent('operation:log', (...data: unknown[]) => {
-      const entry = data[0] as wails.LogEntry | undefined
-      if (!entry || typeof entry.operation !== 'string') return
-      // Internal notes (password storage probe and policy notes) never become
-      // the status bar's "last operation": it shows what the user did.
-      // Per profile: every connected profile streams its log (RW1-C-03).
+      const lastOps = new Map<string, wails.LogEntry>()
       const cs = useConnectionStore.getState()
       const id = cs.activeProfileId
-      const owner = entry.profileId || id
-      if (owner && !INTERNAL_OPS.has(entry.operation.toUpperCase())) {
-        setLastOp(owner, { operation: entry.operation, duration: entry.duration, error: entry.error, details: entry.details, at: Date.now() })
+      for (const entry of data as (wails.LogEntry | undefined)[]) {
+        if (!entry || typeof entry.operation !== 'string') continue
+        // Internal notes (password storage probe and policy notes) never become
+        // the status bar's "last operation": it shows what the user did.
+        // Per profile: every connected profile streams its log (RW1-C-03).
+        const owner = entry.profileId || id
+        if (owner && !INTERNAL_OPS.has(entry.operation.toUpperCase())) lastOps.set(owner, entry)
+        if (!id || cs.connectionStatuses[id] !== true) continue
+        // Connection health follows the active profile's own operations only.
+        if (entry.profileId && entry.profileId !== id) continue
+        const op = entry.operation.toUpperCase()
+        if (op === 'RECONNECT' || op === 'CONNECT') {
+          if (!entryNamesProfileServer(entry.details, id)) continue
+          // The client (re-)dialed: success restores, a failed re-dial means lost (with the real cause).
+          if (!entry.error) reportRestored(id)
+          else if (op === 'RECONNECT') reportLost(id, entry.error)
+          continue
+        }
+        if (entry.error && isNetworkError(entry.error)) checkConnectionSoon()
       }
-      if (!id || cs.connectionStatuses[id] !== true) return
-      // Connection health follows the active profile's own operations only.
-      if (entry.profileId && entry.profileId !== id) return
-      const op = entry.operation.toUpperCase()
-      if (op === 'RECONNECT' || op === 'CONNECT') {
-        if (!entryNamesProfileServer(entry.details, id)) return
-        // The client (re-)dialed: success restores, a failed re-dial means lost (with the real cause).
-        if (!entry.error) reportRestored(id)
-        else if (op === 'RECONNECT') reportLost(id, entry.error)
-        return
+      for (const [owner, e] of lastOps) {
+        setLastOp(owner, { operation: e.operation, duration: e.duration, error: e.error, details: e.details, at: Date.now() })
       }
-      if (entry.error && isNetworkError(entry.error)) checkConnectionSoon()
     })
 
     return () => {
