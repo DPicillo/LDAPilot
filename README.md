@@ -26,7 +26,7 @@ It works with **Active Directory** (incl. Samba AD), **OpenLDAP**, **389 Directo
 
 LDAPilot is an open-source alternative to classic LDAP clients such as Apache Directory Studio, LDAP Admin or Softerra LDAP Browser: a native desktop app (Go + React, no Electron) with a light and a dark theme, a command palette, full keyboard control and cross-platform support.
 
-**Current version: 0.5.0** — see the [changelog](CHANGELOG.md).
+**Current version: 0.6.0** — see the [changelog](CHANGELOG.md).
 
 <p align="center">
   <img src="assets/Home.png" alt="LDAPilot Home" width="800">

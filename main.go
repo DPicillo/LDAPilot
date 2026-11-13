@@ -29,12 +29,12 @@ var appIcon []byte
 
 // Build stamp, set by scripts/build.sh, i.e.
 //
-//	wails build -ldflags "-X main.version=v0.5.0 -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+//	wails build -ldflags "-X main.version=v0.6.0 -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //
 // Wails builds with -buildvcs=false, so the Go build info fallback (VCS
 // revision and time, see UIService.GetAppInfo) only applies to a plain
 // `go build`; an unstamped wails build reports services.ReleaseVersion +
-// "-dev" (About: "v0.5.0 development build").
+// "-dev" (About: "v0.6.0 development build").
 var (
 	version = ""
 	commit  = ""

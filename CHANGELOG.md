@@ -2,33 +2,52 @@
 
 All notable changes to LDAPilot are listed here. Versions follow [Semantic Versioning](https://semver.org/); dates are UTC.
 
-## [Unreleased]
+## [0.6.0] - 2026-11-13
+
+This release is mostly about getting LDAPilot onto a computer and getting data in and out of a directory: real installers for Windows and Linux, an LDIF import that adapts a file instead of refusing it, and much shorter waits in large directories.
 
 ### Installation
-- **New Windows setup** (Inno Setup, replaces the NSIS setup): installs **for you only** (no administrator rights, `%LOCALAPPDATA%\Programs\LDAPilot`) or **for all users** (`C:\Program Files\LDAPilot`), interactively in German or English, light or dark, or **unattended** for software distribution (`/VERYSILENT /ALLUSERS` or `/CURRENTUSER`, log with `/LOG=`) with documented exit codes and a fixed uninstall key for detection rules. A running LDAPilot is recognised, also in other Windows sessions and of other users (terminal servers): a silent setup stops with exit code 7 instead of reporting success with the old file, the interactive setup offers to close it. A missing WebView2 runtime is installed with Microsoft's bootstrapper (`/WEBVIEW2=nodownload` for networks without internet, `/WEBVIEW2=ignore`); the desktop shortcut is optional (off by default); a per-machine install removes the 0.5.0 installation first. Settings stay where they were.
-- **Linux packages**: `.deb` (Debian 12+, Ubuntu 22.04+), `.rpm` (Fedora, openSUSE, RHEL 10) and an `.rpm` for RHEL 9, with a desktop entry, icons and AppStream data, plus `LDAPilot-linux-amd64.tar.gz`, whose `install.sh` installs into `~/.local` without root. Docks and panels now show the LDAPilot icon for the window (its app ID is `io.github.dpicillo.LDAPilot`). The bare Linux binaries are no longer attached to releases.
-- **Install commands in the README**: one line per platform. The release files now keep the same name in every release (`LDAPilot-linux-amd64.deb`, `LDAPilot-linux-amd64.rpm`, `LDAPilot-linux-amd64.el9.rpm`, next to the Windows and macOS files that already did), so `releases/latest/download/<file>` always fetches the newest version.
-- `LDAPilot.exe` carries complete version information (file version), for inventory tools and detection rules.
-- [docs/installation.md](docs/installation.md): command lines, exit codes and detection rules for administrators (Intune, Configuration Manager, Ivanti DSM).
-
-### Passwords
-- **SASL pass-through authentication** (`userPassword: {SASL}user`, follow-up to #1): such a reference is stored unchanged by every write path (attribute table, Edit Entry, New / Copy Entry, bulk modify, LDIF import, Edit as LDIF) under every storage policy, as it has been since 0.5.0; this is now tested and said where it matters — the hint next to password fields and the connection's Password storage section name `{SCHEME}` values that are kept, and a stored `{SASL}` value is labelled "Pass-through authentication".
-- **Reset Password** no longer hashes such a value without a word: typing a `{SASL}` reference or an already hashed value shows what it is and offers **Store as Typed**, and Enter no longer submits such a text (hashing it takes a click on Reset Password); resetting an account that uses pass-through authentication warns that the reset replaces the reference with a local password.
+- **New Windows setup** (Inno Setup, replaces the NSIS setup). It installs for all users (`C:\Program Files\LDAPilot`) or only for you without administrator rights (`%LOCALAPPDATA%\Programs\LDAPilot`), in German or English.
+- The setup runs unattended for software distribution: `/VERYSILENT /ALLUSERS` or `/CURRENTUSER`, a log with `/LOG=`, documented exit codes and a fixed uninstall key for detection rules.
+- A running LDAPilot is noticed, also in other Windows sessions and of other users on a terminal server. A silent setup then stops with exit code 7 instead of reporting success with the old file, the interactive setup offers to close it.
+- A missing WebView2 runtime is installed with Microsoft's bootstrapper (`/WEBVIEW2=nodownload` for networks without internet, `/WEBVIEW2=ignore` to skip it). The desktop shortcut is optional and off by default.
+- An installation for all users removes the 0.5.0 installation first. Your settings stay where they are.
+- **Linux packages**: `.deb` for Debian 12+ and Ubuntu 22.04+, `.rpm` for Fedora, openSUSE and RHEL 10, a separate `.rpm` for RHEL 9, and `LDAPilot-linux-amd64.tar.gz` with an `install.sh` that installs into `~/.local` without root. They bring a desktop entry, icons and AppStream data, so docks and panels now show the LDAPilot icon for the window. The bare Linux binaries are no longer attached to releases.
+- The release files have the same name in every release (`LDAPilot-linux-amd64.deb` and so on), so the install commands in the README always fetch the newest version.
+- `LDAPilot.exe` carries complete version information for inventory tools.
+- [docs/installation.md](docs/installation.md) has the command lines, exit codes and detection rules for administrators (Intune, Configuration Manager, Ivanti DSM).
 
 ### LDIF import and export
-- **The import adapts instead of refusing.** A file from `slapcat`, from `ldapsearch` with `+`, from another kind of directory or exported without "Importable" no longer fails record by record: attributes the server maintains itself (entryUUID, entryCSN, createTimestamp, objectGUID, objectSid, memberOf, …) are left out, and so are attribute types and object classes the target server does not define (e.g. `nsMemberOf` from 389 DS into OpenLDAP) or that the entry's object classes do not allow there. The dry run names per record what was left out and why, with a summary for the whole file.
-- **Import options, decided once for the file before the run**: *Entries that already exist* — skip (default), update (the record's attributes replace the entry's values, missing object classes are added, everything else stays) or report as error; *Attributes the server maintains* — leave out, or send them where the server allows it: OpenLDAP keeps `entryUUID`, the create / modify timestamps and names and the password policy history (`pwdHistory`, `pwdChangedTime`, …) through the Relax Rules control, while the dialog says beforehand that 389 DS and Active Directory assign IDs and timestamps themselves; *Unknown attributes and object classes* — leave out or send; on Active Directory *references to entries that do not exist* (member, manager) — leave out or send. The choices are remembered.
-- On Active Directory, references to entries that the file creates later (a group listed before its members) are set at the end of the run instead of failing; exports with every attribute no longer list a group before its members because of their `memberOf`.
-- The dry run now predicts for add records what the server will refuse (missing required attributes, several values of a single-valued attribute, `unicodePwd` over an unencrypted connection, unknown object classes) and records whose parent could not be created are no longer sent ("the parent entry … was not created (the add record at line N failed)") instead of failing with the server's empty "No Such Object".
-- Passwords: hashes from the file are imported as before (with the connection's storage policy or exactly as in the file); the dialog explains what cannot work — `unicodePwd` without TLS, and that an Active Directory export contains no passwords. "Continue after a failed record" is now on by default; with it off the run still stops at the first failure.
-- **Faster with many entries** (100,000 OpenLDAP users, see `docs/ldif-import-export-notes.md`): the export is written straight to the file by the backend (the dialog previews the first 200 entries) — about 10 s instead of 15 s plus half a minute in which the window was busy with the text; the dry run checks the directory in parallel (30 → 16 s) and sends only the first records of each status to the dialog (126 MB → 0.25 MB), the rest page in on demand; Apply after a dry run no longer sends the file and checks the passwords again (13 s saved); the import sends up to eight records at a time (77 → 41 s on a server without fsync; 38.5 → 28 s for 10,000 entries with fsync, faster than `ldapadd`). The operation log and audit events are sent in batches: the window no longer lags minutes behind the server during a large run (100,000 records in the dialog: 6 min → 71 s).
-- 389 DS managed-role membership (`nsRoleDN`) is no longer dropped from "Importable" exports.
+- **The import adapts a file instead of refusing it.** A file from `slapcat`, from `ldapsearch` with `+`, from another kind of directory or exported without "Importable" used to fail at the first record. Attributes the server maintains itself (entryUUID, entryCSN, createTimestamp, objectGUID, objectSid, memberOf and the like) are now left out, and so are attribute types and object classes the target server does not know. The dry run says per record what was left out and why.
+- **You decide once for the whole file, before the run:**
+  - entries that already exist: skip (default), update or report as an error
+  - attributes the server maintains: leave out, or send them. OpenLDAP then really keeps `entryUUID`, the timestamps and the password history. For 389 Directory Server and Active Directory the dialog says beforehand that they assign IDs and timestamps themselves.
+  - unknown attributes and object classes: leave out or send
+  - on Active Directory, references to entries that do not exist (member, manager): leave out or send
+- The choices are remembered.
+- The dry run now predicts for new entries what the server will refuse: missing required attributes, several values in a single-valued attribute, `unicodePwd` over an unencrypted connection. Entries below an entry that could not be created are no longer sent.
+- On Active Directory a group that stands in the file before its members gets them at the end of the run instead of failing.
+- Passwords: hashes from the file are imported, with the connection's storage policy or exactly as in the file. Questions about them come once before the run, not as failed records. The dialog explains what cannot work (`unicodePwd` without TLS, and that an Active Directory export contains no passwords).
+- "Continue after a failed record" is on by default.
+- **Faster with many entries.** Measured with 100,000 users on OpenLDAP: the export is written straight to the file (about 10 s, before 15 s plus half a minute in which the window was busy), the dry run takes 16 s instead of 30 s, the import 41 s instead of 77 s. A large import in the dialog took 6 minutes and now takes 71 s, because the window no longer lags behind the server.
+- 389 Directory Server role membership (`nsRoleDN`) is no longer dropped from "Importable" exports.
 
-### Accounts
-- **Set Password…** for LDAP persons without a login (OpenLDAP, 389 Directory Server): a person without `uid` and without a password is shown as a contact and had no password verb, so it could never get the password that makes it a user. Such entries now offer Set Password… wherever users have Reset Password… (tree, results and Contents menus, Entry menu, palette, the editor header's primary button); it opens the same dialog with the connection's password storage policy. After the write the tree row, the list rows and the open tab show a user with the account verbs and the Account tab, without a refresh. Not on Active Directory, where `contact` objects cannot have a password.
+### Large directories
+- Opening the Contents list of a container with 40,000 entries shows the first rows after about 1 s. Before it took about 100 s. Reading from the server was never the slow part, the time was lost in the window.
+- Scrolling the tree and the lists renders only rows that changed.
+- The tree sorts by type, then by name by default.
+
+### Accounts and passwords
+- **Set Password** for LDAP persons without a login (OpenLDAP, 389 Directory Server). A person without `uid` and without a password is shown as a contact and had no password command, so it could never get the password that makes it a user. Such entries now offer Set Password wherever users have Reset Password. After the write the entry is shown as a user with the Account tab, without a refresh. Not on Active Directory, where contact objects cannot have a password.
+- **SASL pass-through authentication** (`userPassword: {SASL}user`, follow-up to #1). Such a reference has been stored unchanged by every write path since 0.5.0. Only Reset Password hashed whatever was typed. It now recognises a typed `{SASL}` reference or an already hashed value, says what it is and offers "Store as Typed". Resetting an account that uses pass-through authentication warns that the reset replaces the reference with a local password.
 
 ### AI assistant
-- **Claude Code in WSL** (Windows): the Claude Code engine also works with a Claude Code installed only inside a WSL distribution. The AI settings show and let you choose where it runs — Automatic (a Claude Code for Windows wins, else WSL), Windows, or WSL with the distribution and an optional Linux path — and say where it was found ("Found in WSL 2 · Ubuntu: …"). `claude --version`, the model list and every run go through `wsl.exe`, with the environment of your login shell in that distribution (so `claude` from nvm, npm-global or `~/.local/bin` is found as in a terminal). The directory tools reach Claude Code through LDAPilot itself as a relay on this computer, with NAT or mirrored networking and on WSL 1: nothing listens outside the loopback and no firewall rule is needed. Starting WSL from cold no longer runs into the 10–15 s limits, Stop works while LDAPilot looks for Claude Code and stops the CLI inside the distribution, and when Claude Code is found nowhere the message names both places and how to install it in each.
+- **Claude Code in WSL** (Windows). The Claude Code engine also works with a Claude Code that is installed only inside a WSL distribution. The AI settings let you choose where it runs: Automatic (a Claude Code for Windows wins, else WSL), Windows, or WSL with the distribution. `claude` is found as in your terminal, also when it comes from nvm or npm. Nothing listens outside this computer and no firewall rule is needed.
+- This part is new and was tested against a simulated WSL only. If it does not work on your Windows, please open an issue.
+
+### Known limitations
+- The builds are still not code-signed. Windows SmartScreen may ask once ("More info", then "Run anyway"). On macOS the app is not notarized.
+- The macOS build is made by CI and was not tested on a Mac by hand.
 
 ## [0.5.0] - 2026-11-01
 
@@ -153,4 +172,5 @@ The biggest release so far: a new design, account and password administration fo
 
 Earlier versions: see the [GitHub releases](https://github.com/DPicillo/LDAPilot/releases).
 
+[0.6.0]: https://github.com/DPicillo/LDAPilot/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DPicillo/LDAPilot/compare/v0.4...v0.5.0

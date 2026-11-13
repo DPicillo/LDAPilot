@@ -18,7 +18,7 @@ import (
 // scripts/build.sh stamps it; an unstamped build (`wails dev`, a plain
 // `wails build`) reports ReleaseVersion + "-dev", which About shows as
 // "v0.5.0 development build".
-const ReleaseVersion = "v0.5.0"
+const ReleaseVersion = "v0.6.0"
 
 // BuildInfo is what the build stamps into main.version/commit/date via
 // -ldflags "-X main.version=v0.5.0 -X main.commit=… -X main.date=…".

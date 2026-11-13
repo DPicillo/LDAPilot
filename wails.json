@@ -14,7 +14,7 @@
   "info": {
     "companyName": "David Picillo",
     "productName": "LDAPilot",
-    "productVersion": "0.5.0",
+    "productVersion": "0.6.0",
     "copyright": "Copyright © David Picillo. Licensed under the Apache License 2.0.",
     "comments": "Cross-platform LDAP and Active Directory browser and administration tool"
   }
