@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=LDAPilot
+GenericName=LDAP Browser
+Comment=Browse and manage LDAP and Active Directory directories
+Exec=ldapilot
+Icon=io.github.dpicillo.LDAPilot
+Terminal=false
+Categories=Network;
+Keywords=LDAP;Active Directory;AD;directory;OpenLDAP;389;
+StartupWMClass=io.github.dpicillo.LDAPilot

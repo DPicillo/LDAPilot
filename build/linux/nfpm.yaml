@@ -1,0 +1,61 @@
+# nfpm configuration of the Linux packages (.deb, .rpm). Run through
+# scripts/package-linux.sh, which stages the binary, the AppStream file and
+# the changelog in dist/linux/stage and sets VERSION, PKG_RELEASE,
+# DEB_WEBKIT and RPM_WEBKIT.
+name: ldapilot
+arch: amd64
+platform: linux
+version: ${VERSION}
+release: ${PKG_RELEASE}
+section: net
+priority: optional
+maintainer: David Picillo <58555256+DPicillo@users.noreply.github.com>
+vendor: David Picillo
+homepage: https://github.com/DPicillo/LDAPilot
+license: Apache-2.0
+description: |-
+  LDAP and Active Directory browser and administration tool
+  Desktop browser and administration tool for Active Directory, Samba,
+  OpenLDAP and 389 Directory Server.
+changelog: dist/linux/stage/changelog.yml
+contents:
+  - src: dist/linux/stage/ldapilot
+    dst: /usr/bin/ldapilot
+    file_info: {mode: 0755}
+  - src: build/linux/io.github.dpicillo.LDAPilot.desktop
+    dst: /usr/share/applications/io.github.dpicillo.LDAPilot.desktop
+    file_info: {mode: 0644}
+  - src: dist/linux/stage/io.github.dpicillo.LDAPilot.metainfo.xml
+    dst: /usr/share/metainfo/io.github.dpicillo.LDAPilot.metainfo.xml
+    file_info: {mode: 0644}
+  - src: build/linux/icons/48.png
+    dst: /usr/share/icons/hicolor/48x48/apps/io.github.dpicillo.LDAPilot.png
+    file_info: {mode: 0644}
+  - src: build/linux/icons/64.png
+    dst: /usr/share/icons/hicolor/64x64/apps/io.github.dpicillo.LDAPilot.png
+    file_info: {mode: 0644}
+  - src: build/linux/icons/128.png
+    dst: /usr/share/icons/hicolor/128x128/apps/io.github.dpicillo.LDAPilot.png
+    file_info: {mode: 0644}
+  - src: build/linux/icon.png
+    dst: /usr/share/icons/hicolor/256x256/apps/io.github.dpicillo.LDAPilot.png
+    file_info: {mode: 0644}
+  - src: build/linux/copyright
+    dst: /usr/share/doc/ldapilot/copyright
+    file_info: {mode: 0644}
+    packager: deb
+  - src: LICENSE
+    dst: /usr/share/licenses/ldapilot/LICENSE
+    file_info: {mode: 0644}
+    packager: rpm
+    type: license
+overrides:
+  deb:
+    depends:
+      - ${DEB_WEBKIT}
+      - libgtk-3-0
+      - libc6 (>= 2.34)
+  rpm:
+    depends:
+      - ${RPM_WEBKIT}
+      - libgtk-3.so.0()(64bit)

@@ -49,6 +49,10 @@ func main() {
 		os.Exit(mcprelay.Main(os.Args[2:]))
 	}
 
+	// Lets the Windows setup see that LDAPilot runs (after the relay branch,
+	// so a running relay never blocks an update).
+	holdAppMutexes()
+
 	// Initialize config store
 	store, err := config.NewStore()
 	if err != nil {
@@ -114,6 +118,9 @@ func main() {
 		BackgroundColour: windowBackground(config.LoadUIState().Theme),
 		Linux: &linux.Options{
 			Icon: appIcon,
+			// The Wayland app ID and X11 window name; equal to the desktop
+			// entry's name, so docks and panels show the LDAPilot icon.
+			ProgramName: appID,
 			// What Wails uses when Linux is nil (wails#2977); a non-nil
 			// Options would otherwise switch to "on demand".
 			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,

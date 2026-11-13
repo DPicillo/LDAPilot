@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata; scripts/package-linux.sh fills in @VERSION@ and @DATE@. -->
+<component type="desktop-application">
+  <id>io.github.dpicillo.LDAPilot</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>LDAPilot</name>
+  <summary>Browse and manage LDAP and Active Directory directories</summary>
+  <description>
+    <p>LDAPilot is a desktop browser and administration tool for LDAP directories: Active Directory, Samba, OpenLDAP and 389 Directory Server.</p>
+    <ul>
+      <li>Directory tree, search, entry editor and LDIF import and export</li>
+      <li>Account status, password resets and group membership</li>
+      <li>TLS, Kerberos and NTLM binds</li>
+    </ul>
+  </description>
+  <developer id="io.github.dpicillo">
+    <name>David Picillo</name>
+  </developer>
+  <launchable type="desktop-id">io.github.dpicillo.LDAPilot.desktop</launchable>
+  <url type="homepage">https://github.com/DPicillo/LDAPilot</url>
+  <url type="bugtracker">https://github.com/DPicillo/LDAPilot/issues</url>
+  <provides>
+    <binary>ldapilot</binary>
+  </provides>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/DPicillo/LDAPilot/master/assets/Browser.png</image>
+      <caption>Directory tree and entry editor</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

@@ -29,7 +29,16 @@ build with `wails build`.
 - `icon.ico` - The icon used for the application. This is used when building using `wails build`. If you wish to
   use a different icon, simply replace this file with your own. If it is missing, a new `icon.ico` file
   will be created using the `appicon.png` file in the build directory.
-- `installer/*` - The files used to create the Windows installer. These are used when building using `wails build`.
+- `setup/` - The Windows setup (Inno Setup 7): `ldapilot.iss` and the wizard images. Not built by `wails build`;
+  the CI compiles it with `ISCC.exe /DAppVersion=<productVersion>` next to `LDAPilot.exe` and Microsoft's WebView2
+  bootstrapper. Do not run `wails build -nsis`: it would recreate the old NSIS template under `installer/`.
 - `info.json` - Application details used for Windows builds. The data here will be used by the Windows installer,
   as well as the application itself (right click the exe -> properties -> details)
 - `wails.exe.manifest` - The main application manifest file.
+
+## Linux
+
+The `linux` directory holds `icon.png` (window icon, embedded by `main.go`) and the packaging files used by
+`scripts/package-linux.sh`: the desktop entry, AppStream data and icons (named after the app ID
+`io.github.dpicillo.LDAPilot`), `nfpm.yaml` for the `.deb` and `.rpm` packages, `copyright` (Debian format) and
+`install.sh` for the per-user archive.

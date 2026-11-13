@@ -1,7 +1,9 @@
 name: CI
 
 # Tests and builds for Linux, Windows and macOS on every push to master and every
-# pull request. Builds are published ONLY when a release is made: a pushed tag v*
+# pull request: the Windows setup (Inno Setup, smoke-tested on the runner) and
+# the Linux packages (.deb, .rpm, per-user archive, install-tested in containers).
+# Builds are published ONLY when a release is made: a pushed tag v*
 # creates the GitHub release (notes from CHANGELOG.md) with all builds attached.
 # "Run workflow" by hand only tests and builds (downloadable run artifacts), it
 # never touches a release.
@@ -112,7 +114,7 @@ jobs:
           - name: Windows
             os: windows-latest
             platform: windows/amd64
-            args: '-nsis'
+            args: ''
           - name: macOS (universal)
             os: macos-latest
             platform: darwin/universal
@@ -140,12 +142,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.apt }}
 
-      - name: NSIS (installer)
-        if: runner.os == 'Windows'
-        run: |
-          choco install nsis -y --no-progress
-          echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
-
       - name: Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}
 
@@ -156,6 +152,40 @@ jobs:
       - name: Build (version, commit and date stamped)
         run: bash scripts/build.sh -platform ${{ matrix.platform }} ${{ matrix.args }}
 
+      - name: Mutexes the setup checks (every user's LDAPilot holds the global one)
+        if: runner.os == 'Windows'
+        run: go test -run 'TestAppMutexNames|TestGlobalMutex' -v .
+
+      # The setup (build/windows/setup/ldapilot.iss) bundles Microsoft's current
+      # WebView2 bootstrapper; Inno Setup is pinned by version and SHA-256.
+      - name: Setup (Inno Setup)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe
+          INNO_SHA256: 8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content wails.json -Raw | ConvertFrom-Json).info.productVersion
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "info.productVersion must be N.N.N for the installers, got '$version'" }
+          $setup = 'build/windows/setup'
+          Copy-Item build/bin/LDAPilot.exe $setup/
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile "$setup/MicrosoftEdgeWebview2Setup.exe"
+          $sig = Get-AuthenticodeSignature "$setup/MicrosoftEdgeWebview2Setup.exe"
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw "WebView2 bootstrapper signature: $($sig.Status) $($sig.SignerCertificate.Subject)"
+          }
+          Invoke-WebRequest $env:INNO_URL -OutFile "$env:RUNNER_TEMP/innosetup.exe"
+          if ((Get-FileHash "$env:RUNNER_TEMP/innosetup.exe" -Algorithm SHA256).Hash -ne $env:INNO_SHA256) { throw 'Inno Setup download: SHA-256 mismatch' }
+          Start-Process "$env:RUNNER_TEMP/innosetup.exe" -Wait -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /NOICONS /DIR=`"$env:RUNNER_TEMP\inno`""
+          & "$env:RUNNER_TEMP\inno\ISCC.exe" /Q "/DAppVersion=$version" "$setup/ldapilot.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC exit $LASTEXITCODE" }
+
+      - name: Setup smoke test (install, update, uninstall, per user, running program, WebView2)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\scripts\windows-setup-smoke.ps1 -Setup build\windows\setup\out\LDAPilot-windows-amd64-installer.exe -Exe build\bin\LDAPilot.exe
+
       - name: Collect the files
         run: |
           mkdir -p out
@@ -164,7 +194,7 @@ jobs:
             ubuntu-24.04) cp build/bin/LDAPilot out/LDAPilot-linux-amd64-webkit2_41 ;;
             windows-*)
               cp build/bin/LDAPilot.exe out/LDAPilot-windows-amd64.exe
-              cp build/bin/LDAPilot-amd64-installer.exe out/LDAPilot-windows-amd64-installer.exe ;;
+              cp build/windows/setup/out/LDAPilot-windows-amd64-installer.exe out/LDAPilot-windows-amd64-installer.exe ;;
             macos-*) ditto -c -k --keepParent build/bin/LDAPilot.app out/LDAPilot-macos-universal.zip ;;
           esac
           ls -la out
@@ -176,9 +206,59 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  package-linux:
+    name: Linux packages
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      NFPM_VERSION: 2.49.0
+      NFPM_SHA256: 2afaa5ffb5e3493402e31e7c67a5a1fb42133e3f66fc315ca0051934125561c7
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ldapilot-ubuntu-*
+          path: bins
+          merge-multiple: true
+
+      - name: Tools (nfpm, desktop-file-utils, AppStream)
+        run: |
+          curl -fsSL -o /tmp/nfpm.tgz "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          echo "${NFPM_SHA256}  /tmp/nfpm.tgz" | sha256sum -c -
+          sudo tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils appstream
+
+      - name: Build .deb, .rpm, .el9.rpm and the per-user archive
+        run: |
+          version="$(sed -n 's/.*"productVersion": *"\([^"]*\)".*/\1/p' wails.json | head -n 1)"
+          scripts/package-linux.sh "$version" bins/LDAPilot-linux-amd64 bins/LDAPilot-linux-amd64-webkit2_41 out
+          desktop-file-validate build/linux/io.github.dpicillo.LDAPilot.desktop
+          appstreamcli validate --no-net dist/linux/stage/io.github.dpicillo.LDAPilot.metainfo.xml
+
+      - name: Install test (Debian 13, Fedora)
+        run: |
+          docker run --rm -v "$PWD/out:/pkg:ro" debian:13 sh -ec '
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq /pkg/LDAPilot-linux-amd64.deb >/dev/null
+            dpkg-query -W -f="ldapilot \${Version}\n" ldapilot
+            ! ldd /usr/bin/ldapilot | grep "not found"'
+          docker run --rm -v "$PWD/out:/pkg:ro" fedora:latest sh -ec '
+            dnf -y -q install /pkg/LDAPilot-linux-amd64.rpm
+            rpm -q ldapilot
+            ! ldd /usr/bin/ldapilot | grep "not found"'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ldapilot-linux-packages
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+
   release:
     name: Release
-    needs: build
+    needs: [build, package-linux]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -212,19 +292,28 @@ jobs:
           cat >> notes.md <<'NOTES'
 
           ### Downloads
-          | Platform | File | Notes |
+          | Platform | File | For |
           |---|---|---|
-          | **Windows** (amd64) | `LDAPilot-windows-amd64-installer.exe` (installer) or `LDAPilot-windows-amd64.exe` (portable) | Needs the WebView2 runtime (part of Windows 10/11) |
-          | **macOS** (Apple silicon + Intel) | `LDAPilot-macos-universal.zip` | Not notarized: open the app the first time with right-click → Open |
-          | **Linux** (amd64) | `LDAPilot-linux-amd64` (WebKitGTK 4.0: Ubuntu 22.04, Debian 12) or `LDAPilot-linux-amd64-webkit2_41` (WebKitGTK 4.1: Ubuntu 24.04+, Debian 13+) | `chmod +x` after the download |
+          | **Windows** (amd64) | `LDAPilot-windows-amd64-installer.exe` | Setup for all users (administrator, software distribution) or just you (no admin rights); silent with `/VERYSILENT /ALLUSERS` or `/VERYSILENT /CURRENTUSER`. Installs the WebView2 runtime if it is missing. |
+          | | `LDAPilot-windows-amd64.exe` | Portable, nothing installed |
+          | **Linux** (amd64) | `LDAPilot-linux-amd64.deb` | Debian 12+, Ubuntu 22.04+ |
+          | | `LDAPilot-linux-amd64.rpm` | Fedora, openSUSE, RHEL / Rocky / Alma 10 (with EPEL) |
+          | | `LDAPilot-linux-amd64.el9.rpm` | RHEL / Rocky / Alma 9 |
+          | | `LDAPilot-linux-amd64.tar.gz` | Any distribution, just you without root: unpack and run `./install.sh` |
+          | **macOS** (Apple silicon + Intel) | `LDAPilot-macos-universal.zip` | Not notarized: open it once via System Settings › Privacy & Security › Open Anyway |
 
-          Checksums: `SHA256SUMS.txt`. Full changelog: [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md)
+          The builds are not code-signed. Command lines, exit codes and detection rules for software distribution: [docs/installation.md](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/docs/installation.md). Checksums: `SHA256SUMS.txt`. Full changelog: [CHANGELOG.md](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md)
           NOTES
           gh release create "$TAG" --verify-tag --title "LDAPilot $TAG" --notes-file notes.md
 
+      # Exactly the release files: the bare Linux binaries of the build jobs
+      # are only inputs of the packages and the archive.
       - name: Upload the builds and SHA256SUMS.txt
         working-directory: release-files
         run: |
-          sha256sum LDAPilot-* > SHA256SUMS.txt
+          files=(LDAPilot-windows-amd64-installer.exe LDAPilot-windows-amd64.exe LDAPilot-macos-universal.zip
+                 LDAPilot-linux-amd64.tar.gz LDAPilot-linux-amd64.deb LDAPilot-linux-amd64.rpm LDAPilot-linux-amd64.el9.rpm)
+          ls -l "${files[@]}"
+          sha256sum "${files[@]}" > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          gh release upload "$TAG" LDAPilot-* SHA256SUMS.txt --clobber
+          gh release upload "$TAG" "${files[@]}" SHA256SUMS.txt --clobber

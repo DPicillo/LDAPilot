@@ -140,17 +140,57 @@ LDAPilot is an open-source alternative to classic LDAP clients such as Apache Di
 
 ## 💻 Installation
 
-### Pre-built Binaries
+### Windows
 
-Every [release](https://github.com/DPicillo/LDAPilot/releases) has builds for all platforms, made by the [CI pipeline](https://github.com/DPicillo/LDAPilot/actions/workflows/ci.yml) when the release is made:
+Download and run **[LDAPilot-windows-amd64-installer.exe](https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-windows-amd64-installer.exe)**. The setup asks whether to install for you only (no admin rights needed) or for all users, and adds the WebView2 runtime if it is missing.
 
-| Platform | File | Notes |
-|---|---|---|
-| Windows (amd64) | `LDAPilot-windows-amd64-installer.exe` or the portable `LDAPilot-windows-amd64.exe` | Needs the WebView2 runtime (part of Windows 10/11). The builds are not code-signed, so SmartScreen may ask once ("More info" → "Run anyway"). |
-| macOS (Apple silicon and Intel) | `LDAPilot-macos-universal.zip` | Unzip and move `LDAPilot.app` to Applications. The app is not notarized: open it the first time with right-click → Open (or `xattr -dr com.apple.quarantine LDAPilot.app`). |
-| Linux (amd64) | `LDAPilot-linux-amd64` (WebKitGTK 4.0, e.g. Ubuntu 22.04, Debian 12) or `LDAPilot-linux-amd64-webkit2_41` (WebKitGTK 4.1, e.g. Ubuntu 24.04+, Debian 13+) | `chmod +x` after the download. |
+Or install it for your user straight from PowerShell:
 
-`SHA256SUMS.txt` lists the checksums of all files.
+```powershell
+curl.exe -fLo "$env:TEMP\LDAPilot-setup.exe" https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-windows-amd64-installer.exe; & "$env:TEMP\LDAPilot-setup.exe" /SILENT /CURRENTUSER
+```
+
+Prefer not to install anything? [LDAPilot-windows-amd64.exe](https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-windows-amd64.exe) is the portable build: download it and run it.
+
+### Linux
+
+```sh
+# Debian 12+, Ubuntu 22.04+
+curl -fLo /tmp/ldapilot.deb https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-linux-amd64.deb && sudo apt install /tmp/ldapilot.deb
+
+# Fedora, RHEL / Rocky / Alma 10 (on Rocky and Alma run "sudo dnf install epel-release" first)
+sudo dnf install https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-linux-amd64.rpm
+
+# RHEL / Rocky / Alma 9
+sudo dnf install https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-linux-amd64.el9.rpm
+
+# openSUSE (the package is not signed yet)
+sudo zypper install --allow-unsigned-rpm https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-linux-amd64.rpm
+```
+
+Without root, just for you, on any distribution with WebKitGTK (installs into `~/.local`):
+
+```sh
+curl -fL https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-linux-amd64.tar.gz | tar -xz -C /tmp && /tmp/LDAPilot-linux-amd64/install.sh
+```
+
+LDAPilot then appears in your application menu. To update, run the same command again.
+
+### macOS
+
+Download **[LDAPilot-macos-universal.zip](https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-macos-universal.zip)** (Apple silicon and Intel), unzip it and move `LDAPilot.app` to Applications. Or in Terminal:
+
+```sh
+curl -fLo /tmp/LDAPilot.zip https://github.com/DPicillo/LDAPilot/releases/latest/download/LDAPilot-macos-universal.zip && ditto -xk /tmp/LDAPilot.zip /Applications && open /Applications/LDAPilot.app
+```
+
+The app is not notarized yet. If macOS refuses to open it, allow it once under System Settings › Privacy & Security › Open Anyway.
+
+### All downloads, software distribution
+
+Every file and its checksum (`SHA256SUMS.txt`) is on the [releases page](https://github.com/DPicillo/LDAPilot/releases). The builds are not code-signed yet, so Windows SmartScreen may ask once when you start a downloaded file ("More info" → "Run anyway").
+
+Rolling LDAPilot out with Intune, Configuration Manager or Ivanti DSM? Silent install commands, exit codes and detection rules are in [docs/installation.md](docs/installation.md).
 
 ### Build from Source
 
